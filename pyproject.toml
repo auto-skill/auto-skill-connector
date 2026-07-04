@@ -1,0 +1,21 @@
+[project]
+name = "auto-skill-connector"
+version = "0.1.0"
+description = "MCP connector that recommends and installs Claude skills from a scraped skill database"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "mcp>=1.0.0",
+    "httpx>=0.27",
+]
+
+[project.scripts]
+auto-skill-mcp = "mcp_server:main"
+
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = ["mcp_server"]
