@@ -48,6 +48,38 @@ Restart Claude Desktop after editing the config.
 Both require [`uv`](https://docs.astral.sh/uv/) installed (`uvx` ships with
 it) — no cloning or manual `pip install` needed.
 
+## Automatic skill suggestions (optional, Claude Code)
+
+Want every chat message checked against the database automatically? Add the
+included `hooks/skill_suggest.py` as a `UserPromptSubmit` hook: it runs on
+each prompt you send, and when a skill matches, Claude is told to fetch and
+apply it via `recommend_skill`. It fails open — errors and timeouts never
+block or slow your chat.
+
+1. Download [`hooks/skill_suggest.py`](hooks/skill_suggest.py) somewhere
+   permanent (e.g. `~/.claude/hooks/skill_suggest.py`).
+2. Merge this into `~/.claude/settings.json` (use an absolute path on
+   Windows, e.g. `C:\\Users\\you\\.claude\\hooks\\skill_suggest.py`):
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": ["~/.claude/hooks/skill_suggest.py"],
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
 ## Running it directly
 
 ```

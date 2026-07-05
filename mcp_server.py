@@ -18,11 +18,17 @@ Tools:
                                  Claude Code skill going forward.
 """
 import json
+import os
 import re
 from pathlib import Path
 
 import httpx
 from mcp.server.fastmcp import FastMCP
+
+# Self-hosted skill server (freshest corpus: historical + newly scraped skills,
+# full hybrid search). Set AUTOSKILL_URL to override; when unreachable, searches
+# fall back to the Supabase snapshot below automatically.
+AUTOSKILL_URL = os.getenv("AUTOSKILL_URL", "https://skills.avalahome.com").rstrip("/")
 
 SUPABASE_URL = "https://kgkuoxdizynkcrbasamu.supabase.co"
 # Read-only anon key -- safe to ship publicly. RLS on this project grants
@@ -74,11 +80,41 @@ def _slugify(name: str) -> str:
     return slug or "skill"
 
 
+async def _search_selfhosted(client: httpx.AsyncClient, task: str) -> dict | None:
+    """Hybrid search on the self-hosted server (freshest data). Returns None on
+    any failure so callers fall through to the Supabase snapshot."""
+    if not AUTOSKILL_URL:
+        return None
+    try:
+        r = await client.get(
+            f"{AUTOSKILL_URL}/find-semantic",
+            params={"q": task, "limit": 8},
+            timeout=10,
+        )
+        if r.status_code != 200:
+            return None
+        results = [c for c in (r.json().get("results") or []) if (c.get("risk_score") or 0) < 3]
+    except Exception:
+        return None
+    if not results:
+        return None
+    top, runner_up = results[0], (results[1] if len(results) > 1 else None)
+    if runner_up is None or (top.get("rank") or 0) >= (runner_up.get("rank") or 0) * 1.6:
+        return {"type": "recommend", "skill": top, "message": f"Best match: {top.get('name')}."}
+    return {
+        "type": "clarify",
+        "message": "A few skills fit that about equally well — which is closest to what you're doing?",
+        "options": results[:3],
+    }
+
+
 async def _search(client: httpx.AsyncClient, task: str) -> dict:
-    """Primary path: the deployed edge function (embeds + hybrid search +
-    recommend/clarify/none decision). Falls back to a plain keyword RPC
-    (no embedding, lower recall but still useful) if the edge function is
-    unavailable."""
+    """Self-hosted server first (full, fresh corpus), then the deployed edge
+    function (embeds + hybrid search + recommend/clarify/none decision), then
+    a plain keyword RPC (no embedding, lower recall but still useful)."""
+    selfhosted = await _search_selfhosted(client, task)
+    if selfhosted is not None:
+        return selfhosted
     try:
         r = await client.post(
             f"{SUPABASE_URL}/functions/v1/recommend-skill",
