@@ -160,3 +160,8 @@ separate scraper that continuously crawls GitHub, npm, and the MCP registry
 for Claude skills. This repo only contains the read-only connector — search
 queries hit a read-only anon key (RLS grants `SELECT` only; no writes are
 possible with it).
+
+
+CUSTOM CONNECTOR FOR CLAUDE
+Name: Auto-Skill
+Remote MCP server URL: https://mcp.avalahome.com/mcp
