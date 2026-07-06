@@ -1,7 +1,7 @@
 [project]
 name = "auto-skill-connector"
 version = "0.1.0"
-description = "MCP connector that recommends and installs Claude skills from a scraped skill database"
+description = "Find, preview, and safely install reusable AI agent skills"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -10,7 +10,13 @@ dependencies = [
     "httpx>=0.27",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
 [project.scripts]
+auto-skill = "auto_skill_cli:main"
 auto-skill-mcp = "mcp_server:main"
 
 [build-system]
@@ -18,4 +24,4 @@ requires = ["setuptools>=64"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-py-modules = ["mcp_server"]
+py-modules = ["auto_skill_cli", "auto_skill_core", "mcp_server"]

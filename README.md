@@ -1,36 +1,69 @@
 # auto-skill-connector
 
-An MCP connector that gives Claude Code / Claude Desktop access to a database
-of ~200k scraped Claude skills, MCP servers, and plugins. Instead of building
-a capability from scratch, Claude can search this database mid-conversation,
-read a matching skill's instructions, and follow them immediately — or
-install it permanently as a real `/skill`.
+Find, preview, and install reusable AI agent skills before your agent rebuilds
+them from scratch.
 
-It ships two tools:
+`auto-skill` searches a large scraped index of agent skills, MCP servers, and
+plugins, auto-routes a task to the best matching `SKILL.md`, and lets an agent
+use those instructions immediately through MCP or install them safely for
+Claude-style skill clients.
 
-- **`recommend_skill(task)`** — hybrid full-text + semantic search over the
-  skill database. Returns the best match's full `SKILL.md` content (or a
-  short list to pick from, if a few skills fit equally well).
-- **`install_skill(url, name?)`** — downloads a skill's `SKILL.md` and saves
-  it to `~/.claude/skills/<name>/SKILL.md`, so Claude Code can invoke it as a
-  normal skill from then on, in any project.
+## Why This Exists
 
-Query embedding happens server-side (Supabase Edge Function), so this
-connector only depends on `mcp` + `httpx` — no local ML runtime to install.
+Agents keep rediscovering the same workflows: spreadsheet generation, browser
+testing, document formatting, security review, outreach writing, and hundreds
+more. Static skill lists are useful, but they still make you browse, compare,
+copy, and install by hand.
+
+`auto-skill` is different:
+
+- Route by task, not by repo name.
+- Auto-pick one safe best match instead of making the user choose.
+- Preview the actual skill instructions before installing.
+- Install with overwrite protection.
+- Use through MCP in any compatible agent.
+- Keep permanent installs honest: Claude skills install to Claude; Codex uses
+  MCP instructions in the current turn.
+
+## Demo
+
+```bash
+auto-skill route "create an Excel report with formulas and charts"
+auto-skill route-prompt "create an Excel report with formulas and charts" --context-only
+auto-skill search "create an Excel report with formulas and charts"
+auto-skill preview "create an Excel report with formulas and charts"
+auto-skill install "https://github.com/example/skills/tree/main/xlsx" --target claude --dry-run
+auto-skill doctor
+```
+
+Demo GIF/video: coming before the first public launch.
 
 ## Install
 
-### Claude Code
+### CLI From This Repo
 
+```bash
+git clone https://github.com/neelavalareddy/auto-skill-connector
+cd auto-skill-connector
+python -m venv .venv
+.venv\Scripts\python -m pip install -e ".[dev]"
 ```
+
+Then run:
+
+```bash
+auto-skill doctor
+```
+
+### Claude Code MCP
+
+```bash
 claude mcp add auto-skill --scope user -- uvx --from git+https://github.com/neelavalareddy/auto-skill-connector auto-skill-mcp
 ```
 
-### Claude Desktop
+### Claude Desktop MCP
 
-Add this to your `claude_desktop_config.json` (Settings → Developer, or find
-it directly — on Windows it's usually under
-`%APPDATA%\Claude\claude_desktop_config.json`):
+Add this to `claude_desktop_config.json`:
 
 ```json
 {
@@ -45,73 +78,86 @@ it directly — on Windows it's usually under
 
 Restart Claude Desktop after editing the config.
 
-Both require [`uv`](https://docs.astral.sh/uv/) installed (`uvx` ships with
-it) — no cloning or manual `pip install` needed.
+## Commands
 
-## Automatic skill suggestions (optional, Claude Code)
-
-Want every chat message checked against the database automatically? Add the
-included `hooks/skill_suggest.py` as a `UserPromptSubmit` hook: it runs on
-each prompt you send, and when a skill matches, Claude is told to fetch and
-apply it via `recommend_skill`. It fails open — errors and timeouts never
-block or slow your chat.
-
-1. Download [`hooks/skill_suggest.py`](hooks/skill_suggest.py) somewhere
-   permanent (e.g. `~/.claude/hooks/skill_suggest.py`).
-2. Merge this into `~/.claude/settings.json` (use an absolute path on
-   Windows, e.g. `C:\\Users\\you\\.claude\\hooks\\skill_suggest.py`):
-
-```json
-{
-  "hooks": {
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python",
-            "args": ["~/.claude/hooks/skill_suggest.py"],
-            "timeout": 10
-          }
-        ]
-      }
-    ]
-  }
-}
+```bash
+auto-skill route "<task>"
+auto-skill route "<task>" --json
+auto-skill route-prompt "<raw-user-prompt>"
+auto-skill route-prompt "<raw-user-prompt>" --context-only
+auto-skill search "<task>"
+auto-skill preview "<task-or-url>"
+auto-skill install "<task-or-url>" --target claude
+auto-skill install "<task-or-url>" --target claude --yes
+auto-skill install "<task-or-url>" --target claude --force
+auto-skill doctor
 ```
 
-## Remote connector (claude.ai Settings → Connectors)
+Install safety defaults:
+
+- Installs preview the destination and source before writing.
+- Non-interactive installs require `--yes`.
+- Existing skills are never overwritten unless `--force` is passed.
+- `SKILLS_HOME` can override the Claude skill install directory.
+- `AUTOSKILL_URL` can override or disable the self-hosted search endpoint.
+
+## MCP Tools
+
+The MCP server exposes four tools:
+
+- `route_prompt(prompt)` is the always-on integration path: it skips prompts
+  that are too short, meta/status-like, commands, or pasted context, then emits
+  injectable skill context for real tasks.
+- `route_task(task)` is the universal router contract: call it near the start
+  of a user task, and it returns either one selected skill plus `skill_content`
+  to apply immediately, or a no-route result.
+- `recommend_skill(task)` searches for a matching skill and returns the full
+  instructions for the single auto-picked best match.
+- `install_skill(url, name?, target?, force?, dry_run?)` fetches and installs a
+  Claude-style skill with overwrite protection.
+
+Codex note: Codex can use `route_task` or `recommend_skill` through MCP and
+follow the returned instructions in the current turn. This repo does not
+pretend Claude `SKILL.md` folders are native Codex skills.
+
+Universal routing note: MCP servers cannot intercept every prompt by
+themselves. A client or agent still has to call `route_task`. The optional
+Claude Code hook gets closer to always-on routing for Claude Code by injecting
+selected skill content before the model answers. Other clients can call
+`route_prompt` or `route_task` as their first step for skill-shaped tasks.
+
+## Remote Connector
 
 Claude Code/Desktop's config-file install above runs the server as a local
-subprocess (stdio). To add it as a **custom connector** in claude.ai's
-Settings — reachable from the browser, mobile app, or any device on your
-account — it needs to run as an HTTP server with a public HTTPS URL, since
-that connection is made from Anthropic's servers, not your local machine.
+subprocess over stdio. To add it as a custom connector in claude.ai Settings >
+Connectors, reachable from the browser, mobile app, or any device on your
+account, it needs to run as an HTTP server with a public HTTPS URL because the
+connection is made from Anthropic's servers, not your local machine.
 
-```
+```bash
 git clone https://github.com/neelavalareddy/auto-skill-connector
 cd auto-skill-connector
 pip install -e .
 MCP_TRANSPORT=streamable-http MCP_PORT=8765 python mcp_server.py
 ```
 
-Then expose port 8765 publicly — no router/firewall changes needed either way:
+Then expose port 8765 publicly. No router or firewall changes are needed with
+either option below.
 
-**Quick and temporary — [ngrok](https://ngrok.com/):**
+Temporary with ngrok:
 
-```
+```bash
 ngrok http 8765
 ```
 
-Take the HTTPS URL it prints, append `/mcp`, and paste that into claude.ai →
-Settings → Connectors → Add custom connector. On ngrok's free tier the
-hostname changes every time the tunnel restarts, so you'll need to update the
-connector URL each time (or claim a static free domain from ngrok's
-dashboard).
+Take the HTTPS URL it prints, append `/mcp`, and paste that into claude.ai >
+Settings > Connectors > Add custom connector. On ngrok's free tier, the
+hostname changes every time the tunnel restarts unless you claim a static
+domain from ngrok's dashboard.
 
-**Permanent — [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) (if you already have a domain on Cloudflare):**
+Permanent with Cloudflare Tunnel, if you already have a domain on Cloudflare:
 
-```
+```bash
 cloudflared tunnel login
 cloudflared tunnel create auto-skill
 cloudflared tunnel route dns auto-skill mcp.yourdomain.com
@@ -128,40 +174,51 @@ ingress:
   - service: http_status:404
 ```
 
-Then `cloudflared tunnel run auto-skill` (or install it as a service so it
-survives reboots). The connector URL is now permanent:
-`https://mcp.yourdomain.com/mcp` — no updates needed as the tunnel restarts,
-and DNS-rebinding Host-header protection can stay on since the hostname never
-changes: set `MCP_ALLOWED_HOSTS=mcp.yourdomain.com`.
+Then run `cloudflared tunnel run auto-skill`, or install it as a service so it
+survives reboots. The connector URL is now permanent:
+`https://mcp.yourdomain.com/mcp`.
 
-If `skills.avalahome.com` or another `*.avalahome.com` hostname shows up
-anywhere in this repo, that's the maintainer's own instance set up exactly
-this way — a live example of the pattern above, not a shared/public endpoint
-you should rely on.
+With a stable hostname, set `MCP_ALLOWED_HOSTS=mcp.yourdomain.com` to keep
+DNS-rebinding Host-header protection enabled. If no allowed hosts are provided
+for streamable HTTP mode, that protection is disabled so temporary tunnels can
+work.
 
-**Either way, one security note:** `install_skill` writes files on whichever
-machine is running the server — fine for a personal connector on your own
-account, but don't hand this URL to other people without adding your own
-access control first (there's none built in).
+Security note: `install_skill` writes files on whichever machine is running
+the server. This is fine for a personal connector on your own account, but do
+not hand the URL to other people without adding your own access control.
 
-## Running it directly
+## Hosted Claude Connector
 
-```
-git clone https://github.com/neelavalareddy/auto-skill-connector
-cd auto-skill-connector
-pip install -e .
-python mcp_server.py
-```
+For claude.ai custom connectors, use:
 
-## How it works
+- Name: `Auto-Skill`
+- Remote MCP server URL: `https://mcp.avalahome.com/mcp`
 
-The skill database lives in Supabase (Postgres + pgvector), populated by a
-separate scraper that continuously crawls GitHub, npm, and the MCP registry
-for Claude skills. This repo only contains the read-only connector — search
-queries hit a read-only anon key (RLS grants `SELECT` only; no writes are
-possible with it).
+## Automatic Suggestions For Claude Code
 
+The optional hook in `hooks/skill_suggest.py` can check each submitted prompt,
+skip tiny/meta prompts, route real tasks, fetch the selected `SKILL.md`, and
+inject it into Claude's context. This sends prompt snippets to the configured
+search service, so read `SECURITY.md` before enabling it.
 
-CUSTOM CONNECTOR FOR CLAUDE
-Name: Auto-Skill
-Remote MCP server URL: https://mcp.avalahome.com/mcp
+## How Search Works
+
+Search tries these backends in order:
+
+1. Self-hosted search at `AUTOSKILL_URL` for the freshest corpus.
+2. Supabase Edge Function semantic search.
+3. Supabase keyword RPC fallback.
+
+If the self-hosted service is unavailable, the CLI and MCP payload include a
+warning and continue with the fallback.
+
+## Roadmap
+
+The launch goal is public trust and GitHub stars, not immediate monetization.
+See `ROADMAP.md` for the free/open-source direction and possible future paid
+features.
+
+## Security
+
+This tool fetches and installs instructions that can shape agent behavior.
+Read `SECURITY.md` before using auto suggestions or installing untrusted skills.
