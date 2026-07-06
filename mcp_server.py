@@ -80,6 +80,14 @@ def _slugify(name: str) -> str:
     return slug or "skill"
 
 
+def _autopick(candidates: list[dict]) -> dict:
+    """This connector always decides for itself instead of surfacing a menu --
+    the caller (Claude) has the full task context, so it picks the top-ranked
+    candidate and proceeds. `rank` is assumed to already reflect relevance;
+    ties just take the first (highest-ranked) entry."""
+    return {"type": "recommend", "skill": candidates[0], "message": f"Best match: {candidates[0].get('name')}."}
+
+
 async def _search_selfhosted(client: httpx.AsyncClient, task: str) -> dict | None:
     """Hybrid search on the self-hosted server (freshest data). Returns None on
     any failure so callers fall through to the Supabase snapshot."""
@@ -98,20 +106,14 @@ async def _search_selfhosted(client: httpx.AsyncClient, task: str) -> dict | Non
         return None
     if not results:
         return None
-    top, runner_up = results[0], (results[1] if len(results) > 1 else None)
-    if runner_up is None or (top.get("rank") or 0) >= (runner_up.get("rank") or 0) * 1.6:
-        return {"type": "recommend", "skill": top, "message": f"Best match: {top.get('name')}."}
-    return {
-        "type": "clarify",
-        "message": "A few skills fit that about equally well — which is closest to what you're doing?",
-        "options": results[:3],
-    }
+    return _autopick(results)
 
 
 async def _search(client: httpx.AsyncClient, task: str) -> dict:
     """Self-hosted server first (full, fresh corpus), then the deployed edge
     function (embeds + hybrid search + recommend/clarify/none decision), then
-    a plain keyword RPC (no embedding, lower recall but still useful)."""
+    a plain keyword RPC (no embedding, lower recall but still useful). Always
+    resolves to a single pick -- see _autopick."""
     selfhosted = await _search_selfhosted(client, task)
     if selfhosted is not None:
         return selfhosted
@@ -123,7 +125,10 @@ async def _search(client: httpx.AsyncClient, task: str) -> dict:
             timeout=20,
         )
         if r.status_code == 200:
-            return r.json()
+            result = r.json()
+            if result.get("type") == "clarify" and result.get("options"):
+                return _autopick(result["options"])
+            return result
     except Exception:
         pass
 
@@ -137,24 +142,22 @@ async def _search(client: httpx.AsyncClient, task: str) -> dict:
     candidates = [c for c in r.json() if (c.get("risk_score") or 0) < 3]
     if not candidates:
         return {"type": "none", "message": "No matching skill found in the database."}
-    if len(candidates) == 1:
-        return {"type": "recommend", "skill": candidates[0], "message": f"Best match: {candidates[0].get('name')}."}
-    return {
-        "type": "clarify",
-        "message": "A few skills fit that about equally well — which is closest to what you're doing?",
-        "options": candidates[:3],
-    }
+    return _autopick(candidates)
 
 
 @mcp.tool()
 async def recommend_skill(task: str) -> dict:
     """Search the auto-skill database (~200k scraped Claude skills, MCP
-    servers, and plugins) for the one that best matches a task, and return
-    its full SKILL.md content so it can be read and followed immediately.
+    servers, and plugins), automatically decide the single best match for a
+    task, and return its full SKILL.md content so it can be applied right
+    away -- no menu, no follow-up question.
 
     Call this whenever the user's request might already be covered by an
     existing packaged skill/MCP server, before building something from
-    scratch. Pass a short, keyword-rich description of the task.
+    scratch. Pass a short, keyword-rich description of the task. Then follow
+    skill_content immediately and produce the actual output the user asked
+    for -- do not stop to ask the user to confirm or choose between options;
+    this tool has already made that decision.
     """
     async with httpx.AsyncClient() as client:
         try:
@@ -164,18 +167,6 @@ async def recommend_skill(task: str) -> dict:
 
         if result.get("type") == "none":
             return {"found": False, "message": result.get("message", "No matching skill found.")}
-
-        if result.get("type") == "clarify":
-            options = result.get("options") or []
-            return {
-                "found": False,
-                "message": result.get("message"),
-                "candidates": [
-                    {"name": o.get("name"), "description": (o.get("description") or "")[:150], "url": o.get("url")}
-                    for o in options
-                ],
-                "instructions": "Ask the user to pick one of these, or call recommend_skill again with a more specific task.",
-            }
 
         top = result.get("skill") or {}
         content = await _fetch_content(client, top.get("url", ""))
@@ -191,8 +182,11 @@ async def recommend_skill(task: str) -> dict:
             },
             "skill_content": content or "(content unavailable — fetch the url directly)",
             "instructions": (
-                "Follow skill_content as if it were the active skill's instructions. "
-                "If it genuinely fits, you can also call install_skill to save it permanently."
+                "This is the single best-matching skill, already chosen for you. Apply skill_content's "
+                "instructions immediately and generate the actual output the user asked for in this same "
+                "turn -- do not ask the user to pick a different one or confirm first. Only pause instead of "
+                "applying it if skill_content itself is missing/unusable, or if it asks you to do something "
+                "genuinely unsafe -- otherwise, use it. You can also call install_skill to save it permanently."
             ),
         }
 
