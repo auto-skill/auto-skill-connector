@@ -95,20 +95,54 @@ pip install -e .
 MCP_TRANSPORT=streamable-http MCP_PORT=8765 python mcp_server.py
 ```
 
-Then expose port 8765 publicly — a tunnel (e.g. `ngrok http 8765`) is the
-simplest way, with no router/firewall changes needed. Take the HTTPS URL it
-gives you, append `/mcp`, and paste that into claude.ai → Settings →
-Connectors → Add custom connector.
+Then expose port 8765 publicly — no router/firewall changes needed either way:
 
-Notes:
-- On ngrok's free tier the hostname changes on every restart, so you'll need
-  to update the connector URL each time unless you claim a static domain.
-- DNS-rebinding Host-header protection is disabled by default in this mode
-  for that reason. Once you have a stable hostname, set `MCP_ALLOWED_HOSTS`
-  (comma-separated) to re-enable it.
-- `install_skill` writes files on whichever machine is running the server —
-  fine for a personal connector on your own account, but don't expose this
-  publicly to other people without adding your own access control first.
+**Quick and temporary — [ngrok](https://ngrok.com/):**
+
+```
+ngrok http 8765
+```
+
+Take the HTTPS URL it prints, append `/mcp`, and paste that into claude.ai →
+Settings → Connectors → Add custom connector. On ngrok's free tier the
+hostname changes every time the tunnel restarts, so you'll need to update the
+connector URL each time (or claim a static free domain from ngrok's
+dashboard).
+
+**Permanent — [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) (if you already have a domain on Cloudflare):**
+
+```
+cloudflared tunnel login
+cloudflared tunnel create auto-skill
+cloudflared tunnel route dns auto-skill mcp.yourdomain.com
+```
+
+Add an ingress rule to `~/.cloudflared/config.yml`:
+
+```yaml
+tunnel: <the tunnel ID printed above>
+credentials-file: /path/to/<tunnel-id>.json
+ingress:
+  - hostname: mcp.yourdomain.com
+    service: http://localhost:8765
+  - service: http_status:404
+```
+
+Then `cloudflared tunnel run auto-skill` (or install it as a service so it
+survives reboots). The connector URL is now permanent:
+`https://mcp.yourdomain.com/mcp` — no updates needed as the tunnel restarts,
+and DNS-rebinding Host-header protection can stay on since the hostname never
+changes: set `MCP_ALLOWED_HOSTS=mcp.yourdomain.com`.
+
+If `skills.avalahome.com` or another `*.avalahome.com` hostname shows up
+anywhere in this repo, that's the maintainer's own instance set up exactly
+this way — a live example of the pattern above, not a shared/public endpoint
+you should rely on.
+
+**Either way, one security note:** `install_skill` writes files on whichever
+machine is running the server — fine for a personal connector on your own
+account, but don't hand this URL to other people without adding your own
+access control first (there's none built in).
 
 ## Running it directly
 
