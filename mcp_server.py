@@ -213,7 +213,31 @@ async def install_skill(url: str, name: str = "") -> str:
 
 
 def main() -> None:
-    mcp.run()
+    """Transport is chosen at launch time, not baked into the package:
+      stdio (default)   -- for Claude Code / Desktop's local config (`claude mcp add`).
+      streamable-http    -- for a remote connector added via claude.ai Settings >
+                             Connectors, typically tunneled (e.g. ngrok) to a
+                             public HTTPS URL. Set MCP_TRANSPORT=streamable-http,
+                             and MCP_HOST/MCP_PORT to control the bind address.
+    """
+    transport = os.getenv("MCP_TRANSPORT", "stdio")
+    if transport == "streamable-http":
+        mcp.settings.host = os.getenv("MCP_HOST", "127.0.0.1")
+        mcp.settings.port = int(os.getenv("MCP_PORT", "8765"))
+        # Behind a tunnel (e.g. ngrok) the public hostname changes on every
+        # restart on the free tier, so DNS-rebinding Host-header checks would
+        # need updating each time too. Set MCP_ALLOWED_HOSTS (comma-separated)
+        # once you have a stable domain to re-enable that protection.
+        allowed = [h.strip() for h in os.getenv("MCP_ALLOWED_HOSTS", "").split(",") if h.strip()]
+        if allowed:
+            from mcp.server.transport_security import TransportSecuritySettings
+            mcp.settings.transport_security = TransportSecuritySettings(allowed_hosts=allowed, allowed_origins=allowed)
+        else:
+            from mcp.server.transport_security import TransportSecuritySettings
+            mcp.settings.transport_security = TransportSecuritySettings(enable_dns_rebinding_protection=False)
+        mcp.run(transport="streamable-http")
+    else:
+        mcp.run()
 
 
 if __name__ == "__main__":

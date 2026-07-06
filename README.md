@@ -80,6 +80,36 @@ block or slow your chat.
 }
 ```
 
+## Remote connector (claude.ai Settings → Connectors)
+
+Claude Code/Desktop's config-file install above runs the server as a local
+subprocess (stdio). To add it as a **custom connector** in claude.ai's
+Settings — reachable from the browser, mobile app, or any device on your
+account — it needs to run as an HTTP server with a public HTTPS URL, since
+that connection is made from Anthropic's servers, not your local machine.
+
+```
+git clone https://github.com/neelavalareddy/auto-skill-connector
+cd auto-skill-connector
+pip install -e .
+MCP_TRANSPORT=streamable-http MCP_PORT=8765 python mcp_server.py
+```
+
+Then expose port 8765 publicly — a tunnel (e.g. `ngrok http 8765`) is the
+simplest way, with no router/firewall changes needed. Take the HTTPS URL it
+gives you, append `/mcp`, and paste that into claude.ai → Settings →
+Connectors → Add custom connector.
+
+Notes:
+- On ngrok's free tier the hostname changes on every restart, so you'll need
+  to update the connector URL each time unless you claim a static domain.
+- DNS-rebinding Host-header protection is disabled by default in this mode
+  for that reason. Once you have a stable hostname, set `MCP_ALLOWED_HOSTS`
+  (comma-separated) to re-enable it.
+- `install_skill` writes files on whichever machine is running the server —
+  fine for a personal connector on your own account, but don't expose this
+  publicly to other people without adding your own access control first.
+
 ## Running it directly
 
 ```
