@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 from pathlib import Path
 
 import pytest
@@ -8,8 +9,17 @@ import pytest
 import auto_skill_cli as cli
 
 
-def test_doctor_outputs_setup(capsys: pytest.CaptureFixture[str]) -> None:
-    result = cli._command_doctor(argparse.Namespace())
+def test_doctor_outputs_setup(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("AUTOSKILL_URL", "")  # skip the live reachability check
+    # Isolate from the real ~/.claude/settings.json -- doctor only reads it,
+    # but a test shouldn't depend on (or be affected by) the developer's
+    # actual local hook registration.
+    settings_path = tmp_path / "settings.json"
+    result = asyncio.run(cli._command_doctor(argparse.Namespace(settings_path=str(settings_path))))
     out = capsys.readouterr().out
     assert result == 0
     assert "auto-skill doctor" in out

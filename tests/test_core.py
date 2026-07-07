@@ -22,31 +22,19 @@ class FakeResponse:
             raise RuntimeError(f"HTTP {self.status_code}")
 
 
-class FakeClient:
-    def __init__(self) -> None:
-        self.posts: list[str] = []
+class UnreachableClient:
+    """Self-hosted search unreachable, and nothing else should be tried --
+    there is no fallback backend (dropped 2026-07-07: the old Supabase
+    fallback was frozen and could only serve stale results silently)."""
 
     async def get(self, url: str, **kwargs: object) -> FakeResponse:
         del kwargs
         if "find-semantic" in url:
             return FakeResponse(530, {})
-        return FakeResponse(404, {})
+        raise AssertionError(f"no fallback should be attempted: {url}")
 
     async def post(self, url: str, **kwargs: object) -> FakeResponse:
-        del kwargs
-        self.posts.append(url)
-        return FakeResponse(
-            200,
-            {
-                "type": "recommend",
-                "skill": {
-                    "name": "spreadsheet-writer",
-                    "description": "Create spreadsheets.",
-                    "url": "https://github.com/example/skills/tree/main/spreadsheet",
-                    "risk_score": 0,
-                },
-            },
-        )
+        raise AssertionError(f"no fallback should be attempted: {url}")
 
 
 class SelfHostedClient:
@@ -64,27 +52,6 @@ class SelfHostedClient:
 
     async def post(self, url: str, **kwargs: object) -> FakeResponse:
         raise AssertionError(f"fallback should not be called: {url}")
-
-
-class ClarifyClient:
-    async def get(self, url: str, **kwargs: object) -> FakeResponse:
-        del url, kwargs
-        return FakeResponse(530, {})
-
-    async def post(self, url: str, **kwargs: object) -> FakeResponse:
-        del kwargs
-        if "functions/v1/recommend-skill" in url:
-            return FakeResponse(
-                200,
-                {
-                    "type": "clarify",
-                    "options": [
-                        {"name": "first", "url": "https://example.com/first", "risk_score": 0},
-                        {"name": "second", "url": "https://example.com/second", "risk_score": 0},
-                    ],
-                },
-            )
-        raise AssertionError("keyword fallback should not be called")
 
 
 class RouteClient:
@@ -149,13 +116,14 @@ def test_dedupe_candidates_by_name() -> None:
     ]
 
 
-def test_search_falls_back_when_selfhosted_fails() -> None:
-    fake = FakeClient()
-    result = asyncio.run(core._search(fake, "make a spreadsheet"))
-    assert result["type"] == "recommend"
-    assert result["search_backend"] == "supabase-edge"
-    assert "Self-hosted search did not return" in result["warnings"][0]
-    assert fake.posts
+def test_search_reports_no_route_when_selfhosted_unreachable() -> None:
+    """No fallback backend exists (dropped 2026-07-07): an unreachable
+    self-hosted server means an honest no-route result, not a silent query
+    to a second, possibly stale service."""
+    result = asyncio.run(core._search(UnreachableClient(), "make a spreadsheet"))
+    assert result["type"] == "none"
+    assert result["search_backend"] == "unavailable"
+    assert "unreachable" in result["warnings"][0] or "no usable result" in result["warnings"][0]
 
 
 def test_selfhosted_search_autopicks_top_candidate() -> None:
@@ -163,13 +131,6 @@ def test_selfhosted_search_autopicks_top_candidate() -> None:
     assert result["type"] == "recommend"
     assert result["skill"]["name"] == "first"
     assert "options" not in result
-
-
-def test_supabase_clarify_response_autopicks_top_safe_candidate() -> None:
-    result = asyncio.run(core._search(ClarifyClient(), "ambiguous browser task"))
-    assert result["type"] == "recommend"
-    assert result["skill"]["name"] == "first"
-    assert result["search_backend"] == "supabase-edge"
 
 
 def test_should_route_prompt_skips_non_tasks() -> None:
