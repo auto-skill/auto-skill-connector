@@ -285,6 +285,16 @@ the Claude Code hook call `/route` first so the backend owns quality gates,
 platform-trap handling, and full/hint/no-route tiers. `/find-semantic` remains
 as a compatibility fallback for older self-hosted backends.
 
+Before a public launch or backend deploy, run the live smoke test from a source
+checkout:
+
+```bash
+python scripts/live_smoke.py
+```
+
+It verifies prompt preflight, a full spreadsheet route with content, and the
+generic landing-page trap that must not route to Landingi.
+
 There is no Supabase fallback: an earlier version of this connector fell back
 to a Supabase-hosted corpus that was frozen once storage moved local, silently
 serving stale results with no signal that they weren't fresh. If the
