@@ -105,6 +105,15 @@ async def recommend_skill(task: str) -> dict:
     return await recommend_skill_payload(task)
 
 
+@mcp.custom_route("/healthz", methods=["GET"])
+async def healthz(request):
+    """Liveness check for uptime monitoring of the public streamable-http
+    tunnel -- doesn't require an MCP session handshake, unlike the /mcp
+    endpoint itself, so a plain curl/monitor can hit it directly."""
+    from starlette.responses import JSONResponse
+    return JSONResponse({"ok": True})
+
+
 async def _install_skill_impl(
     url: str,
     name: str = "",
