@@ -18,12 +18,6 @@ import urllib.request
 from urllib.parse import quote
 
 AUTOSKILL_URL = os.getenv("AUTOSKILL_URL", "https://skills.avalahome.com").rstrip("/")
-SUPABASE_URL = "https://kgkuoxdizynkcrbasamu.supabase.co"
-ANON_KEY = (
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
-    "eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtna3VveGRpenlua2NyYmFzYW11Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4NzE4NzUsImV4cCI6MjA5ODQ0Nzg3NX0."
-    "6rqfcqdVShb9fo3x5z9E6mf6f-0iUbJn9Q7hUFqZ-jw"
-)
 TIMEOUT_SECONDS = 3.0
 MAX_CONTENT_CHARS = int(os.getenv("AUTOSKILL_HOOK_MAX_CHARS", "12000"))
 _BLOB_RE = re.compile(r"github\.com/([^/]+)/([^/]+)/blob/([^/]+)/(.*)")
@@ -78,28 +72,6 @@ def _selfhosted_matches(prompt: str) -> tuple[list[dict], str] | None:
             return _safe_dedupe(body.get("results") or []), body.get("tier", "none")
     except Exception:
         return None
-
-
-def _edge_matches(prompt: str) -> tuple[list[dict], str]:
-    """Same (matches, tier) contract as _selfhosted_matches: the edge
-    function's own recommend/clarify split already maps onto full/hint."""
-    req = urllib.request.Request(
-        f"{SUPABASE_URL}/functions/v1/recommend-skill",
-        data=json.dumps({"messages": [{"role": "user", "content": prompt[:500]}]}).encode(),
-        headers={
-            "apikey": ANON_KEY,
-            "Authorization": f"Bearer {ANON_KEY}",
-            "Content-Type": "application/json",
-        },
-    )
-    with urllib.request.urlopen(req, timeout=TIMEOUT_SECONDS) as r:
-        result = json.load(r)
-    kind = result.get("type")
-    if kind == "recommend" and result.get("skill"):
-        return _safe_dedupe([result["skill"]]), "full"
-    if kind == "clarify" and result.get("options"):
-        return _safe_dedupe(result["options"]), "hint"
-    return [], "none"
 
 
 def _raw_candidates(url: str) -> list[str]:
@@ -186,8 +158,15 @@ def main() -> None:
     if not should_route:
         return
 
+    # No Supabase fallback: it was frozen since 2026-07-05 (storage moved
+    # local) and silently serving a stale corpus with no signal to the
+    # caller was worse than admitting no route is available this turn. Fails
+    # open by design -- an unreachable self-hosted server just means no
+    # suggestion, not a stale one.
     found = _selfhosted_matches(prompt)
-    matches, tier = found if found is not None else _edge_matches(prompt)
+    if found is None:
+        return
+    matches, tier = found
     if not matches or tier == "none":
         return
 

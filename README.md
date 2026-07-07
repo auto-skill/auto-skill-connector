@@ -43,7 +43,7 @@ Demo GIF/video: coming before the first public launch.
 ### CLI From This Repo
 
 ```bash
-git clone https://github.com/neelavalareddy/auto-skill-connector
+git clone https://github.com/auto-skill/auto-skill-connector
 cd auto-skill-connector
 python -m venv .venv
 .venv\Scripts\python -m pip install -e ".[dev]"
@@ -58,7 +58,7 @@ auto-skill doctor
 ### Claude Code MCP
 
 ```bash
-claude mcp add auto-skill --scope user -- uvx --from git+https://github.com/neelavalareddy/auto-skill-connector auto-skill-mcp
+claude mcp add auto-skill --scope user -- uvx --from git+https://github.com/auto-skill/auto-skill-connector auto-skill-mcp
 ```
 
 ### Claude Desktop MCP
@@ -70,7 +70,7 @@ Add this to `claude_desktop_config.json`:
   "mcpServers": {
     "auto-skill": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/neelavalareddy/auto-skill-connector", "auto-skill-mcp"]
+      "args": ["--from", "git+https://github.com/auto-skill/auto-skill-connector", "auto-skill-mcp"]
     }
   }
 }
@@ -135,7 +135,7 @@ account, it needs to run as an HTTP server with a public HTTPS URL because the
 connection is made from Anthropic's servers, not your local machine.
 
 ```bash
-git clone https://github.com/neelavalareddy/auto-skill-connector
+git clone https://github.com/auto-skill/auto-skill-connector
 cd auto-skill-connector
 pip install -e .
 MCP_TRANSPORT=streamable-http MCP_PORT=8765 python mcp_server.py
@@ -203,14 +203,12 @@ search service, so read `SECURITY.md` before enabling it.
 
 ## How Search Works
 
-Search tries these backends in order:
-
-1. Self-hosted search at `AUTOSKILL_URL` for the freshest corpus.
-2. Supabase Edge Function semantic search.
-3. Supabase keyword RPC fallback.
-
-If the self-hosted service is unavailable, the CLI and MCP payload include a
-warning and continue with the fallback.
+Search uses the self-hosted server at `AUTOSKILL_URL` only. There is no
+Supabase fallback: an earlier version of this connector fell back to a
+Supabase-hosted corpus that was frozen once storage moved local, silently
+serving stale results with no signal that they weren't fresh. If the
+self-hosted service is unavailable, the CLI and MCP payload report no route
+found instead — one truthful backend beats two that can silently disagree.
 
 ## Roadmap
 

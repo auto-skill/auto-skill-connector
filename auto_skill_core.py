@@ -10,17 +10,6 @@ from typing import Any
 import httpx
 
 DEFAULT_AUTOSKILL_URL = "https://skills.avalahome.com"
-SUPABASE_URL = "https://kgkuoxdizynkcrbasamu.supabase.co"
-SUPABASE_ANON_KEY = (
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
-    "eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtna3VveGRpenlua2NyYmFzYW11Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4NzE4NzUsImV4cCI6MjA5ODQ0Nzg3NX0."
-    "6rqfcqdVShb9fo3x5z9E6mf6f-0iUbJn9Q7hUFqZ-jw"
-)
-HEADERS = {
-    "apikey": SUPABASE_ANON_KEY,
-    "Authorization": f"Bearer {SUPABASE_ANON_KEY}",
-    "Content-Type": "application/json",
-}
 
 _BLOB_RE = re.compile(r"github\.com/([^/]+)/([^/]+)/blob/([^/]+)/(.*)")
 _TREE_RE = re.compile(r"github\.com/([^/]+)/([^/]+)/tree/([^/]+)/(.*)")
@@ -297,7 +286,12 @@ async def _search(
     task: str,
     autoskill_url: str | None = None,
 ) -> dict[str, Any]:
-    """Search self-hosted first, then Supabase semantic, then Supabase keyword."""
+    """Search the self-hosted index. No fallback to Supabase: the edge
+    function and REST corpus there were frozen on 2026-07-05 when storage
+    moved local, and silently serving stale results with no signal to the
+    caller was worse than admitting no route is available. One truthful
+    backend; the hook already fails open, so callers don't break, they just
+    get no suggestion for that turn."""
     if client is None:
         async with httpx.AsyncClient() as owned:
             return await _search(owned, task, autoskill_url=autoskill_url)
@@ -309,42 +303,12 @@ async def _search(
 
     configured_url = autoskill_url if autoskill_url is not None else get_autoskill_url()
     if configured_url:
-        warnings.append(f"Self-hosted search did not return a usable result from {configured_url}; used fallback search.")
-
-    try:
-        r = await client.post(
-            f"{SUPABASE_URL}/functions/v1/recommend-skill",
-            json={"messages": [{"role": "user", "content": task}]},
-            headers=HEADERS,
-            timeout=20,
-        )
-        if r.status_code == 200:
-            result = r.json()
-            if result.get("type") == "clarify" and result.get("options"):
-                safe_options = _safe_candidates(list(result["options"]))
-                if not safe_options:
-                    result = {"type": "none", "message": "No safe matching skill found in the database."}
-                else:
-                    result = _autopick(safe_options)
-            return _with_backend(result, "supabase-edge", warnings)
-    except Exception as exc:
-        warnings.append(f"Supabase semantic fallback failed: {exc}")
-
-    r = await client.post(
-        f"{SUPABASE_URL}/rest/v1/rpc/search_skills",
-        json={"query": task, "max_results": 8},
-        headers=HEADERS,
-        timeout=15,
+        warnings.append(f"Self-hosted search at {configured_url} was unreachable or returned no usable result.")
+    return _with_backend(
+        {"type": "none", "message": "Skill search is unavailable right now. Try again shortly."},
+        "unavailable",
+        warnings,
     )
-    r.raise_for_status()
-    candidates = _safe_candidates(list(r.json()))
-    if not candidates:
-        return _with_backend(
-            {"type": "none", "message": "No matching skill found in the database."},
-            "supabase-keyword",
-            warnings,
-        )
-    return _with_backend(_autopick(candidates), "supabase-keyword", warnings)
 
 
 async def recommend_skill_payload(task: str, client: httpx.AsyncClient | None = None) -> dict[str, Any]:
