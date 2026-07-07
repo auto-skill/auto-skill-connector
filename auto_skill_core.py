@@ -138,12 +138,33 @@ def _looks_like_skill_content(text: str) -> bool:
     return True
 
 
+_FRONTMATTER_RE = re.compile(r"\A---\n.*?\n---\n", re.S)
+_ABS_PATH_RE = re.compile(
+    r"^\s*(?:[A-Za-z]:\\|/(?:home|Users|mnt|c|d)/|~[\\/])[^\n]*\s*$"
+)
+MIN_STUB_BODY_CHARS = 200
+
+
+def _is_stub_content(text: str) -> bool:
+    """Reject skill bodies too thin to be real instructions -- e.g. the
+    autoplan incident, whose entire body was one absolute path from a
+    stranger's machine. It cleared the HTML check and the similarity floor
+    and still got injected as instructions, because nothing checked the
+    body itself had anything to follow."""
+    body = _FRONTMATTER_RE.sub("", text, count=1).strip()
+    if len(body) < MIN_STUB_BODY_CHARS:
+        return True
+    if _ABS_PATH_RE.match(body):
+        return True
+    return False
+
+
 async def _fetch_content(client: httpx.AsyncClient, url: str) -> str:
     """Fetch skill content from a URL or GitHub skill folder URL."""
     for candidate in _raw_candidates(url):
         try:
             r = await client.get(candidate, timeout=10)
-            if r.status_code == 200 and _looks_like_skill_content(r.text):
+            if r.status_code == 200 and _looks_like_skill_content(r.text) and not _is_stub_content(r.text):
                 return r.text
         except Exception:
             continue

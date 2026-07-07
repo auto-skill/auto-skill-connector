@@ -122,13 +122,31 @@ def _looks_like_skill_content(text: str) -> bool:
     return True
 
 
+_FRONTMATTER_RE = re.compile(r"\A---\n.*?\n---\n", re.S)
+_ABS_PATH_RE = re.compile(r"^\s*(?:[A-Za-z]:\\|/(?:home|Users|mnt|c|d)/|~[\\/])[^\n]*\s*$")
+MIN_STUB_BODY_CHARS = 200
+
+
+def _is_stub_content(text: str) -> bool:
+    """Reject skill bodies too thin to be real instructions -- e.g. a body
+    that is just one absolute path from a stranger's machine. That kind of
+    stub clears the HTML check and the similarity floor and still has
+    nothing worth following."""
+    body = _FRONTMATTER_RE.sub("", text, count=1).strip()
+    if len(body) < MIN_STUB_BODY_CHARS:
+        return True
+    if _ABS_PATH_RE.match(body):
+        return True
+    return False
+
+
 def _fetch_content(url: str) -> str:
     for candidate in _raw_candidates(url):
         try:
             with urllib.request.urlopen(candidate, timeout=TIMEOUT_SECONDS) as r:
                 if getattr(r, "status", 200) == 200:
                     text = r.read().decode("utf-8", errors="replace")
-                    if _looks_like_skill_content(text):
+                    if _looks_like_skill_content(text) and not _is_stub_content(text):
                         return text
         except Exception:
             continue
