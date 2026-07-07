@@ -27,16 +27,55 @@ copy, and install by hand.
 
 ## Demo
 
+Three real tasks, run against the live index (2026-07-07) -- not placeholder
+output:
+
 ```bash
-auto-skill route "create an Excel report with formulas and charts"
-auto-skill route-prompt "create an Excel report with formulas and charts" --context-only
-auto-skill search "create an Excel report with formulas and charts"
-auto-skill preview "create an Excel report with formulas and charts"
-auto-skill install "https://github.com/example/skills/tree/main/xlsx" --target claude --dry-run
+$ auto-skill search "create an excel report with formulas and charts"
+backend: self-hosted
+best match:
+1. xlsx-creator
+   Create, edit, and analyze Excel spreadsheets (.xlsx, .xlsm, .csv, .tsv files)...
+   stars=4, risk=0
+   https://github.com/jignesh-ponamwar/skills-mcp/tree/HEAD/skill_mcp/skills_data/xlsx-creator
+
+$ auto-skill search "extract text and tables from a pdf"
+backend: self-hosted
+best match:
+1. pdf-text-extract
+   Extract text and simple table-like rows from a PDF for downstream AI without OCR binaries...
+   stars=0, risk=0
+   https://github.com/baronguyen001/ai-automation-skills/tree/HEAD/skills/pdf-text-extract
+
+$ auto-skill search "build a react landing page with tailwind"
+backend: self-hosted
+best match:
+1. frontend-design
+   Guidance for distinctive, intentional visual design when building new UI or reshaping an existing one...
+   stars=11503, risk=0
+   https://github.com/xiaomimimo/mimo-code/tree/HEAD/packages/opencode/src/skill/builtin/.bundle/frontend-design
+```
+
+Once a match looks right, apply it in-turn (`route`), read it first
+(`preview`), or install it permanently (`install`):
+
+```bash
+auto-skill route "create an excel report with formulas and charts" --show-content
+auto-skill preview "extract text and tables from a pdf"
+auto-skill install "build a react landing page with tailwind" --target claude --dry-run
 auto-skill doctor
 ```
 
-Demo GIF/video: coming before the first public launch.
+Demo GIF/video: not yet recorded -- contributions welcome.
+
+## Prerequisites
+
+- Python 3.10+
+- `git`, for cloning this repo or the `uvx --from git+...` install path below
+- [`uv`](https://docs.astral.sh/uv/getting-started/installation/) if you use
+  the `claude mcp add ... uvx --from ...` install command -- it's what
+  resolves and runs the package without a manual clone. Not needed for the
+  "CLI From This Repo" path, which uses a plain venv instead.
 
 ## Install
 
