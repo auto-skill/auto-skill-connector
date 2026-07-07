@@ -82,12 +82,28 @@ The CLI is intentionally conservative:
 - It refuses to overwrite existing skills without `--force`.
 - It supports permanent installs only for Claude-style skills today.
 
+The MCP `install_skill` tool is also conservative: when the server runs as a
+streamable HTTP connector, installs are disabled by default because that URL
+may be reachable from outside your machine. Enable public installs only behind
+your own access control by setting `AUTO_SKILL_ENABLE_PUBLIC_INSTALL=1`.
+
 Before installing a skill, review:
 
 - Source URL
 - Skill instructions
 - Risk score, when provided by the index
 - Any scripts, references, or commands the skill asks the agent to run
+
+## Routing And Content Quality
+
+Auto-Skill filters out high-risk indexed entries, obvious HTML fetches, tiny
+stub files, and path/link-only content before injecting skill instructions. It
+also uses confidence tiers: high-confidence matches can inject full content,
+medium-confidence matches produce a hint, and low-confidence matches stay
+silent.
+
+These checks are heuristics, not a malware guarantee. Review unfamiliar skills
+before installing them permanently or letting an agent run commands from them.
 
 ## Reporting Issues
 

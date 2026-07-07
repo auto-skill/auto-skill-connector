@@ -99,6 +99,8 @@ async def _command_route(args: argparse.Namespace) -> int:
     _print_warning_lines(payload.get("warnings", []))
     print(f"backend: {payload.get('search_backend', 'unknown')}")
     print(f"route: {payload.get('route_type')}")
+    if payload.get("route_tier"):
+        print(f"tier: {payload.get('route_tier')}")
 
     if not payload.get("routed"):
         print(payload.get("message", "No matching skill found."))
@@ -108,6 +110,10 @@ async def _command_route(args: argparse.Namespace) -> int:
     print("selected skill:")
     _print_candidate(1, skill)
     print()
+    if payload.get("route_type") == "hint":
+        print("next action: treat this as a suggestion; do not inject full skill content")
+        return 0
+
     print("next action: apply the returned skill_content in-turn")
     if args.show_content:
         print()
@@ -229,7 +235,7 @@ async def _command_install(args: argparse.Namespace) -> int:
     if args.target == "codex":
         print(
             "Codex does not currently support permanent Claude SKILL.md installs. "
-            "Use the auto-skill MCP recommend_skill tool and apply the returned instructions in-turn.",
+            "Use the auto-skill MCP route_task tool and apply full routes in-turn.",
             file=sys.stderr,
         )
         return 2
@@ -455,7 +461,7 @@ async def _command_doctor(args: argparse.Namespace) -> int:
     except Exception as exc:
         print(f"mcp: unavailable ({exc})")
         ok = False
-    print("codex permanent skill install: unsupported; use MCP recommend_skill in-turn")
+    print("codex permanent skill install: unsupported; use MCP route_task in-turn")
     return 0 if ok else 1
 
 

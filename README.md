@@ -18,7 +18,7 @@ copy, and install by hand.
 `auto-skill` is different:
 
 - Route by task, not by repo name.
-- Auto-pick one safe best match instead of making the user choose.
+- Auto-pick one safe best match, with full/hint/no-route confidence tiers.
 - Preview the actual skill instructions before installing.
 - Install with overwrite protection.
 - Use through MCP in any compatible agent.
@@ -169,12 +169,14 @@ instead of round-tripping through DNS and the tunnel.
 
 - `route_prompt(prompt)` is the always-on integration path: it skips prompts
   that are too short, meta/status-like, commands, or pasted context, then emits
-  injectable skill context for real tasks.
+  full skill context only for high-confidence real tasks. Medium-confidence
+  matches return a short hint instead of full instructions.
 - `route_task(task)` is the universal router contract: call it near the start
-  of a user task, and it returns either one selected skill plus `skill_content`
-  to apply immediately, or a no-route result.
+  of a user task, and it returns one of three results: `route_tier=full` with
+  `skill_content`, `route_tier=hint` with a source suggestion, or no route.
 - `recommend_skill(task)` searches for a matching skill and returns the full
-  instructions for the single auto-picked best match.
+  instructions for the single best usable match. Use this for explicit preview
+  or recommendation flows, not as the always-on router.
 - `install_skill(url, name?, target?, force?, dry_run?)` fetches and installs a
   Claude-style skill with overwrite protection. **Only registered on stdio**
   (`claude mcp add` / Claude Desktop's local subprocess config) -- it writes

@@ -56,7 +56,11 @@ UNCONFIRMED_ACTION_CASES = [
 
 HTML_CASES = [
     ("<!DOCTYPE html>\n<html><head><title>x</title></head></html>", False),
-    ("---\nname: real\n---\n\nActual instructions here.", True),
+    (
+        "---\nname: real\n---\n\n## Workflow\n\n"
+        + ("Use when the user needs a real reusable workflow. Verify inputs, run the steps, and report output. " * 4),
+        True,
+    ),
 ]
 
 RAW_CANDIDATE_CASES = [

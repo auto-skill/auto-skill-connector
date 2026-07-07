@@ -1,8 +1,8 @@
 """Claude Code UserPromptSubmit hook for auto-skill routing.
 
-The hook preflights each eligible prompt, auto-picks the best safe skill, fetches
-its SKILL.md content, and injects that content into Claude's context. It fails
-open: errors and timeouts never block a chat.
+The hook preflights each eligible prompt, calls the configured self-hosted
+router, fetches high-confidence SKILL.md content, and prints injectable
+context. It fails open: errors and timeouts never block a chat.
 
 Security note: eligible prompt snippets are sent to the configured search
 backend. Do not enable this hook for sensitive conversations.
@@ -187,8 +187,7 @@ def _log_routing_decision(prompt: str, tier: str, skill: dict | None = None, rea
 def main() -> None:
     payload = json.load(sys.stdin)
     prompt = (payload.get("prompt") or "").strip()
-    should_route, _reason = _should_route(prompt)
-    if not should_route:
+    if not prompt:
         return
 
     # No Supabase fallback: it was frozen since 2026-07-05 (storage moved

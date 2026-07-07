@@ -13,7 +13,63 @@ DEFAULT_AUTOSKILL_URL = "https://skills.avalahome.com"
 
 _BLOB_RE = re.compile(r"github\.com/([^/]+)/([^/]+)/blob/([^/]+)/(.*)")
 _TREE_RE = re.compile(r"github\.com/([^/]+)/([^/]+)/tree/([^/]+)/(.*)")
+_REPO_RE = re.compile(r"github\.com/([^/]+)/([^/#?]+)(?:[/#?].*)?$")
 _URL_RE = re.compile(r"^https?://", re.IGNORECASE)
+_MIN_SKILL_CONTENT_CHARS = 180
+_MIN_SKILL_WORDS = 35
+_FULL_SIMILARITY_THRESHOLD = 0.90
+_HINT_SIMILARITY_THRESHOLD = 0.87
+_NAME_STOPWORDS = {
+    "agent",
+    "agents",
+    "ai",
+    "auto",
+    "automation",
+    "assistant",
+    "code",
+    "claude",
+    "creator",
+    "helper",
+    "mcp",
+    "sales",
+    "skill",
+    "skills",
+    "tool",
+    "tools",
+    "writer",
+}
+_PLATFORM_SPECIFIC_MARKERS = (
+    "platform help",
+    "api key",
+    "oauth",
+    "custom domain",
+    "webhook",
+    "crm",
+    "leads",
+    "won't publish",
+    "wont publish",
+    "not syncing",
+    "use when your",
+)
+_SKILL_BODY_CUES = (
+    "use when",
+    "when the user",
+    "you should",
+    "must",
+    "do not",
+    "workflow",
+    "steps",
+    "instructions",
+    "create",
+    "generate",
+    "analyze",
+    "edit",
+    "build",
+    "write",
+    "run",
+    "verify",
+    "output",
+)
 _ACK_PROMPTS = {
     "ok",
     "okay",
@@ -73,7 +129,7 @@ def get_skills_home(target: str = "claude") -> Path:
     if target != "claude":
         raise UnsupportedTargetError(
             "Permanent installs are only supported for Claude today. "
-            "For Codex, use the MCP recommend_skill tool and apply the returned instructions in-turn."
+            "For Codex, use the MCP route_task tool and apply full routes in-turn."
         )
     return Path(os.getenv("SKILLS_HOME", str(Path.home() / ".claude" / "skills"))).expanduser()
 
@@ -112,17 +168,81 @@ def _raw_candidates(url: str) -> list[str]:
         owner, repo, ref, path = m.groups()
         base = f"https://raw.githubusercontent.com/{owner}/{repo}/{ref}/{path}".rstrip("/")
         return [f"{base}/SKILL.md", f"{base}/skill.md"]
+    m = _REPO_RE.search(url)
+    if m:
+        owner, repo = m.groups()
+        repo = repo.removesuffix(".git")
+        base = f"https://raw.githubusercontent.com/{owner}/{repo}"
+        return [
+            f"{base}/HEAD/SKILL.md",
+            f"{base}/HEAD/skill.md",
+            f"{base}/main/SKILL.md",
+            f"{base}/main/skill.md",
+            f"{base}/master/SKILL.md",
+            f"{base}/master/skill.md",
+        ]
     return [url]
 
 
+def _strip_frontmatter(text: str) -> str:
+    stripped = text.lstrip()
+    if not stripped.startswith("---"):
+        return text
+    parts = stripped.split("---", 2)
+    if len(parts) == 3:
+        return parts[2]
+    return text
+
+
+def _is_path_or_link_line(line: str) -> bool:
+    value = line.strip().strip("`'\"")
+    if not value:
+        return False
+    if re.match(r"^[a-zA-Z]:[\\/]", value):
+        return True
+    if value.startswith(("http://", "https://", "file://")):
+        return True
+    if value.startswith(("./", "../", "~/", "/")):
+        return True
+    slash_count = value.count("/") + value.count("\\")
+    return slash_count >= 2 and len(value.split()) <= 3
+
+
 def _looks_like_skill_content(text: str) -> bool:
-    """Reject fetches that returned a web page instead of a skill document.
-    Plain repo URLs resolve to GitHub's HTML, which must never be injected
-    into a model's context as instructions."""
+    """Return whether fetched text is safe and useful enough to inject.
+
+    Plain repo URLs often resolve to GitHub's HTML, and some indexed entries
+    are stubs that only contain a local path. Neither should become active
+    model instructions.
+    """
     head = text.lstrip()[:300].lower()
     if head.startswith(("<!doctype", "<html", "<?xml")):
         return False
     if "<head>" in head or "githubassets.com" in head:
+        return False
+
+    normalized = text.strip()
+    if len(normalized) < _MIN_SKILL_CONTENT_CHARS:
+        return False
+
+    nonempty_lines = [line.strip() for line in normalized.splitlines() if line.strip()]
+    if nonempty_lines:
+        path_or_link_lines = [line for line in nonempty_lines if _is_path_or_link_line(line)]
+        if len(path_or_link_lines) / len(nonempty_lines) >= 0.6:
+            return False
+
+    body = _strip_frontmatter(normalized)
+    words = re.findall(r"[A-Za-z][A-Za-z0-9_-]+", body)
+    if len(words) < _MIN_SKILL_WORDS:
+        return False
+
+    body_lower = body.lower()
+    has_frontmatter_name = bool(re.search(r"^name:\s*\S+", normalized, re.MULTILINE))
+    has_markdown_structure = "##" in body or re.search(r"^\s*[-*]\s+\S+", body, re.MULTILINE)
+    has_instruction_cue = any(cue in body_lower for cue in _SKILL_BODY_CUES)
+    if not (has_frontmatter_name or has_markdown_structure):
+        return False
+    if not has_instruction_cue:
         return False
     return True
 
@@ -230,12 +350,129 @@ def _safe_candidates(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return _dedupe_candidates(safe)
 
 
-def _autopick(candidates: list[dict[str, Any]]) -> dict[str, Any]:
+def _env_float(name: str, default: float) -> float:
+    try:
+        return float(os.getenv(name, str(default)))
+    except ValueError:
+        return default
+
+
+def _candidate_similarity(candidate: dict[str, Any]) -> float | None:
+    for key in ("similarity", "score", "semantic_score", "vector_score"):
+        value = candidate.get(key)
+        if isinstance(value, (int, float)):
+            return float(value)
+        if isinstance(value, str):
+            try:
+                return float(value)
+            except ValueError:
+                continue
+    return None
+
+
+def _candidate_rank(candidate: dict[str, Any]) -> float:
+    value = candidate.get("rank")
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return 0.0
+    return 0.0
+
+
+def _name_tokens(candidate: dict[str, Any]) -> list[str]:
+    name = str(candidate.get("name") or "")
+    tokens = re.findall(r"[a-z0-9]+", name.lower())
+    return [token for token in tokens if len(token) > 2 and token not in _NAME_STOPWORDS]
+
+
+def _platform_specific_penalty(candidate: dict[str, Any], task: str) -> float:
+    """Penalize brand/platform support skills unless the prompt names them.
+
+    This catches cases like a generic "build a landing page" prompt routing to
+    a Landingi support skill just because "landing" and "page" are nearby.
+    """
+    task_lower = task.lower()
+    description = str(candidate.get("description") or "").lower()
+    tags = " ".join(str(tag).lower() for tag in (candidate.get("tags") or []))
+    text = f"{description} {tags}"
+    if not any(marker in text for marker in _PLATFORM_SPECIFIC_MARKERS):
+        return 0.0
+
+    unmatched = [token for token in _name_tokens(candidate) if token not in task_lower]
+    if not unmatched:
+        return 0.0
+    if "platform" in text or "api" in text or "oauth" in text:
+        return 0.08
+    return 0.04
+
+
+def _routing_score(candidate: dict[str, Any], task: str) -> float | None:
+    similarity = _candidate_similarity(candidate)
+    if similarity is None:
+        return None
+    return max(0.0, similarity - _platform_specific_penalty(candidate, task))
+
+
+def _routing_tier(candidate: dict[str, Any], task: str) -> str:
+    score = _routing_score(candidate, task)
+    if score is None:
+        return "hint"
+    if score >= _env_float("AUTOSKILL_FULL_THRESHOLD", _FULL_SIMILARITY_THRESHOLD):
+        return "full"
+    if score >= _env_float("AUTOSKILL_HINT_THRESHOLD", _HINT_SIMILARITY_THRESHOLD):
+        return "hint"
+    return "none"
+
+
+def _public_candidate(candidate: dict[str, Any], task: str) -> dict[str, Any]:
+    score = _routing_score(candidate, task)
+    public = {
+        "name": candidate.get("name"),
+        "description": candidate.get("description"),
+        "url": candidate.get("url"),
+        "source": candidate.get("source"),
+        "stars": candidate.get("stars"),
+        "risk_score": candidate.get("risk_score"),
+        "similarity": _candidate_similarity(candidate),
+        "rank": candidate.get("rank"),
+        "routing_tier": _routing_tier(candidate, task),
+    }
+    if score is not None:
+        public["routing_score"] = round(score, 6)
+    return public
+
+
+def _rank_candidates_for_task(candidates: list[dict[str, Any]], task: str) -> list[dict[str, Any]]:
+    def sort_key(candidate: dict[str, Any]) -> tuple[float, float, int]:
+        score = _routing_score(candidate, task)
+        if score is None:
+            score = 0.0
+        has_similarity = 1 if _candidate_similarity(candidate) is not None else 0
+        return (score, _candidate_rank(candidate), has_similarity)
+
+    return sorted(candidates, key=sort_key, reverse=True)
+
+
+def _candidate_pool(result: dict[str, Any], task: str) -> list[dict[str, Any]]:
+    candidates: list[dict[str, Any]] = []
+    if result.get("skill"):
+        candidates.append(dict(result["skill"]))
+    candidates.extend(dict(c) for c in (result.get("candidates") or []))
+    candidates.extend(dict(c) for c in (result.get("options") or []))
+    return _rank_candidates_for_task(_safe_candidates(candidates), task)
+
+
+def _autopick(candidates: list[dict[str, Any]], task: str = "") -> dict[str, Any]:
     """Pick the top-ranked safe candidate instead of surfacing a menu."""
+    ranked = _rank_candidates_for_task(candidates, task)
     return {
         "type": "recommend",
-        "skill": candidates[0],
-        "message": f"Best match: {candidates[0].get('name')}.",
+        "skill": ranked[0],
+        "candidates": ranked,
+        "message": f"Best match: {ranked[0].get('name')}.",
     }
 
 
@@ -246,6 +483,8 @@ def _with_backend(result: dict[str, Any], backend: str, warnings: list[str]) -> 
         result["warnings"] = warnings
     if result.get("options"):
         result["options"] = _safe_candidates(list(result.get("options") or []))
+    if result.get("candidates"):
+        result["candidates"] = _safe_candidates(list(result.get("candidates") or []))
     if result.get("skill") and (result["skill"].get("risk_score") or 0) >= 3:
         return {
             "type": "none",
@@ -278,7 +517,7 @@ async def _search_selfhosted(
         return None
     if not results:
         return None
-    return _autopick(results)
+    return _autopick(results, task)
 
 
 async def _search(
@@ -348,46 +587,71 @@ async def recommend_skill_payload(task: str, client: httpx.AsyncClient | None = 
             **common,
         }
 
-    top = result.get("skill") or {}
-    content = await _fetch_content(client, top.get("url", ""))
     warnings = list(result.get("warnings", []))
-    if not content:
-        warnings.append("Matched skill content could not be fetched. Open the source URL directly.")
+    for top in _candidate_pool(result, task):
+        if _routing_tier(top, task) == "none":
+            continue
+        content = await _fetch_content(client, top.get("url", ""))
+        if not content:
+            warnings.append(f"Matched skill content could not be fetched or was not usable: {top.get('url')}")
+            continue
+        selected = _public_candidate(top, task)
+        return {
+            "found": True,
+            "best_match": selected,
+            "skill_content": content,
+            "instructions": (
+                "This is the single best-matching usable skill, already chosen for you. Apply "
+                "skill_content's instructions immediately and generate the actual output the user "
+                "asked for in this same turn. Only pause if skill_content is missing, unusable, or "
+                "genuinely unsafe. Call install_skill with force=true only when you intend to "
+                "overwrite an existing skill."
+            ),
+            "search_backend": result.get("search_backend"),
+            "warnings": warnings,
+        }
+
     return {
-        "found": True,
-        "best_match": {
-            "name": top.get("name"),
-            "description": top.get("description"),
-            "url": top.get("url"),
-            "source": top.get("source"),
-            "stars": top.get("stars"),
-            "risk_score": top.get("risk_score"),
-        },
-        "skill_content": content or "(content unavailable; fetch the URL directly)",
-        "instructions": (
-            "This is the single best-matching skill, already chosen for you. Apply skill_content's "
-            "instructions immediately and generate the actual output the user asked for in this same turn. "
-            "Only pause if skill_content is missing, unusable, or genuinely unsafe. "
-            "Call install_skill with force=true only when you intend to overwrite an existing skill."
-        ),
-        "search_backend": result.get("search_backend"),
+        "found": False,
+        "message": "Matching skills were found, but none had enough confidence and usable SKILL.md content.",
+        "candidates": [_public_candidate(c, task) for c in _candidate_pool(result, task)[:5]],
+        "instructions": "Continue normally, or preview a specific source URL if you trust it.",
         "warnings": warnings,
+        "search_backend": result.get("search_backend"),
     }
 
 
 async def route_task_payload(task: str, client: httpx.AsyncClient | None = None) -> dict[str, Any]:
     """Return a universal routing decision for an agent task."""
-    payload = await recommend_skill_payload(task, client=client)
-    common = {
-        "task": task,
-        "search_backend": payload.get("search_backend"),
-        "warnings": payload.get("warnings", []),
-    }
-    if not payload.get("found"):
+    if client is None:
+        async with httpx.AsyncClient() as owned:
+            return await route_task_payload(task, client=owned)
+
+    try:
+        result = await _search(client, task)
+    except Exception as exc:
         return {
             "routed": False,
             "route_type": "none",
-            "message": payload.get("message", "No matching skill found."),
+            "route_tier": "none",
+            "task": task,
+            "message": f"Skill database is unavailable right now ({exc}). Try again shortly.",
+            "instructions": "Continue normally.",
+            "warnings": [],
+            "search_backend": None,
+        }
+
+    common = {
+        "task": task,
+        "search_backend": result.get("search_backend"),
+        "warnings": list(result.get("warnings", [])),
+    }
+    if result.get("type") in {"none", "clarify"}:
+        return {
+            "routed": False,
+            "route_type": "none",
+            "route_tier": "none",
+            "message": result.get("message", "No matching skill found."),
             "instructions": (
                 "No reusable skill was selected. Continue normally, or call route_task again "
                 "with a more specific task description if a reusable workflow likely exists."
@@ -395,21 +659,79 @@ async def route_task_payload(task: str, client: httpx.AsyncClient | None = None)
             **common,
         }
 
-    selected = payload.get("best_match") or {}
+    candidates = _candidate_pool(result, task)
+    if not candidates:
+        return {
+            "routed": False,
+            "route_type": "none",
+            "route_tier": "none",
+            "message": "No safe matching skill found.",
+            "instructions": "Continue normally.",
+            **common,
+        }
+
+    for candidate in candidates:
+        tier = _routing_tier(candidate, task)
+        selected = _public_candidate(candidate, task)
+        if tier == "none":
+            continue
+
+        if tier == "hint":
+            return {
+                "routed": True,
+                "route_type": "hint",
+                "route_tier": "hint",
+                "selected_skill": selected,
+                "skill_content": "",
+                "message": (
+                    "A related skill exists, but confidence is medium. Treat this as a hint, "
+                    "not active instructions."
+                ),
+                "instructions": (
+                    "Mention or consider the selected skill only if it clearly helps. Do not inject "
+                    "or follow full SKILL.md content for this task."
+                ),
+                "install_hint": (
+                    "Preview the selected_skill.url before installing. Codex should treat this as "
+                    "an in-turn suggestion only."
+                ),
+                **common,
+            }
+
+        content = await _fetch_content(client, candidate.get("url", ""))
+        if not content:
+            common["warnings"].append(
+                f"Skipped matched skill because its SKILL.md content was missing or low quality: {candidate.get('url')}"
+            )
+            continue
+
+        return {
+            "routed": True,
+            "route_type": "skill",
+            "route_tier": "full",
+            "selected_skill": selected,
+            "skill_content": content,
+            "instructions": (
+                "Use this as the routing result for the current task. Treat skill_content as active "
+                "task-specific instructions, apply it immediately, and produce the user's requested "
+                "output in this same turn. Do not ask the user to choose a skill unless the selected "
+                "skill content is missing, unusable, or unsafe."
+            ),
+            "install_hint": (
+                "For Claude-style clients, call install_skill with the selected_skill.url only if "
+                "this workflow is worth keeping permanently. Codex should use this route in-turn."
+            ),
+            **common,
+        }
+
     return {
-        "routed": True,
-        "route_type": "skill",
-        "selected_skill": selected,
-        "skill_content": payload.get("skill_content", ""),
+        "routed": False,
+        "route_type": "none",
+        "route_tier": "none",
+        "message": "Matching skills were found, but none were confident and usable enough to route.",
         "instructions": (
-            "Use this as the routing result for the current task. Treat skill_content as active "
-            "task-specific instructions, apply it immediately, and produce the user's requested "
-            "output in this same turn. Do not ask the user to choose a skill unless the selected "
-            "skill content is missing, unusable, or unsafe."
-        ),
-        "install_hint": (
-            "For Claude-style clients, call install_skill with the selected_skill.url only if "
-            "this workflow is worth keeping permanently. Codex should use this route in-turn."
+            "No reusable skill was selected. Continue normally, or call route_task again "
+            "with a more specific task description if a reusable workflow likely exists."
         ),
         **common,
     }
@@ -418,19 +740,26 @@ async def route_task_payload(task: str, client: httpx.AsyncClient | None = None)
 def build_route_context(route_payload: dict[str, Any]) -> str:
     """Create compact context that a prompt hook can inject for an agent."""
     if not route_payload.get("routed"):
-        return (
-            "[auto-skill] No reusable skill was selected for this prompt. "
-            "Answer normally unless a more specific skill-shaped subtask appears."
-        )
+        return ""
 
     selected = route_payload.get("selected_skill") or {}
     content = route_payload.get("skill_content") or ""
     name = selected.get("name") or "unknown"
     url = selected.get("url") or ""
     risk = selected.get("risk_score")
+    tier = route_payload.get("route_tier") or selected.get("routing_tier") or route_payload.get("route_type")
+    score = selected.get("routing_score")
     risk_text = f", risk={risk}" if risk is not None else ""
+    score_text = f", score={score}" if score is not None else ""
+    if route_payload.get("route_type") == "hint":
+        description = selected.get("description") or ""
+        return (
+            f"[auto-skill] Related skill hint: {name}{risk_text}{score_text}, tier={tier}. Source: {url}\n"
+            f"Only use this as a hint if it clearly fits the user's task. Do not treat it as active instructions.\n"
+            f"{description[:300]}"
+        )
     return (
-        f"[auto-skill] Route selected: {name}{risk_text}. Source: {url}\n\n"
+        f"[auto-skill] Route selected: {name}{risk_text}{score_text}, tier={tier}. Source: {url}\n\n"
         "Use the following SKILL.md content as active task-specific instructions for this turn. "
         "Apply it immediately unless it is missing, unusable, or unsafe.\n\n"
         "<auto_skill_content>\n"
@@ -474,7 +803,7 @@ def install_skill_from_content(
     if target != "claude":
         raise UnsupportedTargetError(
             "Codex does not support permanent Claude SKILL.md installs. "
-            "Use the MCP recommend_skill tool to apply a skill in the current Codex turn."
+            "Use the MCP route_task tool to apply full routes in the current Codex turn."
         )
     slug = _slugify(name or _extract_skill_name(content) or source_url.rstrip("/").split("/")[-1])
     home = Path(skills_home) if skills_home is not None else get_skills_home(target)

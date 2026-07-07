@@ -8,6 +8,19 @@ import pytest
 import auto_skill_core as core
 
 
+VALID_SKILL = """---
+name: spreadsheet-router
+description: Create spreadsheet reports with formulas, formatting, and validation.
+---
+
+## Workflow
+
+- Use this skill when the user asks to create, edit, analyze, or format a spreadsheet.
+- Inspect the requested output and choose formulas, tables, charts, and validation rules.
+- Generate the workbook, verify formulas, and explain any assumptions in the final answer.
+"""
+
+
 class FakeResponse:
     def __init__(self, status_code: int, payload: object | None = None, text: str = "") -> None:
         self.status_code = status_code
@@ -66,6 +79,7 @@ class RouteClient:
                         "description": "Create spreadsheet reports.",
                         "url": "https://github.com/example/skills/tree/main/spreadsheet",
                         "rank": 10,
+                        "similarity": 0.92,
                         "risk_score": 0,
                     }
                 ]
@@ -97,6 +111,20 @@ def test_raw_candidates_from_github_tree() -> None:
         "https://raw.githubusercontent.com/acme/tools/main/skills/report/SKILL.md",
         "https://raw.githubusercontent.com/acme/tools/main/skills/report/skill.md",
     ]
+
+
+def test_raw_candidates_from_github_repo_root() -> None:
+    assert core._raw_candidates("https://github.com/acme/tools")[:2] == [
+        "https://raw.githubusercontent.com/acme/tools/HEAD/SKILL.md",
+        "https://raw.githubusercontent.com/acme/tools/HEAD/skill.md",
+    ]
+
+
+def test_skill_content_quality_gate() -> None:
+    assert core._looks_like_skill_content("<!doctype html><html><head></head><body></body></html>") is False
+    assert core._looks_like_skill_content(r"C:\Users\Someone\Desktop\SKILL.md") is False
+    assert core._looks_like_skill_content("name: tiny\n\nDo stuff.") is False
+    assert core._looks_like_skill_content(VALID_SKILL) is True
 
 
 def test_slugify() -> None:
@@ -144,15 +172,106 @@ def test_route_task_payload_returns_router_decision(monkeypatch: pytest.MonkeyPa
     async def fake_fetch(client: object, url: str) -> str:
         del client
         assert url == "https://github.com/example/skills/tree/main/spreadsheet"
-        return "name: spreadsheet-router\n\nDo spreadsheet work."
+        return VALID_SKILL
 
     monkeypatch.setattr(core, "_fetch_content", fake_fetch)
     result = asyncio.run(core.route_task_payload("make a spreadsheet", client=RouteClient()))
     assert result["routed"] is True
     assert result["route_type"] == "skill"
+    assert result["route_tier"] == "full"
     assert result["selected_skill"]["name"] == "spreadsheet-router"
-    assert "Do spreadsheet work" in result["skill_content"]
+    assert "Generate the workbook" in result["skill_content"]
     assert "apply it immediately" in result["instructions"]
+
+
+def test_route_task_payload_returns_hint_without_fetch(monkeypatch: pytest.MonkeyPatch) -> None:
+    class HintClient:
+        async def get(self, url: str, **kwargs: object) -> FakeResponse:
+            del url, kwargs
+            return FakeResponse(
+                200,
+                {
+                    "results": [
+                        {
+                            "name": "spreadsheet-router",
+                            "description": "Create spreadsheet reports.",
+                            "url": "https://github.com/example/skills/tree/main/spreadsheet",
+                            "similarity": 0.88,
+                            "risk_score": 0,
+                        }
+                    ]
+                },
+            )
+
+        async def post(self, url: str, **kwargs: object) -> FakeResponse:
+            raise AssertionError(f"fallback should not be called: {url}")
+
+    async def fake_fetch(client: object, url: str) -> str:
+        raise AssertionError(f"hint routes should not fetch full content: {url}")
+
+    monkeypatch.setattr(core, "_fetch_content", fake_fetch)
+    result = asyncio.run(core.route_task_payload("make a spreadsheet", client=HintClient()))
+    assert result["routed"] is True
+    assert result["route_type"] == "hint"
+    assert result["route_tier"] == "hint"
+    assert result["skill_content"] == ""
+
+
+def test_route_task_skips_platform_specific_false_positive(monkeypatch: pytest.MonkeyPatch) -> None:
+    class LandingClient:
+        async def get(self, url: str, **kwargs: object) -> FakeResponse:
+            del url, kwargs
+            return FakeResponse(
+                200,
+                {
+                    "results": [
+                        {
+                            "name": "sales-landingi",
+                            "description": (
+                                "Landingi platform help. Use when your Landingi page will not publish, "
+                                "custom domain is stuck, OAuth API key setup is broken, or leads are not syncing."
+                            ),
+                            "url": "https://github.com/sales-skills/sales/tree/HEAD/skills/sales-landingi",
+                            "similarity": 0.905,
+                            "risk_score": 0,
+                            "tags": ["platform", "landing-pages"],
+                        },
+                        {
+                            "name": "landing-page-architect",
+                            "description": "Create, audit, or rewrite product and service landing pages.",
+                            "url": "https://github.com/example/skills/tree/main/landing-page-architect",
+                            "similarity": 0.906,
+                            "risk_score": 0,
+                        },
+                    ]
+                },
+            )
+
+        async def post(self, url: str, **kwargs: object) -> FakeResponse:
+            raise AssertionError(f"fallback should not be called: {url}")
+
+    async def fake_fetch(client: object, url: str) -> str:
+        del client
+        assert "landing-page-architect" in url
+        return """---
+name: landing-page-architect
+description: Create landing pages with clear positioning and conversion structure.
+---
+
+## Workflow
+
+- Use when the user asks to create, audit, or rewrite landing-page copy or structure.
+- Build sections for hero, proof, offer, objections, CTA, FAQ, and decision details.
+- Generate concrete page copy and verify that the page matches the target audience.
+"""
+
+    monkeypatch.setattr(core, "_fetch_content", fake_fetch)
+    result = asyncio.run(
+        core.route_task_payload("build a professional landing page for an AI automation agency", client=LandingClient())
+    )
+    assert result["routed"] is True
+    assert result["route_type"] == "skill"
+    assert result["selected_skill"]["name"] == "landing-page-architect"
 
 
 def test_route_task_payload_handles_no_route() -> None:
@@ -170,14 +289,14 @@ def test_route_prompt_payload_skips_without_network() -> None:
 def test_route_prompt_payload_returns_injectable_context(monkeypatch: pytest.MonkeyPatch) -> None:
     async def fake_fetch(client: object, url: str) -> str:
         del client, url
-        return "name: spreadsheet-router\n\nDo spreadsheet work."
+        return VALID_SKILL
 
     monkeypatch.setattr(core, "_fetch_content", fake_fetch)
     result = asyncio.run(core.route_prompt_payload("make a spreadsheet", client=RouteClient()))
     assert result["should_route"] is True
     assert result["routed"] is True
     assert "<auto_skill_content>" in result["context"]
-    assert "Do spreadsheet work" in result["context"]
+    assert "Generate the workbook" in result["context"]
 
 
 def test_install_refuses_overwrite_without_force(tmp_path: Path) -> None:
