@@ -45,6 +45,14 @@ _META_PATTERNS = (
     "explain this",
     "summarize",
     "status",
+    "whats the",
+    "what's the",
+    "why is",
+    "why did",
+    "remember th",
+    "sounds good",
+    "that worked",
+    "looks good",
 )
 
 

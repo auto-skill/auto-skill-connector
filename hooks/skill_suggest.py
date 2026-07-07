@@ -29,7 +29,7 @@ MAX_CONTENT_CHARS = int(os.getenv("AUTOSKILL_HOOK_MAX_CHARS", "12000"))
 _BLOB_RE = re.compile(r"github\.com/([^/]+)/([^/]+)/blob/([^/]+)/(.*)")
 _TREE_RE = re.compile(r"github\.com/([^/]+)/([^/]+)/tree/([^/]+)/(.*)")
 _ACK_PROMPTS = {"ok", "okay", "yes", "no", "thanks", "thank you", "continue", "go on", "do it", "sounds good"}
-_META_PATTERNS = ("what did you", "what are you", "what is the current state", "current state", "explain this", "summarize", "status")
+_META_PATTERNS = ("what did you", "what are you", "what is the current state", "current state", "explain this", "summarize", "status", "whats the", "what's the", "why is", "why did", "remember th", "sounds good", "that worked", "looks good")
 
 
 def _should_route(prompt: str) -> tuple[bool, str]:
