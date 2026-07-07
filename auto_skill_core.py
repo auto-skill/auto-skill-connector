@@ -116,12 +116,24 @@ def _raw_candidates(url: str) -> list[str]:
     return [url]
 
 
+def _looks_like_skill_content(text: str) -> bool:
+    """Reject fetches that returned a web page instead of a skill document.
+    Plain repo URLs resolve to GitHub's HTML, which must never be injected
+    into a model's context as instructions."""
+    head = text.lstrip()[:300].lower()
+    if head.startswith(("<!doctype", "<html", "<?xml")):
+        return False
+    if "<head>" in head or "githubassets.com" in head:
+        return False
+    return True
+
+
 async def _fetch_content(client: httpx.AsyncClient, url: str) -> str:
     """Fetch skill content from a URL or GitHub skill folder URL."""
     for candidate in _raw_candidates(url):
         try:
             r = await client.get(candidate, timeout=10)
-            if r.status_code == 200:
+            if r.status_code == 200 and _looks_like_skill_content(r.text):
                 return r.text
         except Exception:
             continue

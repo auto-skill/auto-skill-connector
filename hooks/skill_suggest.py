@@ -110,12 +110,26 @@ def _raw_candidates(url: str) -> list[str]:
     return [url]
 
 
+def _looks_like_skill_content(text: str) -> bool:
+    """Reject fetches that returned a web page (e.g. GitHub's HTML for a plain
+    repo URL) instead of a skill document — HTML must never be injected into
+    the model's context as instructions."""
+    head = text.lstrip()[:300].lower()
+    if head.startswith(("<!doctype", "<html", "<?xml")):
+        return False
+    if "<head>" in head or "githubassets.com" in head:
+        return False
+    return True
+
+
 def _fetch_content(url: str) -> str:
     for candidate in _raw_candidates(url):
         try:
             with urllib.request.urlopen(candidate, timeout=TIMEOUT_SECONDS) as r:
                 if getattr(r, "status", 200) == 200:
-                    return r.read().decode("utf-8", errors="replace")
+                    text = r.read().decode("utf-8", errors="replace")
+                    if _looks_like_skill_content(text):
+                        return text
         except Exception:
             continue
     return ""
