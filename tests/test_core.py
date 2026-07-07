@@ -291,7 +291,7 @@ def test_route_task_falls_back_for_legacy_backend_without_route(monkeypatch: pyt
     class LegacyClient:
         async def post(self, url: str, **kwargs: object) -> FakeResponse:
             del url, kwargs
-            return FakeResponse(404, {})
+            return FakeResponse(403, {"error": "read-only public API"})
 
         async def get(self, url: str, **kwargs: object) -> FakeResponse:
             if "find-semantic" in url:

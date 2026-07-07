@@ -582,7 +582,7 @@ async def _route_selfhosted(
     except Exception:
         return None
 
-    if r.status_code in {404, 405}:
+    if r.status_code in {403, 404, 405}:
         return None
     if r.status_code != 200:
         return {
