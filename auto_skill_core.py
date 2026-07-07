@@ -48,6 +48,8 @@ _META_PATTERNS = (
     "whats the",
     "what's the",
     "why is",
+    "can you explain",
+    "what you just",
     "why did",
     "remember th",
     "sounds good",
