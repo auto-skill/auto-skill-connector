@@ -520,6 +520,184 @@ async def _search_selfhosted(
     return _autopick(results, task)
 
 
+def _public_backend_skill(skill: dict[str, Any] | None, task: str, tier: str) -> dict[str, Any]:
+    """Normalize backend /route skill payloads into the public connector shape."""
+    if not skill:
+        return {}
+    url = skill.get("url") or skill.get("source_url")
+    public = {
+        "name": skill.get("name") or skill.get("slug"),
+        "description": skill.get("description") or skill.get("summary"),
+        "url": url,
+        "source": skill.get("source"),
+        "stars": skill.get("stars"),
+        "risk_score": skill.get("risk_score"),
+        "similarity": skill.get("similarity"),
+        "rank": skill.get("rank"),
+        "routing_tier": tier,
+    }
+    score = skill.get("route_score") or skill.get("routing_score")
+    if score is None:
+        score = _routing_score({"similarity": skill.get("similarity"), **skill, "url": url}, task)
+    if isinstance(score, (int, float)):
+        public["routing_score"] = round(float(score), 6)
+    for key in ("content_hash", "quality_status", "quality_score", "platforms", "category"):
+        if skill.get(key) is not None:
+            public[key] = skill.get(key)
+    return public
+
+
+async def _fetch_backend_content_url(client: httpx.AsyncClient, autoskill_url: str, content_url: str) -> str:
+    target = content_url if is_url(content_url) else f"{autoskill_url.rstrip('/')}/{content_url.lstrip('/')}"
+    try:
+        r = await client.get(target, timeout=10)
+        if (
+            r.status_code == 200
+            and _looks_like_skill_content(r.text)
+            and not _is_stub_content(r.text)
+            and not _is_unconfirmed_action_content(r.text)
+        ):
+            return r.text
+    except Exception:
+        return ""
+    return ""
+
+
+async def _route_selfhosted(
+    client: httpx.AsyncClient,
+    task: str,
+    autoskill_url: str | None = None,
+) -> dict[str, Any] | None:
+    """Use the backend-owned deterministic route contract when available.
+
+    Return None only when the endpoint is unavailable/unsupported so callers
+    can fall back to the legacy /find-semantic compatibility path.
+    """
+    url = (autoskill_url if autoskill_url is not None else get_autoskill_url()).rstrip("/")
+    if not url:
+        return None
+
+    try:
+        r = await client.post(f"{url}/route", json={"task": task, "limit": 8}, timeout=10)
+    except Exception:
+        return None
+
+    if r.status_code in {404, 405}:
+        return None
+    if r.status_code != 200:
+        return {
+            "routed": False,
+            "route_type": "none",
+            "route_tier": "none",
+            "task": task,
+            "message": f"Self-hosted route endpoint returned HTTP {r.status_code}.",
+            "instructions": "Continue normally.",
+            "warnings": [f"Self-hosted route at {url}/route was unavailable."],
+            "search_backend": "self-hosted-route",
+        }
+
+    try:
+        route = r.json()
+    except Exception:
+        return None
+
+    tier = str(route.get("tier") or "none").lower()
+    debug = route.get("score_debug") if isinstance(route.get("score_debug"), dict) else {}
+    warnings = list(debug.get("warnings") or route.get("warnings") or [])
+    selected = _public_backend_skill(route.get("skill") if isinstance(route.get("skill"), dict) else None, task, tier)
+    common = {
+        "task": task,
+        "search_backend": "self-hosted-route",
+        "warnings": warnings,
+        "score_debug": debug,
+        "config_version": route.get("config_version"),
+        "ttl": route.get("ttl"),
+    }
+
+    if tier == "none" or not selected:
+        return {
+            "routed": False,
+            "route_type": "none",
+            "route_tier": "none",
+            "message": route.get("message") or "No backend route cleared the quality and confidence gates.",
+            "instructions": "Continue normally.",
+            **common,
+        }
+
+    if tier == "hint":
+        return {
+            "routed": True,
+            "route_type": "hint",
+            "route_tier": "hint",
+            "selected_skill": selected,
+            "skill_content": "",
+            "message": (
+                "A related skill exists, but backend confidence is medium. Treat this as a hint, "
+                "not active instructions."
+            ),
+            "instructions": (
+                "Mention or consider the selected skill only if it clearly helps. Do not inject "
+                "or follow full SKILL.md content for this task."
+            ),
+            "install_hint": (
+                "Preview the selected_skill.url before installing. Codex should treat this as "
+                "an in-turn suggestion only."
+            ),
+            **common,
+        }
+
+    if tier != "full":
+        return {
+            "routed": False,
+            "route_type": "none",
+            "route_tier": "none",
+            "message": f"Backend returned unknown route tier: {tier}.",
+            "instructions": "Continue normally.",
+            **common,
+        }
+
+    content = str(route.get("content") or "")
+    if not content and route.get("content_url"):
+        content = await _fetch_backend_content_url(client, url, str(route["content_url"]))
+    if not (
+        content
+        and _looks_like_skill_content(content)
+        and not _is_stub_content(content)
+        and not _is_unconfirmed_action_content(content)
+    ):
+        warnings.append("Backend selected a full route, but usable SKILL.md content was unavailable; downgraded to hint.")
+        return {
+            "routed": True,
+            "route_type": "hint",
+            "route_tier": "hint",
+            "selected_skill": {**selected, "routing_tier": "hint"},
+            "skill_content": "",
+            "message": "A matching skill exists, but full content was unavailable. Treat this as a hint.",
+            "instructions": "Do not inject or follow full SKILL.md content for this task.",
+            "install_hint": "Preview the selected_skill.url before installing.",
+            **common,
+        }
+
+    return {
+        "routed": True,
+        "route_type": "skill",
+        "route_tier": "full",
+        "selected_skill": selected,
+        "skill_content": content,
+        "instructions": (
+            "Use this as the routing result for the current task. Treat skill_content as active "
+            "task-specific instructions, apply it immediately, and produce the user's requested "
+            "output in this same turn. Do not ask the user to choose a skill unless the selected "
+            "skill content is missing, unusable, or unsafe."
+        ),
+        "install_hint": (
+            "For Claude-style clients, call install_skill with the selected_skill.url only if "
+            "this workflow is worth keeping permanently. Codex should use this route in-turn."
+        ),
+        **common,
+    }
+
+
 async def _search(
     client: httpx.AsyncClient | None,
     task: str,
@@ -626,6 +804,10 @@ async def route_task_payload(task: str, client: httpx.AsyncClient | None = None)
     if client is None:
         async with httpx.AsyncClient() as owned:
             return await route_task_payload(task, client=owned)
+
+    route = await _route_selfhosted(client, task)
+    if route is not None:
+        return route
 
     try:
         result = await _search(client, task)

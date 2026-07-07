@@ -152,7 +152,7 @@ Install safety defaults:
 - Non-interactive installs require `--yes`.
 - Existing skills are never overwritten unless `--force` is passed.
 - `SKILLS_HOME` can override the Claude skill install directory.
-- `AUTOSKILL_URL` can override or disable the self-hosted search endpoint.
+- `AUTOSKILL_URL` can override or disable the self-hosted route/search endpoint.
 
 **Self-hosting on the same LAN as your Cloudflare Tunnel:** if you run the
 skills server and the connector on the same machine that hosts the tunnel,
@@ -268,23 +268,28 @@ For claude.ai custom connectors, use:
 ## Automatic Suggestions For Claude Code
 
 The optional hook in `hooks/skill_suggest.py` can check each submitted prompt,
-skip tiny/meta prompts, route real tasks, fetch the selected `SKILL.md`, and
-inject it into Claude's context. Run `auto-skill enable-hook` to turn it on
-(see [Commands](#commands) above) -- it prints a privacy note before doing
-anything, since eligible prompt snippets are sent to the configured search
-service. Read `SECURITY.md` before enabling it for sensitive conversations.
+skip tiny/meta prompts, call the backend `/route` contract for real tasks, and
+inject selected `SKILL.md` content only for full routes. Run
+`auto-skill enable-hook` to turn it on (see [Commands](#commands) above) -- it
+prints a privacy note before doing anything, since eligible prompt snippets
+are sent to the configured route service. Read `SECURITY.md` before enabling it
+for sensitive conversations.
 Every routing decision it makes is logged locally to
 `~/.claude/auto-skill-routing.jsonl` so you can review what got suggested and
 why.
 
-## How Search Works
+## How Routing Works
 
-Search uses the self-hosted server at `AUTOSKILL_URL` only. There is no
-Supabase fallback: an earlier version of this connector fell back to a
-Supabase-hosted corpus that was frozen once storage moved local, silently
+Routing uses the self-hosted server at `AUTOSKILL_URL` only. `route_task` and
+the Claude Code hook call `/route` first so the backend owns quality gates,
+platform-trap handling, and full/hint/no-route tiers. `/find-semantic` remains
+as a compatibility fallback for older self-hosted backends.
+
+There is no Supabase fallback: an earlier version of this connector fell back
+to a Supabase-hosted corpus that was frozen once storage moved local, silently
 serving stale results with no signal that they weren't fresh. If the
 self-hosted service is unavailable, the CLI and MCP payload report no route
-found instead — one truthful backend beats two that can silently disagree.
+found instead -- one truthful backend beats two that can silently disagree.
 
 ## Roadmap
 

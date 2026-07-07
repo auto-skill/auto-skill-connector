@@ -69,35 +69,39 @@ class SelfHostedClient:
 
 class RouteClient:
     async def get(self, url: str, **kwargs: object) -> FakeResponse:
-        del url, kwargs
+        raise AssertionError(f"full backend /route payload should not fetch content: {url} {kwargs}")
+
+    async def post(self, url: str, **kwargs: object) -> FakeResponse:
+        assert url.endswith("/route")
+        assert kwargs["json"]["task"] == "make a spreadsheet"
         return FakeResponse(
             200,
             {
-                "results": [
-                    {
-                        "name": "spreadsheet-router",
-                        "description": "Create spreadsheet reports.",
-                        "url": "https://github.com/example/skills/tree/main/spreadsheet",
-                        "rank": 10,
-                        "similarity": 0.92,
-                        "risk_score": 0,
-                    }
-                ]
+                "tier": "full",
+                "skill": {
+                    "name": "spreadsheet-router",
+                    "description": "Create spreadsheet reports.",
+                    "url": "https://github.com/example/skills/tree/main/spreadsheet",
+                    "route_score": 0.92,
+                    "similarity": 0.92,
+                    "risk_score": 0,
+                    "quality_status": "active",
+                    "quality_score": 92,
+                },
+                "content": VALID_SKILL,
+                "score_debug": {"tier": "full", "quality_status": "active"},
+                "config_version": "test",
             },
         )
-
-    async def post(self, url: str, **kwargs: object) -> FakeResponse:
-        raise AssertionError(f"fallback should not be called: {url}")
 
 
 class NoRouteClient:
     async def get(self, url: str, **kwargs: object) -> FakeResponse:
-        del url, kwargs
-        return FakeResponse(200, {"results": []})
+        raise AssertionError(f"backend /route none should be authoritative: {url} {kwargs}")
 
     async def post(self, url: str, **kwargs: object) -> FakeResponse:
         del url, kwargs
-        return FakeResponse(200, {"type": "none", "message": "No matching skill found."})
+        return FakeResponse(200, {"tier": "none", "skill": None, "score_debug": {"tier": "none"}})
 
 
 def test_raw_candidates_from_github_blob() -> None:
@@ -170,9 +174,7 @@ def test_should_route_prompt_skips_non_tasks() -> None:
 
 def test_route_task_payload_returns_router_decision(monkeypatch: pytest.MonkeyPatch) -> None:
     async def fake_fetch(client: object, url: str) -> str:
-        del client
-        assert url == "https://github.com/example/skills/tree/main/spreadsheet"
-        return VALID_SKILL
+        raise AssertionError(f"backend /route already supplied full content: {client} {url}")
 
     monkeypatch.setattr(core, "_fetch_content", fake_fetch)
     result = asyncio.run(core.route_task_payload("make a spreadsheet", client=RouteClient()))
@@ -180,6 +182,7 @@ def test_route_task_payload_returns_router_decision(monkeypatch: pytest.MonkeyPa
     assert result["route_type"] == "skill"
     assert result["route_tier"] == "full"
     assert result["selected_skill"]["name"] == "spreadsheet-router"
+    assert result["selected_skill"]["quality_status"] == "active"
     assert "Generate the workbook" in result["skill_content"]
     assert "apply it immediately" in result["instructions"]
 
@@ -187,24 +190,26 @@ def test_route_task_payload_returns_router_decision(monkeypatch: pytest.MonkeyPa
 def test_route_task_payload_returns_hint_without_fetch(monkeypatch: pytest.MonkeyPatch) -> None:
     class HintClient:
         async def get(self, url: str, **kwargs: object) -> FakeResponse:
-            del url, kwargs
+            raise AssertionError(f"hint routes should not fetch full content: {url} {kwargs}")
+
+        async def post(self, url: str, **kwargs: object) -> FakeResponse:
+            del kwargs
+            assert url.endswith("/route")
             return FakeResponse(
                 200,
                 {
-                    "results": [
-                        {
-                            "name": "spreadsheet-router",
-                            "description": "Create spreadsheet reports.",
-                            "url": "https://github.com/example/skills/tree/main/spreadsheet",
-                            "similarity": 0.88,
-                            "risk_score": 0,
-                        }
-                    ]
+                    "tier": "hint",
+                    "skill": {
+                        "name": "spreadsheet-router",
+                        "description": "Create spreadsheet reports.",
+                        "url": "https://github.com/example/skills/tree/main/spreadsheet",
+                        "route_score": 0.88,
+                        "similarity": 0.88,
+                        "risk_score": 0,
+                    },
+                    "score_debug": {"tier": "hint"},
                 },
             )
-
-        async def post(self, url: str, **kwargs: object) -> FakeResponse:
-            raise AssertionError(f"fallback should not be called: {url}")
 
     async def fake_fetch(client: object, url: str) -> str:
         raise AssertionError(f"hint routes should not fetch full content: {url}")
@@ -220,35 +225,37 @@ def test_route_task_payload_returns_hint_without_fetch(monkeypatch: pytest.Monke
 def test_route_task_skips_platform_specific_false_positive(monkeypatch: pytest.MonkeyPatch) -> None:
     class LandingClient:
         async def get(self, url: str, **kwargs: object) -> FakeResponse:
-            del url, kwargs
+            raise AssertionError(f"backend /route should own platform reranking: {url} {kwargs}")
+
+        async def post(self, url: str, **kwargs: object) -> FakeResponse:
+            del kwargs
+            assert url.endswith("/route")
             return FakeResponse(
                 200,
                 {
-                    "results": [
-                        {
-                            "name": "sales-landingi",
-                            "description": (
-                                "Landingi platform help. Use when your Landingi page will not publish, "
-                                "custom domain is stuck, OAuth API key setup is broken, or leads are not syncing."
-                            ),
-                            "url": "https://github.com/sales-skills/sales/tree/HEAD/skills/sales-landingi",
-                            "similarity": 0.905,
-                            "risk_score": 0,
-                            "tags": ["platform", "landing-pages"],
-                        },
-                        {
-                            "name": "landing-page-architect",
-                            "description": "Create, audit, or rewrite product and service landing pages.",
-                            "url": "https://github.com/example/skills/tree/main/landing-page-architect",
-                            "similarity": 0.906,
-                            "risk_score": 0,
-                        },
-                    ]
+                    "tier": "full",
+                    "skill": {
+                        "name": "landing-page-architect",
+                        "description": "Create, audit, or rewrite product and service landing pages.",
+                        "url": "https://github.com/example/skills/tree/main/landing-page-architect",
+                        "route_score": 0.906,
+                        "similarity": 0.906,
+                        "risk_score": 0,
+                    },
+                    "content": """---
+name: landing-page-architect
+description: Create landing pages with clear positioning and conversion structure.
+---
+
+## Workflow
+
+- Use when the user asks to create, audit, or rewrite landing-page copy or structure.
+- Build sections for hero, proof, offer, objections, CTA, FAQ, and decision details.
+- Generate concrete page copy and verify that the page matches the target audience.
+""",
+                    "score_debug": {"tier": "full", "platform_mismatch": False},
                 },
             )
-
-        async def post(self, url: str, **kwargs: object) -> FakeResponse:
-            raise AssertionError(f"fallback should not be called: {url}")
 
     async def fake_fetch(client: object, url: str) -> str:
         del client
@@ -278,6 +285,42 @@ def test_route_task_payload_handles_no_route() -> None:
     result = asyncio.run(core.route_task_payload("too obscure", client=NoRouteClient()))
     assert result["routed"] is False
     assert result["route_type"] == "none"
+
+
+def test_route_task_falls_back_for_legacy_backend_without_route(monkeypatch: pytest.MonkeyPatch) -> None:
+    class LegacyClient:
+        async def post(self, url: str, **kwargs: object) -> FakeResponse:
+            del url, kwargs
+            return FakeResponse(404, {})
+
+        async def get(self, url: str, **kwargs: object) -> FakeResponse:
+            if "find-semantic" in url:
+                return FakeResponse(
+                    200,
+                    {
+                        "results": [
+                            {
+                                "name": "spreadsheet-router",
+                                "description": "Create spreadsheet reports.",
+                                "url": "https://github.com/example/skills/tree/main/spreadsheet",
+                                "rank": 10,
+                                "similarity": 0.92,
+                                "risk_score": 0,
+                            }
+                        ]
+                    },
+                )
+            raise AssertionError(f"unexpected get: {url} {kwargs}")
+
+    async def fake_fetch(client: object, url: str) -> str:
+        del client
+        assert url == "https://github.com/example/skills/tree/main/spreadsheet"
+        return VALID_SKILL
+
+    monkeypatch.setattr(core, "_fetch_content", fake_fetch)
+    result = asyncio.run(core.route_task_payload("make a spreadsheet", client=LegacyClient()))
+    assert result["routed"] is True
+    assert result["search_backend"] == "self-hosted"
 
 
 def test_route_prompt_payload_skips_without_network() -> None:

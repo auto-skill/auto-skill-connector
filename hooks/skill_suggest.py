@@ -78,6 +78,26 @@ def _selfhosted_matches(prompt: str) -> tuple[list[dict], str] | None:
         return None
 
 
+def _selfhosted_route(prompt: str) -> dict | None:
+    """Call the backend-owned route contract. None means try legacy fallback."""
+    if not AUTOSKILL_URL:
+        return None
+    try:
+        body = json.dumps({"task": prompt[:500], "limit": 8}).encode("utf-8")
+        request = urllib.request.Request(
+            f"{AUTOSKILL_URL}/route",
+            data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as r:
+            if getattr(r, "status", 200) in {404, 405}:
+                return None
+            return json.load(r)
+    except Exception:
+        return None
+
+
 def _raw_candidates(url: str) -> list[str]:
     m = _BLOB_RE.search(url)
     if m:
@@ -151,7 +171,20 @@ def _fetch_content(url: str) -> str:
                     if _looks_like_skill_content(text) and not _is_stub_content(text):
                         return text
         except Exception:
-            continue
+                continue
+    return ""
+
+
+def _fetch_backend_content(content_url: str) -> str:
+    target = content_url if content_url.startswith(("http://", "https://")) else f"{AUTOSKILL_URL}/{content_url.lstrip('/')}"
+    try:
+        with urllib.request.urlopen(target, timeout=TIMEOUT_SECONDS) as r:
+            if getattr(r, "status", 200) == 200:
+                text = r.read().decode("utf-8", errors="replace")
+                if _looks_like_skill_content(text) and not _is_stub_content(text):
+                    return text
+    except Exception:
+        return ""
     return ""
 
 
@@ -195,16 +228,26 @@ def main() -> None:
     # caller was worse than admitting no route is available this turn. Fails
     # open by design -- an unreachable self-hosted server just means no
     # suggestion, not a stale one.
-    found = _selfhosted_matches(prompt)
-    if found is None:
-        return
-    matches, tier = found
+    route = _selfhosted_route(prompt)
+    if route is not None:
+        tier = str(route.get("tier") or "none").lower()
+        skill = route.get("skill") or {}
+        matches = [skill] if skill else []
+    else:
+        found = _selfhosted_matches(prompt)
+        if found is None:
+            return
+        matches, tier = found
+        if not matches:
+            return
+        skill = matches[0]
+
     if not matches or tier == "none":
+        _log_routing_decision(prompt, "none", None, reason="backend route none")
         return
 
-    skill = matches[0]
     name = skill.get("name") or "unknown"
-    url = skill.get("url") or ""
+    url = skill.get("url") or skill.get("source_url") or ""
     risk = skill.get("risk_score")
     risk_text = f", risk={risk}" if risk is not None else ""
 
@@ -225,7 +268,13 @@ def main() -> None:
         _log_routing_decision(prompt, "hint", skill, reason="multiple candidates plausible")
         return
 
-    content = _fetch_content(url)
+    content = ""
+    if route is not None:
+        content = route.get("content") or ""
+        if not content and route.get("content_url"):
+            content = _fetch_backend_content(str(route.get("content_url")))
+    else:
+        content = _fetch_content(url)
     if not content:
         _log_routing_decision(prompt, "none", skill, reason="content fetch failed or rejected (HTML/stub)")
         return
