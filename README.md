@@ -101,6 +101,17 @@ Install safety defaults:
 - `SKILLS_HOME` can override the Claude skill install directory.
 - `AUTOSKILL_URL` can override or disable the self-hosted search endpoint.
 
+**Self-hosting on the same LAN as your Cloudflare Tunnel:** if you run the
+skills server and the connector on the same machine that hosts the tunnel,
+your own router/DNS may resolve the public hostname (e.g.
+`skills.avalahome.com`) to a private LAN address instead of Cloudflare's edge
+-- a router-level DNS override or split-horizon DNS setup, common on home
+routers, will do this even though the hostname resolves correctly for
+everyone else. If requests to your own public URL fail only from that
+machine, set `AUTOSKILL_URL=http://localhost:<port>` (or whatever loopback
+address the skills server binds to) so the connector talks to it directly
+instead of round-tripping through DNS and the tunnel.
+
 ## MCP Tools
 
 The MCP server exposes four tools:
