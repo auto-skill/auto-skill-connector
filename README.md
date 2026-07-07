@@ -167,8 +167,6 @@ instead of round-tripping through DNS and the tunnel.
 
 ## MCP Tools
 
-The MCP server exposes four tools:
-
 - `route_prompt(prompt)` is the always-on integration path: it skips prompts
   that are too short, meta/status-like, commands, or pasted context, then emits
   injectable skill context for real tasks.
@@ -178,7 +176,11 @@ The MCP server exposes four tools:
 - `recommend_skill(task)` searches for a matching skill and returns the full
   instructions for the single auto-picked best match.
 - `install_skill(url, name?, target?, force?, dry_run?)` fetches and installs a
-  Claude-style skill with overwrite protection.
+  Claude-style skill with overwrite protection. **Only registered on stdio**
+  (`claude mcp add` / Claude Desktop's local subprocess config) -- it writes
+  files to whatever machine runs the server, and the streamable-http transport
+  has no per-caller auth, so it's omitted there by default. See the Remote
+  Connector section below.
 
 Codex note: Codex can use `route_task` or `recommend_skill` through MCP and
 follow the returned instructions in the current turn. This repo does not
@@ -248,8 +250,11 @@ for streamable HTTP mode, that protection is disabled so temporary tunnels can
 work.
 
 Security note: `install_skill` writes files on whichever machine is running
-the server. This is fine for a personal connector on your own account, but do
-not hand the URL to other people without adding your own access control.
+the server, so it is **not** registered as a tool over streamable-http by
+default -- a caller with your tunnel URL gets `route_prompt`/`route_task`/
+`recommend_skill` only. Set `AUTOSKILL_ALLOW_REMOTE_INSTALL=1` to re-enable it
+remotely, but only if you've added your own auth in front of the tunnel;
+never on an unauthenticated public URL.
 
 ## Hosted Claude Connector
 
@@ -262,8 +267,13 @@ For claude.ai custom connectors, use:
 
 The optional hook in `hooks/skill_suggest.py` can check each submitted prompt,
 skip tiny/meta prompts, route real tasks, fetch the selected `SKILL.md`, and
-inject it into Claude's context. This sends prompt snippets to the configured
-search service, so read `SECURITY.md` before enabling it.
+inject it into Claude's context. Run `auto-skill enable-hook` to turn it on
+(see [Commands](#commands) above) -- it prints a privacy note before doing
+anything, since eligible prompt snippets are sent to the configured search
+service. Read `SECURITY.md` before enabling it for sensitive conversations.
+Every routing decision it makes is logged locally to
+`~/.claude/auto-skill-routing.jsonl` so you can review what got suggested and
+why.
 
 ## How Search Works
 
