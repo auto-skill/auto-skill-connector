@@ -53,7 +53,18 @@ Then run:
 
 ```bash
 auto-skill doctor
+auto-skill enable-hook
+auto-skill doctor
 ```
+
+`doctor` checks that `python` resolves on PATH, that the self-hosted search
+backend is reachable (with round-trip latency), and whether the routing hook
+is registered. `enable-hook` writes (or repoints) the `UserPromptSubmit` hook
+entry in Claude Code's `settings.json`, after showing a privacy note --
+prompt snippets are sent to the configured search backend, so read
+`SECURITY.md` first if that matters for your conversations. Run
+`auto-skill disable-hook` to remove it again. Once enabled, just type a task
+in Claude Code -- no need to mention this connector by name.
 
 ### Claude Code MCP
 
@@ -91,6 +102,9 @@ auto-skill install "<task-or-url>" --target claude
 auto-skill install "<task-or-url>" --target claude --yes
 auto-skill install "<task-or-url>" --target claude --force
 auto-skill doctor
+auto-skill enable-hook
+auto-skill enable-hook --yes
+auto-skill disable-hook
 ```
 
 Install safety defaults:
