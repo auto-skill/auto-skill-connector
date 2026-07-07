@@ -5,7 +5,9 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import shutil
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +27,12 @@ from auto_skill_core import (
     route_prompt_payload,
     route_task_payload,
 )
+
+HOOK_SCRIPT_PATH = Path(__file__).resolve().parent / "hooks" / "skill_suggest.py"
+
+
+def _default_settings_path() -> Path:
+    return Path.home() / ".claude" / "settings.json"
 
 
 def _print_warning_lines(warnings: list[str]) -> None:
@@ -277,24 +285,178 @@ async def _command_install(args: argparse.Namespace) -> int:
     return 0
 
 
-def _command_doctor(args: argparse.Namespace) -> int:
-    del args
-    print("auto-skill doctor")
-    print(f"python: {sys.version.split()[0]}")
-    print(f"self-hosted search: {get_autoskill_url() or 'disabled'}")
+def _load_settings(settings_path: Path) -> dict[str, Any]:
+    if not settings_path.exists():
+        return {}
     try:
-        print(f"claude skills home: {get_skills_home('claude')}")
-    except UnsupportedTargetError as exc:
-        print(f"claude skills home: unavailable ({exc})")
+        return json.loads(settings_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise AutoSkillError(f"{settings_path} exists but is not valid JSON ({exc}); fix it by hand first.") from exc
+
+
+def _save_settings(settings_path: Path, settings: dict[str, Any]) -> None:
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    settings_path.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
+
+
+def _is_our_hook_entry(entry: dict[str, Any]) -> bool:
+    """True if a UserPromptSubmit hook entry's command targets skill_suggest.py
+    (any path -- lets us find and replace a stale/relocated copy)."""
+    for h in entry.get("hooks", []):
+        args = h.get("args") or []
+        if any(str(a).endswith("skill_suggest.py") for a in args):
+            return True
+        if "skill_suggest.py" in str(h.get("command", "")):
+            return True
+    return False
+
+
+def _find_hook_entry(settings: dict[str, Any]) -> dict[str, Any] | None:
+    for entry in settings.get("hooks", {}).get("UserPromptSubmit", []):
+        if _is_our_hook_entry(entry):
+            return entry
+    return None
+
+
+def _command_enable_hook(args: argparse.Namespace) -> int:
+    settings_path = Path(args.settings_path) if args.settings_path else _default_settings_path()
+    if not HOOK_SCRIPT_PATH.exists():
+        print(f"error: hook script not found at {HOOK_SCRIPT_PATH}", file=sys.stderr)
+        return 1
+
+    try:
+        settings = _load_settings(settings_path)
+    except AutoSkillError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+    existing = _find_hook_entry(settings)
+    if existing is not None:
+        existing_args = (existing.get("hooks") or [{}])[0].get("args") or []
+        if existing_args and str(existing_args[0]) == str(HOOK_SCRIPT_PATH):
+            print(f"already enabled: {settings_path} points at {HOOK_SCRIPT_PATH}")
+            return 0
+        print(f"a hook entry already exists pointing at {existing_args}, will replace it with {HOOK_SCRIPT_PATH}")
+
+    print(
+        "Privacy note: this hook sends a snippet of each eligible prompt to the "
+        f"configured search backend ({get_autoskill_url() or 'disabled'}) to look "
+        "up a matching skill. See SECURITY.md. Do not enable this for sensitive "
+        "conversations."
+    )
+    if not args.yes:
+        if not sys.stdin.isatty():
+            print("error: refusing to enable non-interactively without --yes", file=sys.stderr)
+            return 1
+        answer = input("Enable the auto-skill routing hook? [y/N] ").strip().lower()
+        if answer not in {"y", "yes"}:
+            print("cancelled")
+            return 1
+
+    settings.setdefault("hooks", {}).setdefault("UserPromptSubmit", [])
+    entries = settings["hooks"]["UserPromptSubmit"]
+    entries[:] = [e for e in entries if not _is_our_hook_entry(e)]
+    entries.append({
+        "hooks": [{
+            "type": "command",
+            "command": "python",
+            "args": [str(HOOK_SCRIPT_PATH)],
+            "timeout": 15,
+            "statusMessage": "Routing prompt through auto-skill...",
+        }]
+    })
+    _save_settings(settings_path, settings)
+    print(f"enabled: wrote hook entry to {settings_path}")
+    print("Restart Claude Code (or open /hooks once) for the change to take effect.")
+    return 0
+
+
+def _command_disable_hook(args: argparse.Namespace) -> int:
+    settings_path = Path(args.settings_path) if args.settings_path else _default_settings_path()
+    try:
+        settings = _load_settings(settings_path)
+    except AutoSkillError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+    entries = settings.get("hooks", {}).get("UserPromptSubmit", [])
+    remaining = [e for e in entries if not _is_our_hook_entry(e)]
+    if len(remaining) == len(entries):
+        print(f"not enabled: no auto-skill hook entry found in {settings_path}")
+        return 0
+
+    settings["hooks"]["UserPromptSubmit"] = remaining
+    if not remaining:
+        del settings["hooks"]["UserPromptSubmit"]
+    if not settings.get("hooks"):
+        settings.pop("hooks", None)
+    _save_settings(settings_path, settings)
+    print(f"disabled: removed hook entry from {settings_path}")
+    return 0
+
+
+async def _command_doctor(args: argparse.Namespace) -> int:
+    ok = True
+    settings_path = Path(args.settings_path) if args.settings_path else _default_settings_path()
+    print("auto-skill doctor")
+    print(f"python: {sys.version.split()[0]} ({sys.executable})")
+    print(f"python resolvable on PATH: {'yes (' + shutil.which('python') + ')' if shutil.which('python') else 'no -- the hook calls `python`, so it must be on PATH'}")
+    if not shutil.which("python"):
+        ok = False
+
+    print(f"claude skills home: {get_skills_home('claude')}")
+
+    url = get_autoskill_url()
+    print(f"self-hosted search: {url or 'disabled'}")
+    if url:
+        start = time.monotonic()
+        try:
+            async with httpx.AsyncClient() as client:
+                r = await client.get(f"{url.rstrip('/')}/healthz", timeout=10)
+            elapsed = time.monotonic() - start
+            if r.status_code == 200:
+                print(f"  reachable: yes ({elapsed:.2f}s)")
+            else:
+                print(f"  reachable: no (HTTP {r.status_code})")
+                ok = False
+        except Exception as exc:
+            print(f"  reachable: no ({exc})")
+            ok = False
+    else:
+        print("  reachable: n/a (search disabled)")
+
+    print(f"hook script: {HOOK_SCRIPT_PATH} ({'exists' if HOOK_SCRIPT_PATH.exists() else 'MISSING'})")
+    if not HOOK_SCRIPT_PATH.exists():
+        ok = False
+
+    try:
+        settings = _load_settings(settings_path)
+        entry = _find_hook_entry(settings)
+    except AutoSkillError as exc:
+        print(f"hook registration: unreadable ({exc})")
+        entry = None
+        ok = False
+    if entry is not None:
+        registered_args = (entry.get("hooks") or [{}])[0].get("args") or []
+        registered_path = Path(registered_args[0]) if registered_args else None
+        if registered_path and registered_path.exists():
+            match = " (matches this install)" if registered_path == HOOK_SCRIPT_PATH else " (DIFFERENT path than this install -- run enable-hook to repoint it)"
+            print(f"hook registration: enabled in {settings_path} -> {registered_path}{match}")
+        else:
+            print(f"hook registration: enabled in {settings_path}, but {registered_path} does not exist on disk")
+            ok = False
+    else:
+        print(f"hook registration: not enabled (run `auto-skill enable-hook` to turn it on)")
+
     try:
         import mcp  # noqa: F401
 
         print("mcp: installed")
     except Exception as exc:
         print(f"mcp: unavailable ({exc})")
-        return 1
+        ok = False
     print("codex permanent skill install: unsupported; use MCP recommend_skill in-turn")
-    return 0
+    return 0 if ok else 1
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -336,7 +498,17 @@ def build_parser() -> argparse.ArgumentParser:
     install.set_defaults(func=_command_install)
 
     doctor = subparsers.add_parser("doctor", help="Check local auto-skill setup.")
+    doctor.add_argument("--settings-path", default="", help="Override the Claude Code settings.json path (for testing).")
     doctor.set_defaults(func=_command_doctor)
+
+    enable_hook = subparsers.add_parser("enable-hook", help="Register the auto-skill routing hook in Claude Code settings.")
+    enable_hook.add_argument("--yes", action="store_true", help="Approve without an interactive prompt.")
+    enable_hook.add_argument("--settings-path", default="", help="Override the Claude Code settings.json path (for testing).")
+    enable_hook.set_defaults(func=_command_enable_hook)
+
+    disable_hook = subparsers.add_parser("disable-hook", help="Remove the auto-skill routing hook from Claude Code settings.")
+    disable_hook.add_argument("--settings-path", default="", help="Override the Claude Code settings.json path (for testing).")
+    disable_hook.set_defaults(func=_command_disable_hook)
     return parser
 
 
