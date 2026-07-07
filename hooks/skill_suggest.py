@@ -14,10 +14,14 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.request
+from pathlib import Path
 from urllib.parse import quote
 
 AUTOSKILL_URL = os.getenv("AUTOSKILL_URL", "https://skills.avalahome.com").rstrip("/")
+ROUTING_LOG_PATH = Path(os.getenv("AUTOSKILL_ROUTING_LOG", "")) if os.getenv("AUTOSKILL_ROUTING_LOG") else Path.home() / ".claude" / "auto-skill-routing.jsonl"
+MAX_LOG_LINES = 2000
 TIMEOUT_SECONDS = 3.0
 MAX_CONTENT_CHARS = int(os.getenv("AUTOSKILL_HOOK_MAX_CHARS", "12000"))
 _BLOB_RE = re.compile(r"github\.com/([^/]+)/([^/]+)/blob/([^/]+)/(.*)")
@@ -151,6 +155,35 @@ def _fetch_content(url: str) -> str:
     return ""
 
 
+def _log_routing_decision(prompt: str, tier: str, skill: dict | None = None, reason: str = "") -> None:
+    """Append one JSONL record so a derailed session can be diagnosed later
+    without needing to reproduce the exact prompt. Local-only, never
+    transmitted; best-effort and never allowed to break routing itself."""
+    try:
+        record = {
+            "at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+            "tier": tier,
+            "prompt_len": len(prompt),
+            "prompt_snippet": prompt[:120],
+        }
+        if reason:
+            record["reason"] = reason
+        if skill:
+            record["skill"] = {
+                "name": skill.get("name"),
+                "url": skill.get("url"),
+                "risk_score": skill.get("risk_score"),
+            }
+        ROUTING_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with ROUTING_LOG_PATH.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        if ROUTING_LOG_PATH.stat().st_size > 2_000_000:  # ~2MB: cheap trim, rare path
+            lines = ROUTING_LOG_PATH.read_text(encoding="utf-8", errors="replace").splitlines()[-MAX_LOG_LINES:]
+            ROUTING_LOG_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    except Exception:
+        pass
+
+
 def main() -> None:
     payload = json.load(sys.stdin)
     prompt = (payload.get("prompt") or "").strip()
@@ -190,10 +223,12 @@ def main() -> None:
         # committing to one skill's content, which would bias toward
         # whichever happened to rank first among near-ties.
         _print_hint("multiple candidates plausible")
+        _log_routing_decision(prompt, "hint", skill, reason="multiple candidates plausible")
         return
 
     content = _fetch_content(url)
     if not content:
+        _log_routing_decision(prompt, "none", skill, reason="content fetch failed or rejected (HTML/stub)")
         return
     if _is_unconfirmed_action_content(content):
         # Stopgap: this skill's body pairs an action verb (send/post/delete/...)
@@ -201,6 +236,7 @@ def main() -> None:
         # this, so never silently inject it as active instructions -- surface
         # it as a hint and let a human/Claude decide with eyes open.
         _print_hint("looks like it takes an action without asking for confirmation")
+        _log_routing_decision(prompt, "hint", skill, reason="unconfirmed-action content downgrade")
         return
     if len(content) > MAX_CONTENT_CHARS:
         content = f"{content[:MAX_CONTENT_CHARS]}\n\n[auto-skill: truncated]"
@@ -213,6 +249,7 @@ def main() -> None:
         f"{content}\n"
         "</auto_skill_content>"
     )
+    _log_routing_decision(prompt, "full", skill)
 
 
 if __name__ == "__main__":
