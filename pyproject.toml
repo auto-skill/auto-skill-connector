@@ -25,3 +25,10 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 py-modules = ["auto_skill_cli", "auto_skill_core", "mcp_server"]
+# hooks/skill_suggest.py must ship with the package -- auto_skill_cli's
+# enable-hook/doctor commands locate it relative to their own installed
+# location (Path(__file__).parent / "hooks" / "skill_suggest.py"). Without
+# this, `pip install .` and the README's `uvx --from git+...` install path
+# both silently omit it, and enable-hook fails with "hook script not found"
+# for anyone who installed this way instead of cloning the repo.
+packages = ["hooks"]
