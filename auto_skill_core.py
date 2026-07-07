@@ -145,6 +145,31 @@ _ABS_PATH_RE = re.compile(
 MIN_STUB_BODY_CHARS = 200
 
 
+_ACTION_VERB_RE = re.compile(
+    r"\b(send|post|delete|remove|execute|run|publish|deploy|push|commit|email|message|transfer|pay|purchase|upload)\b",
+    re.IGNORECASE,
+)
+_NO_CONFIRM_RE = re.compile(
+    r"do\s*not\s*(?:ask|confirm|wait)|don'?t\s*(?:ask|confirm|wait)|"
+    r"without\s*(?:asking|confirmation)|immediately\s*--?\s*do\s*not|no\s*confirmation\s*needed",
+    re.IGNORECASE,
+)
+
+
+def _is_unconfirmed_action_content(text: str) -> bool:
+    """Stopgap heuristic (2026-07-07): risk_score only catches malware
+    patterns, not skills that take real side effects (send a message, read a
+    secrets file, hit an API) while explicitly instructing the agent not to
+    confirm first. Observed live: a risk_score=0 skill auto-selected for full
+    injection whose body said 'Send the message immediately -- do NOT ask for
+    confirmation' and read a bot token from a secrets file. Demote (not
+    reject outright -- the skill may still be legitimate) any content that
+    pairs an action verb with explicit no-confirmation language; callers
+    should treat this as hint-tier at most, never silent full injection.
+    A real fix belongs in the risk scorer itself; this is a stopgap."""
+    return bool(_ACTION_VERB_RE.search(text) and _NO_CONFIRM_RE.search(text))
+
+
 def _is_stub_content(text: str) -> bool:
     """Reject skill bodies too thin to be real instructions -- e.g. the
     autoplan incident, whose entire body was one absolute path from a
@@ -160,11 +185,20 @@ def _is_stub_content(text: str) -> bool:
 
 
 async def _fetch_content(client: httpx.AsyncClient, url: str) -> str:
-    """Fetch skill content from a URL or GitHub skill folder URL."""
+    """Fetch skill content from a URL or GitHub skill folder URL. Never
+    returns content that pairs an action verb with no-confirmation language
+    (see _is_unconfirmed_action_content) -- recommend_skill_payload has no
+    tier concept, only "use this or don't", so for it the safe answer is
+    "don't". The hook has a hint tier and applies its own softer downgrade."""
     for candidate in _raw_candidates(url):
         try:
             r = await client.get(candidate, timeout=10)
-            if r.status_code == 200 and _looks_like_skill_content(r.text) and not _is_stub_content(r.text):
+            if (
+                r.status_code == 200
+                and _looks_like_skill_content(r.text)
+                and not _is_stub_content(r.text)
+                and not _is_unconfirmed_action_content(r.text)
+            ):
                 return r.text
         except Exception:
             continue

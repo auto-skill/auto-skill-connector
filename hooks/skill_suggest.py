@@ -64,7 +64,9 @@ def _safe_dedupe(skills: list[dict]) -> list[dict]:
     return result
 
 
-def _selfhosted_matches(prompt: str) -> list[dict] | None:
+def _selfhosted_matches(prompt: str) -> tuple[list[dict], str] | None:
+    """Returns (matches, tier) where tier is "full" (inject the whole skill),
+    "hint" (name/url only -- several candidates are plausible), or "none"."""
     if not AUTOSKILL_URL:
         return None
     try:
@@ -72,12 +74,15 @@ def _selfhosted_matches(prompt: str) -> list[dict] | None:
             f"{AUTOSKILL_URL}/find-semantic?q={quote(prompt[:500])}&limit=8",
             timeout=TIMEOUT_SECONDS,
         ) as r:
-            return _safe_dedupe(json.load(r).get("results") or [])
+            body = json.load(r)
+            return _safe_dedupe(body.get("results") or []), body.get("tier", "none")
     except Exception:
         return None
 
 
-def _edge_matches(prompt: str) -> list[dict]:
+def _edge_matches(prompt: str) -> tuple[list[dict], str]:
+    """Same (matches, tier) contract as _selfhosted_matches: the edge
+    function's own recommend/clarify split already maps onto full/hint."""
     req = urllib.request.Request(
         f"{SUPABASE_URL}/functions/v1/recommend-skill",
         data=json.dumps({"messages": [{"role": "user", "content": prompt[:500]}]}).encode(),
@@ -91,10 +96,10 @@ def _edge_matches(prompt: str) -> list[dict]:
         result = json.load(r)
     kind = result.get("type")
     if kind == "recommend" and result.get("skill"):
-        return _safe_dedupe([result["skill"]])
+        return _safe_dedupe([result["skill"]]), "full"
     if kind == "clarify" and result.get("options"):
-        return _safe_dedupe(result["options"])
-    return []
+        return _safe_dedupe(result["options"]), "hint"
+    return [], "none"
 
 
 def _raw_candidates(url: str) -> list[str]:
@@ -125,6 +130,27 @@ def _looks_like_skill_content(text: str) -> bool:
 _FRONTMATTER_RE = re.compile(r"\A---\n.*?\n---\n", re.S)
 _ABS_PATH_RE = re.compile(r"^\s*(?:[A-Za-z]:\\|/(?:home|Users|mnt|c|d)/|~[\\/])[^\n]*\s*$")
 MIN_STUB_BODY_CHARS = 200
+
+_ACTION_VERB_RE = re.compile(
+    r"\b(send|post|delete|remove|execute|run|publish|deploy|push|commit|email|message|transfer|pay|purchase|upload)\b",
+    re.IGNORECASE,
+)
+_NO_CONFIRM_RE = re.compile(
+    r"do\s*not\s*(?:ask|confirm|wait)|don'?t\s*(?:ask|confirm|wait)|"
+    r"without\s*(?:asking|confirmation)|immediately\s*--?\s*do\s*not|no\s*confirmation\s*needed",
+    re.IGNORECASE,
+)
+
+
+def _is_unconfirmed_action_content(text: str) -> bool:
+    """Stopgap (2026-07-07): risk_score only catches malware patterns, not
+    skills that take real side effects while explicitly telling the agent
+    not to confirm first. Observed live: a risk_score=0 skill auto-selected
+    for full injection whose body said 'Send the message immediately -- do
+    NOT ask for confirmation' and read a bot token from a secrets file. A
+    match here downgrades a would-be full injection to a hint instead --
+    never silent full injection of unconfirmed-side-effect instructions."""
+    return bool(_ACTION_VERB_RE.search(text) and _NO_CONFIRM_RE.search(text))
 
 
 def _is_stub_content(text: str) -> bool:
@@ -160,23 +186,46 @@ def main() -> None:
     if not should_route:
         return
 
-    matches = _selfhosted_matches(prompt)
-    if matches is None:
-        matches = _edge_matches(prompt)
-    if not matches:
+    found = _selfhosted_matches(prompt)
+    matches, tier = found if found is not None else _edge_matches(prompt)
+    if not matches or tier == "none":
         return
 
     skill = matches[0]
-    content = _fetch_content(skill.get("url") or "")
-    if not content:
-        return
-    if len(content) > MAX_CONTENT_CHARS:
-        content = f"{content[:MAX_CONTENT_CHARS]}\n\n[auto-skill: truncated]"
-
     name = skill.get("name") or "unknown"
     url = skill.get("url") or ""
     risk = skill.get("risk_score")
     risk_text = f", risk={risk}" if risk is not None else ""
+
+    def _print_hint(reason: str) -> None:
+        desc = (skill.get("description") or "").replace("\n", " ")[:160]
+        print(
+            f"[auto-skill] Possible match (not injected -- {reason}): "
+            f"\"{name}\"{risk_text} — {desc} ({url}). "
+            "If this fits the user's task, call the auto-skill MCP tool recommend_skill "
+            "with a short task description to fetch and apply its full content."
+        )
+
+    if tier == "hint":
+        # Several candidates are plausible -- name the option instead of
+        # committing to one skill's content, which would bias toward
+        # whichever happened to rank first among near-ties.
+        _print_hint("multiple candidates plausible")
+        return
+
+    content = _fetch_content(url)
+    if not content:
+        return
+    if _is_unconfirmed_action_content(content):
+        # Stopgap: this skill's body pairs an action verb (send/post/delete/...)
+        # with explicit no-confirmation language. risk_score doesn't catch
+        # this, so never silently inject it as active instructions -- surface
+        # it as a hint and let a human/Claude decide with eyes open.
+        _print_hint("looks like it takes an action without asking for confirmation")
+        return
+    if len(content) > MAX_CONTENT_CHARS:
+        content = f"{content[:MAX_CONTENT_CHARS]}\n\n[auto-skill: truncated]"
+
     print(
         f"[auto-skill] Route selected: {name}{risk_text}. Source: {url}\n\n"
         "Use the following SKILL.md content as active task-specific instructions for this turn. "
