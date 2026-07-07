@@ -24,11 +24,11 @@ from auto_skill_core import (
 
 __all__ = [
     "_fetch_content",
+    "_install_skill_impl",
     "_raw_candidates",
     "_search",
     "_search_selfhosted",
     "_slugify",
-    "install_skill",
     "main",
     "recommend_skill",
     "route_prompt",
@@ -105,8 +105,7 @@ async def recommend_skill(task: str) -> dict:
     return await recommend_skill_payload(task)
 
 
-@mcp.tool()
-async def install_skill(
+async def _install_skill_impl(
     url: str,
     name: str = "",
     target: str = "claude",
@@ -148,8 +147,21 @@ def main() -> None:
                              Connectors, typically tunneled (e.g. ngrok) to a
                              public HTTPS URL. Set MCP_TRANSPORT=streamable-http,
                              and MCP_HOST/MCP_PORT to control the bind address.
+
+    install_skill writes files to whatever machine runs this process, so it is
+    registered as a tool ONLY on stdio -- the transport used by a user's own
+    local `claude mcp add`, where they are installing skills onto their own
+    machine. The streamable-http transport is meant to be tunneled to a public
+    URL (see README's remote-connector section), and MCP has no per-caller
+    auth here, so publishing install_skill on it would let any caller with the
+    URL write arbitrary skill files onto whoever is hosting the tunnel. Set
+    AUTOSKILL_ALLOW_REMOTE_INSTALL=1 to override, e.g. behind your own auth
+    proxy -- never set it on an unauthenticated public tunnel.
     """
     transport = os.getenv("MCP_TRANSPORT", "stdio")
+    if transport != "streamable-http" or os.getenv("AUTOSKILL_ALLOW_REMOTE_INSTALL") == "1":
+        mcp.tool(name="install_skill")(_install_skill_impl)
+
     if transport == "streamable-http":
         mcp.settings.host = os.getenv("MCP_HOST", "127.0.0.1")
         mcp.settings.port = int(os.getenv("MCP_PORT", "8765"))
