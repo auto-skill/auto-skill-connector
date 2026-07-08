@@ -37,6 +37,17 @@ This repo holds both halves of Auto-Skill:
   scripts). It has its own run story (`python backend/scraper.py`) and its own
   CI (`.github/workflows/backend-ci.yml`); it is not part of the pip package.
 
+The backend subtree tracks the standalone backend repo at
+`https://github.com/auto-skill/auto-skill.git`. After syncing it, update
+`.autoskill-backend-subtree.json` and run:
+
+```bash
+python scripts/check_backend_subtree.py --check-remote
+```
+
+The standalone backend workflow is intentionally kept at the connector repo's
+top-level `.github/workflows/backend-ci.yml`, not under `backend/.github/`.
+
 ## Demo
 
 Three real tasks, run against the live index (2026-07-07) -- not placeholder

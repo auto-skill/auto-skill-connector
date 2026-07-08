@@ -21,8 +21,11 @@ jobs:
         run: python -m pip install -e ".[dev]"
       - name: Run tests
         run: python -m pytest tests/ -v
+      - name: Check backend subtree metadata
+        run: python scripts/check_backend_subtree.py
       - name: Compile launch-critical modules
         run: >
           python -m py_compile
           auto_skill_core.py auto_skill_cli.py mcp_server.py hooks/skill_suggest.py
-          scripts/live_smoke.py tests/test_core.py tests/test_cli.py tests/test_hook_parity.py
+          scripts/live_smoke.py scripts/check_backend_subtree.py
+          tests/test_core.py tests/test_cli.py tests/test_hook_parity.py
