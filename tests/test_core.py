@@ -191,6 +191,39 @@ def test_route_task_payload_returns_router_decision(monkeypatch: pytest.MonkeyPa
     assert "apply it immediately" in result["instructions"]
 
 
+def test_route_task_payload_downgrades_oversized_backend_content(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AUTOSKILL_MAX_INJECTED_CHARS", "260")
+
+    class LargeRouteClient:
+        async def get(self, url: str, **kwargs: object) -> FakeResponse:
+            raise AssertionError(f"backend /route already supplied content: {url} {kwargs}")
+
+        async def post(self, url: str, **kwargs: object) -> FakeResponse:
+            assert url.endswith("/route")
+            return FakeResponse(
+                200,
+                {
+                    "tier": "full",
+                    "skill": {
+                        "name": "spreadsheet-router",
+                        "description": "Create spreadsheet reports.",
+                        "url": "https://github.com/example/skills/tree/main/spreadsheet",
+                        "route_score": 0.92,
+                        "similarity": 0.92,
+                        "risk_score": 0,
+                    },
+                    "content": VALID_SKILL + ("\n- Extra detailed workflow step." * 20),
+                    "score_debug": {"tier": "full"},
+                },
+            )
+
+    result = asyncio.run(core.route_task_payload("make a spreadsheet", client=LargeRouteClient()))
+    assert result["routed"] is True
+    assert result["route_type"] == "hint"
+    assert result["skill_content"] == ""
+    assert "injection budget" in result["warnings"][0]
+
+
 def test_route_task_payload_returns_hint_without_fetch(monkeypatch: pytest.MonkeyPatch) -> None:
     class HintClient:
         async def get(self, url: str, **kwargs: object) -> FakeResponse:
@@ -356,6 +389,45 @@ def test_route_task_falls_back_for_legacy_backend_without_route(monkeypatch: pyt
     result = asyncio.run(core.route_task_payload("make a spreadsheet", client=LegacyClient()))
     assert result["routed"] is True
     assert result["search_backend"] == "self-hosted"
+
+
+def test_legacy_route_downgrades_oversized_fetched_content(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AUTOSKILL_MAX_INJECTED_CHARS", "260")
+
+    class LegacyClient:
+        async def post(self, url: str, **kwargs: object) -> FakeResponse:
+            del url, kwargs
+            return FakeResponse(403, {"error": "read-only public API"})
+
+        async def get(self, url: str, **kwargs: object) -> FakeResponse:
+            if "find-semantic" in url:
+                return FakeResponse(
+                    200,
+                    {
+                        "results": [
+                            {
+                                "name": "spreadsheet-router",
+                                "description": "Create spreadsheet reports.",
+                                "url": "https://github.com/example/skills/tree/main/spreadsheet",
+                                "rank": 10,
+                                "similarity": 0.92,
+                                "risk_score": 0,
+                            }
+                        ]
+                    },
+                )
+            raise AssertionError(f"unexpected get: {url} {kwargs}")
+
+    async def fake_fetch(client: object, url: str) -> str:
+        del client, url
+        return VALID_SKILL + ("\n- Extra detailed workflow step." * 20)
+
+    monkeypatch.setattr(core, "_fetch_content", fake_fetch)
+    result = asyncio.run(core.route_task_payload("make a spreadsheet", client=LegacyClient()))
+    assert result["routed"] is True
+    assert result["route_type"] == "hint"
+    assert result["skill_content"] == ""
+    assert "injection budget" in result["warnings"][0]
 
 
 def test_route_prompt_payload_skips_without_network() -> None:

@@ -19,6 +19,7 @@ _REPO_RE = re.compile(r"github\.com/([^/]+)/([^/#?]+)(?:[/#?].*)?$")
 _URL_RE = re.compile(r"^https?://", re.IGNORECASE)
 _MIN_SKILL_CONTENT_CHARS = 180
 _MIN_SKILL_WORDS = 35
+_DEFAULT_MAX_INJECTED_CONTENT_CHARS = 12000
 _FULL_SIMILARITY_THRESHOLD = 0.90
 _HINT_SIMILARITY_THRESHOLD = 0.87
 _NAME_STOPWORDS = {
@@ -359,6 +360,17 @@ def _env_float(name: str, default: float) -> float:
         return default
 
 
+def _max_injected_content_chars() -> int:
+    try:
+        return int(os.getenv("AUTOSKILL_MAX_INJECTED_CHARS", str(_DEFAULT_MAX_INJECTED_CONTENT_CHARS)))
+    except ValueError:
+        return _DEFAULT_MAX_INJECTED_CONTENT_CHARS
+
+
+def _content_exceeds_budget(content: str) -> bool:
+    return len(content or "") > _max_injected_content_chars()
+
+
 def _candidate_similarity(candidate: dict[str, Any]) -> float | None:
     for key in ("similarity", "score", "semantic_score", "vector_score"):
         value = candidate.get(key)
@@ -689,6 +701,19 @@ async def _route_selfhosted(
             "install_hint": "Preview the selected_skill.url before installing.",
             **common,
         }
+    if _content_exceeds_budget(content):
+        warnings.append("Backend selected a full route, but SKILL.md content exceeded the connector injection budget; downgraded to hint.")
+        return {
+            "routed": True,
+            "route_type": "hint",
+            "route_tier": "hint",
+            "selected_skill": {**selected, "routing_tier": "hint"},
+            "skill_content": "",
+            "message": "A matching skill exists, but full content exceeded the injection budget. Treat this as a hint.",
+            "instructions": "Do not inject or follow full SKILL.md content for this task.",
+            "install_hint": "Preview the selected_skill.url before installing.",
+            **common,
+        }
 
     return {
         "routed": True,
@@ -784,6 +809,9 @@ async def recommend_skill_payload(task: str, client: httpx.AsyncClient | None = 
         content = await _fetch_content(client, top.get("url", ""))
         if not content:
             warnings.append(f"Matched skill content could not be fetched or was not usable: {top.get('url')}")
+            continue
+        if _content_exceeds_budget(content):
+            warnings.append(f"Matched skill content exceeded injection budget: {top.get('url')}")
             continue
         selected = _public_candidate(top, task)
         return {
@@ -898,6 +926,21 @@ async def route_task_payload(task: str, client: httpx.AsyncClient | None = None)
                 f"Skipped matched skill because its SKILL.md content was missing or low quality: {candidate.get('url')}"
             )
             continue
+        if _content_exceeds_budget(content):
+            common["warnings"].append(
+                f"Downgraded matched skill because its SKILL.md content exceeded the injection budget: {candidate.get('url')}"
+            )
+            return {
+                "routed": True,
+                "route_type": "hint",
+                "route_tier": "hint",
+                "selected_skill": {**selected, "routing_tier": "hint"},
+                "skill_content": "",
+                "message": "A matching skill exists, but full content exceeded the injection budget. Treat this as a hint.",
+                "instructions": "Do not inject or follow full SKILL.md content for this task.",
+                "install_hint": "Preview the selected_skill.url before installing.",
+                **common,
+            }
 
         return {
             "routed": True,
