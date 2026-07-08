@@ -32,6 +32,19 @@ _ACK_PROMPTS = {"ok", "okay", "yes", "no", "thanks", "thank you", "continue", "g
 _META_PATTERNS = ("what did you", "what are you", "what is the current state", "current state", "explain this", "summarize", "status", "whats the", "what's the", "why is", "why did", "remember th", "sounds good", "that worked", "looks good", "can you explain", "what you just")
 
 
+def _auth_headers() -> dict[str, str]:
+    """Read the token `auto-skill login` stored (see auto_skill_auth.py). This
+    file can't import that module -- it ships and runs standalone as a Claude
+    Code hook -- so it re-reads the same credentials file directly."""
+    override = os.getenv("AUTOSKILL_CREDENTIALS_PATH")
+    path = Path(override) if override else Path.home() / ".autoskill" / "credentials.json"
+    try:
+        token = json.loads(path.read_text(encoding="utf-8")).get("token")
+    except Exception:
+        return {}
+    return {"Authorization": f"Bearer {token}"} if token else {}
+
+
 def _should_route(prompt: str) -> tuple[bool, str]:
     text = " ".join(prompt.split())
     lowered = text.lower()
@@ -70,10 +83,11 @@ def _selfhosted_matches(prompt: str) -> tuple[list[dict], str] | None:
     if not AUTOSKILL_URL:
         return None
     try:
-        with urllib.request.urlopen(
+        request = urllib.request.Request(
             f"{AUTOSKILL_URL}/find-semantic?q={quote(prompt[:500])}&limit=8",
-            timeout=TIMEOUT_SECONDS,
-        ) as r:
+            headers=_auth_headers(),
+        )
+        with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as r:
             body = json.load(r)
             return _safe_dedupe(body.get("results") or []), body.get("tier", "none")
     except Exception:
@@ -96,7 +110,7 @@ def _selfhosted_route(prompt: str) -> dict | None:
         request = urllib.request.Request(
             f"{AUTOSKILL_URL}/route",
             data=body,
-            headers={"Content-Type": "application/json"},
+            headers={"Content-Type": "application/json", **_auth_headers()},
             method="POST",
         )
         with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as r:

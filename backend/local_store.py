@@ -111,12 +111,75 @@ CREATE TABLE IF NOT EXISTS route_events (
 
 CREATE INDEX IF NOT EXISTS route_events_created_at_idx ON route_events(created_at);
 CREATE INDEX IF NOT EXISTS route_events_tier_idx ON route_events(tier);
+
+CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    email TEXT UNIQUE NOT NULL,
+    name TEXT,
+    avatar_url TEXT,
+    created_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS oauth_identities (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    provider_user_id TEXT NOT NULL,
+    created_at TEXT,
+    UNIQUE(provider, provider_user_id)
+);
+CREATE INDEX IF NOT EXISTS oauth_identities_user_idx ON oauth_identities(user_id);
+
+CREATE TABLE IF NOT EXISTS cli_tokens (
+    id TEXT PRIMARY KEY,
+    token_hash TEXT UNIQUE NOT NULL,
+    user_id TEXT NOT NULL,
+    created_at TEXT,
+    last_used_at TEXT,
+    revoked_at TEXT
+);
+CREATE INDEX IF NOT EXISTS cli_tokens_user_idx ON cli_tokens(user_id);
+
+CREATE TABLE IF NOT EXISTS favorites (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    skill_id TEXT NOT NULL,
+    created_at TEXT,
+    UNIQUE(user_id, skill_id)
+);
+CREATE INDEX IF NOT EXISTS favorites_user_idx ON favorites(user_id);
+
+CREATE TABLE IF NOT EXISTS installs (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    skill_id TEXT,
+    skill_url TEXT,
+    target TEXT,
+    installed_at TEXT
+);
+CREATE INDEX IF NOT EXISTS installs_user_idx ON installs(user_id);
+
+CREATE TABLE IF NOT EXISTS private_skills (
+    id TEXT PRIMARY KEY,
+    owner_user_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT,
+    content TEXT NOT NULL,
+    created_at TEXT
+);
+CREATE INDEX IF NOT EXISTS private_skills_owner_idx ON private_skills(owner_user_id);
 """
 
 TABLES = {
     "skills": {"unique": "url", "json_cols": {"tags", "raw", "risk_flags", "quality_reasons", "platforms"}},
     "scrape_runs": {"unique": None, "json_cols": set()},
     "route_events": {"unique": None, "json_cols": {"warnings"}},
+    "users": {"unique": "email", "json_cols": set()},
+    "oauth_identities": {"unique": None, "json_cols": set()},
+    "cli_tokens": {"unique": "token_hash", "json_cols": set()},
+    "favorites": {"unique": None, "json_cols": set()},
+    "installs": {"unique": None, "json_cols": set()},
+    "private_skills": {"unique": None, "json_cols": set()},
 }
 
 SKILL_COLUMN_DEFAULTS = {
@@ -138,6 +201,7 @@ ROUTE_EVENT_COLUMN_DEFAULTS = {
     "rerank_ms": "INTEGER",
     "candidate_tokens": "INTEGER",
     "injected_tokens": "INTEGER",
+    "user_id": "TEXT",
 }
 
 
@@ -847,3 +911,183 @@ def hybrid_search_skills(
         out.append(row)
     out.sort(key=lambda r: r["rank"], reverse=True)
     return out
+
+
+# --- Accounts: users, OAuth identities, CLI tokens, and per-user data ------
+
+def get_or_create_user(email: str, name: str | None, avatar_url: str | None) -> dict:
+    """Find a user by email, or create one. Existing name/avatar_url are
+    refreshed from the identity provider's latest profile on every login."""
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
+        if row is None:
+            user_id = str(uuid.uuid4())
+            conn.execute(
+                "INSERT INTO users (id, email, name, avatar_url, created_at) VALUES (?, ?, ?, ?, ?)",
+                (user_id, email, name, avatar_url, _now()),
+            )
+        else:
+            user_id = row["id"]
+            conn.execute(
+                "UPDATE users SET name=?, avatar_url=? WHERE id=?",
+                (name, avatar_url, user_id),
+            )
+        conn.commit()
+        return dict(conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone())
+    finally:
+        conn.close()
+
+
+def link_oauth_identity(user_id: str, provider: str, provider_user_id: str) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO oauth_identities (id, user_id, provider, provider_user_id, created_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (str(uuid.uuid4()), user_id, provider, provider_user_id, _now()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def create_cli_token(user_id: str, token_hash: str) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT INTO cli_tokens (id, token_hash, user_id, created_at) VALUES (?, ?, ?, ?)",
+            (str(uuid.uuid4()), token_hash, user_id, _now()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_user_by_token_hash(token_hash: str) -> dict | None:
+    """Resolve a live (non-revoked) CLI token to its user, bumping last_used_at."""
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT u.* FROM cli_tokens t JOIN users u ON u.id = t.user_id "
+            "WHERE t.token_hash=? AND t.revoked_at IS NULL",
+            (token_hash,),
+        ).fetchone()
+        if row is None:
+            return None
+        conn.execute("UPDATE cli_tokens SET last_used_at=? WHERE token_hash=?", (_now(), token_hash))
+        conn.commit()
+        return dict(row)
+    finally:
+        conn.close()
+
+
+def revoke_cli_token(token_hash: str) -> bool:
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            "UPDATE cli_tokens SET revoked_at=? WHERE token_hash=? AND revoked_at IS NULL",
+            (_now(), token_hash),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def add_favorite(user_id: str, skill_id: str) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO favorites (id, user_id, skill_id, created_at) VALUES (?, ?, ?, ?)",
+            (str(uuid.uuid4()), user_id, skill_id, _now()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def remove_favorite(user_id: str, skill_id: str) -> bool:
+    conn = get_conn()
+    try:
+        cur = conn.execute("DELETE FROM favorites WHERE user_id=? AND skill_id=?", (user_id, skill_id))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def list_favorites(user_id: str) -> list[dict]:
+    """Favorited skills joined with their current skill row, newest first."""
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT s.*, f.created_at AS favorited_at FROM favorites f "
+            "JOIN skills s ON s.id = f.skill_id WHERE f.user_id=? ORDER BY f.created_at DESC",
+            (user_id,),
+        ).fetchall()
+        return [_row_to_dict(r, "skills", None) | {"favorited_at": r["favorited_at"]} for r in rows]
+    finally:
+        conn.close()
+
+
+def record_install(user_id: str, skill_id: str | None, skill_url: str | None, target: str) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT INTO installs (id, user_id, skill_id, skill_url, target, installed_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (str(uuid.uuid4()), user_id, skill_id, skill_url, target, _now()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def list_installs(user_id: str) -> list[dict]:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM installs WHERE user_id=? ORDER BY installed_at DESC", (user_id,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def add_private_skill(owner_user_id: str, name: str, description: str | None, content: str) -> dict:
+    conn = get_conn()
+    try:
+        skill_id = str(uuid.uuid4())
+        conn.execute(
+            "INSERT INTO private_skills (id, owner_user_id, name, description, content, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (skill_id, owner_user_id, name, description, content, _now()),
+        )
+        conn.commit()
+        return dict(conn.execute("SELECT * FROM private_skills WHERE id=?", (skill_id,)).fetchone())
+    finally:
+        conn.close()
+
+
+def list_private_skills(owner_user_id: str) -> list[dict]:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM private_skills WHERE owner_user_id=? ORDER BY created_at DESC", (owner_user_id,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def remove_private_skill(owner_user_id: str, skill_id: str) -> bool:
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            "DELETE FROM private_skills WHERE id=? AND owner_user_id=?", (skill_id, owner_user_id)
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()

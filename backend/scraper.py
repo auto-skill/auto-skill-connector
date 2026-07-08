@@ -41,11 +41,18 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 # When this app is exposed to the internet through a tunnel (cloudflared runs
 # on this machine and proxies to loopback), tunneled requests carry forwarding
 # headers while genuinely local callers (scraper itself, recommender, hook,
-# mcp_server) do not. Public callers get search/read endpoints only -- the
-# local REST surface has no auth, so every /rest/v1 path must stay loopback-only.
-PUBLIC_GET_PATHS = frozenset({"/", "/healthz", "/readyz", "/status", "/find-semantic"})
-PUBLIC_GET_PREFIXES = ("/content/",)
-PUBLIC_POST_PATHS = frozenset({"/route"})
+# mcp_server) do not. Public callers get search/read endpoints, the /auth and
+# /favorites/installs/private-skills account endpoints (each of those enforces
+# its own bearer-token auth in accounts_api.py -- this guard just decides what
+# reaches FastAPI at all), and /route -- the local REST surface has no auth of
+# its own, so every /rest/v1 path must stay loopback-only.
+PUBLIC_GET_PATHS = frozenset(
+    {"/", "/healthz", "/readyz", "/status", "/find-semantic", "/favorites", "/installs", "/private-skills"}
+)
+PUBLIC_GET_PREFIXES = ("/content/", "/auth/")
+PUBLIC_POST_PATHS = frozenset({"/route", "/favorites", "/installs", "/private-skills"})
+PUBLIC_POST_PREFIXES = ("/auth/",)
+PUBLIC_DELETE_PREFIXES = ("/favorites/", "/private-skills/")
 
 
 def public_api_allows(method: str, path: str) -> bool:
@@ -54,7 +61,9 @@ def public_api_allows(method: str, path: str) -> bool:
     if method == "GET":
         return path in PUBLIC_GET_PATHS or any(path.startswith(prefix) for prefix in PUBLIC_GET_PREFIXES)
     if method == "POST":
-        return path in PUBLIC_POST_PATHS
+        return path in PUBLIC_POST_PATHS or any(path.startswith(prefix) for prefix in PUBLIC_POST_PREFIXES)
+    if method == "DELETE":
+        return any(path.startswith(prefix) for prefix in PUBLIC_DELETE_PREFIXES)
     return False
 
 
@@ -73,6 +82,11 @@ async def public_readonly_guard(request, call_next):
 from local_api import router as local_db_router  # noqa: E402
 import local_store as store  # noqa: E402
 app.include_router(local_db_router)
+
+# Accounts: OAuth login (Google/GitHub) and per-user favorites/installs/private
+# skills, all backed by the same local SQLite store -- see auth.py.
+from accounts_api import router as accounts_router  # noqa: E402
+app.include_router(accounts_router)
 
 # Semantic recommender (hybrid pgvector search + optional Ollama chat) lives in
 # its own module; it also embeds newly scraped skills in the background.

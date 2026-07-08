@@ -221,6 +221,18 @@ class ApiContractTests(unittest.TestCase):
             ("GET", "/find-semantic"),
             ("GET", "/content/{hash_value}"),
             ("POST", "/route"),
+            ("GET", "/auth/{provider}/start"),
+            ("GET", "/auth/{provider}/callback"),
+            ("GET", "/auth/whoami"),
+            ("POST", "/auth/logout"),
+            ("GET", "/favorites"),
+            ("POST", "/favorites"),
+            ("DELETE", "/favorites/{skill_id}"),
+            ("GET", "/installs"),
+            ("POST", "/installs"),
+            ("GET", "/private-skills"),
+            ("POST", "/private-skills"),
+            ("DELETE", "/private-skills/{skill_id}"),
         }
         discovered_public_routes = set()
 

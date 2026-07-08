@@ -9,6 +9,8 @@ from typing import Any
 
 import httpx
 
+from auto_skill_auth import auth_headers
+
 DEFAULT_AUTOSKILL_URL = "https://skills.avalahome.com"
 CLIENT_NAME = "auto-skill-connector"
 CLIENT_VERSION = "0.1.0"
@@ -120,6 +122,11 @@ class SkillAlreadyExistsError(AutoSkillError):
     def __init__(self, dest_file: Path) -> None:
         super().__init__(f"Skill already exists at {dest_file}")
         self.dest_file = dest_file
+
+
+class NotLoggedInError(AutoSkillError):
+    """Raised when an account action (favorites, private skills) is attempted
+    without a valid `auto-skill login` session."""
 
 
 def get_autoskill_url() -> str:
@@ -522,6 +529,7 @@ async def _search_selfhosted(
         r = await client.get(
             f"{url}/find-semantic",
             params={"q": task, "limit": 8},
+            headers=auth_headers(),
             timeout=10,
         )
         if r.status_code != 200:
@@ -563,8 +571,12 @@ def _public_backend_skill(skill: dict[str, Any] | None, task: str, tier: str) ->
 
 async def _fetch_backend_content_url(client: httpx.AsyncClient, autoskill_url: str, content_url: str) -> str:
     target = content_url if is_url(content_url) else f"{autoskill_url.rstrip('/')}/{content_url.lstrip('/')}"
+    # Only send our bearer token to our own backend -- content_url could in
+    # principle be an absolute third-party URL, and the token must never leak
+    # to a host we didn't configure.
+    headers = auth_headers() if target.startswith(autoskill_url.rstrip("/")) else {}
     try:
-        r = await client.get(target, timeout=10)
+        r = await client.get(target, headers=headers, timeout=10)
         if (
             r.status_code == 200
             and _looks_like_skill_content(r.text)
@@ -600,6 +612,7 @@ async def _route_selfhosted(
                 "client": CLIENT_NAME,
                 "client_version": CLIENT_VERSION,
             },
+            headers=auth_headers(),
             timeout=10,
         )
     except Exception:
@@ -1025,6 +1038,7 @@ async def record_route_feedback(
                 "source": source[:80],
                 "note": note[:300],
             },
+            headers=auth_headers(),
             timeout=5,
         )
         return response.status_code == 200
@@ -1171,3 +1185,149 @@ async def install_skill_from_url(
         force=force,
         dry_run=dry_run,
     )
+
+
+# --- Accounts: favorites, private skills, install reporting ----------------
+# These all require an `auto-skill login` session (see auto_skill_auth.py);
+# NotLoggedInError is raised locally before any network call when there is no
+# stored token, and again if the backend reports the token as expired/revoked.
+
+def _require_auth_headers() -> dict[str, str]:
+    headers = auth_headers()
+    if not headers:
+        raise NotLoggedInError("Not logged in. Run `auto-skill login` first.")
+    return headers
+
+
+async def whoami(client: httpx.AsyncClient | None = None) -> dict[str, Any] | None:
+    """Return the logged-in user's profile, or None if logged out / the
+    stored session is no longer valid."""
+    if client is None:
+        async with httpx.AsyncClient() as owned:
+            return await whoami(client=owned)
+    headers = auth_headers()
+    if not headers:
+        return None
+    try:
+        r = await client.get(f"{get_autoskill_url()}/auth/whoami", headers=headers, timeout=10)
+    except Exception:
+        return None
+    return r.json() if r.status_code == 200 else None
+
+
+async def logout_backend(client: httpx.AsyncClient | None = None) -> bool:
+    """Revoke the current session token server-side. Fails open (returns True)
+    when already logged out, since there is nothing left to revoke."""
+    headers = auth_headers()
+    if not headers:
+        return True
+    if client is None:
+        async with httpx.AsyncClient() as owned:
+            return await logout_backend(client=owned)
+    try:
+        r = await client.post(f"{get_autoskill_url()}/auth/logout", headers=headers, timeout=10)
+        return r.status_code == 200
+    except Exception:
+        return False
+
+
+async def list_favorites(client: httpx.AsyncClient | None = None) -> list[dict[str, Any]]:
+    if client is None:
+        async with httpx.AsyncClient() as owned:
+            return await list_favorites(client=owned)
+    headers = _require_auth_headers()
+    r = await client.get(f"{get_autoskill_url()}/favorites", headers=headers, timeout=10)
+    if r.status_code == 401:
+        raise NotLoggedInError("Session expired. Run `auto-skill login` again.")
+    r.raise_for_status()
+    return r.json().get("favorites", [])
+
+
+async def add_favorite(skill_id: str, client: httpx.AsyncClient | None = None) -> None:
+    if client is None:
+        async with httpx.AsyncClient() as owned:
+            return await add_favorite(skill_id, client=owned)
+    headers = _require_auth_headers()
+    r = await client.post(
+        f"{get_autoskill_url()}/favorites", json={"skill_id": skill_id}, headers=headers, timeout=10
+    )
+    if r.status_code == 401:
+        raise NotLoggedInError("Session expired. Run `auto-skill login` again.")
+    r.raise_for_status()
+
+
+async def remove_favorite(skill_id: str, client: httpx.AsyncClient | None = None) -> bool:
+    if client is None:
+        async with httpx.AsyncClient() as owned:
+            return await remove_favorite(skill_id, client=owned)
+    headers = _require_auth_headers()
+    r = await client.delete(f"{get_autoskill_url()}/favorites/{skill_id}", headers=headers, timeout=10)
+    if r.status_code == 401:
+        raise NotLoggedInError("Session expired. Run `auto-skill login` again.")
+    return r.status_code == 200
+
+
+async def list_private_skills(client: httpx.AsyncClient | None = None) -> list[dict[str, Any]]:
+    if client is None:
+        async with httpx.AsyncClient() as owned:
+            return await list_private_skills(client=owned)
+    headers = _require_auth_headers()
+    r = await client.get(f"{get_autoskill_url()}/private-skills", headers=headers, timeout=10)
+    if r.status_code == 401:
+        raise NotLoggedInError("Session expired. Run `auto-skill login` again.")
+    r.raise_for_status()
+    return r.json().get("private_skills", [])
+
+
+async def submit_private_skill(
+    name: str, description: str, content: str, client: httpx.AsyncClient | None = None
+) -> dict[str, Any]:
+    if client is None:
+        async with httpx.AsyncClient() as owned:
+            return await submit_private_skill(name, description, content, client=owned)
+    headers = _require_auth_headers()
+    r = await client.post(
+        f"{get_autoskill_url()}/private-skills",
+        json={"name": name, "description": description, "content": content},
+        headers=headers,
+        timeout=10,
+    )
+    if r.status_code == 401:
+        raise NotLoggedInError("Session expired. Run `auto-skill login` again.")
+    r.raise_for_status()
+    return r.json()["private_skill"]
+
+
+async def remove_private_skill(skill_id: str, client: httpx.AsyncClient | None = None) -> bool:
+    if client is None:
+        async with httpx.AsyncClient() as owned:
+            return await remove_private_skill(skill_id, client=owned)
+    headers = _require_auth_headers()
+    r = await client.delete(f"{get_autoskill_url()}/private-skills/{skill_id}", headers=headers, timeout=10)
+    if r.status_code == 401:
+        raise NotLoggedInError("Session expired. Run `auto-skill login` again.")
+    return r.status_code == 200
+
+
+async def report_install(
+    skill_id: str | None, skill_url: str | None, target: str, client: httpx.AsyncClient | None = None
+) -> None:
+    """Best-effort server-side install record for a logged-in user. Silently
+    does nothing when logged out, and never raises (mirrors
+    record_route_feedback's fail-open style)."""
+    headers = auth_headers()
+    if not headers:
+        return
+    if client is None:
+        async with httpx.AsyncClient() as owned:
+            await report_install(skill_id, skill_url, target, client=owned)
+        return
+    try:
+        await client.post(
+            f"{get_autoskill_url()}/installs",
+            json={"skill_id": skill_id, "skill_url": skill_url, "target": target},
+            headers=headers,
+            timeout=5,
+        )
+    except Exception:
+        pass

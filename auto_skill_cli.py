@@ -7,26 +7,40 @@ import asyncio
 import json
 import shutil
 import sys
+import threading
 import time
+import webbrowser
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 import httpx
 
+from auto_skill_auth import clear_credentials, save_credentials
 from auto_skill_core import (
     AutoSkillError,
+    NotLoggedInError,
     SkillAlreadyExistsError,
     UnsupportedTargetError,
     _fetch_content,
     _search,
+    add_favorite,
     get_autoskill_url,
     get_skills_home,
     install_skill_from_content,
     is_url,
+    list_favorites,
+    list_private_skills,
+    logout_backend,
     recommend_skill_payload,
     record_route_feedback,
+    remove_favorite,
+    remove_private_skill,
     route_prompt_payload,
     route_task_payload,
+    submit_private_skill,
+    whoami,
 )
 
 HOOK_SCRIPT_PATH = Path(__file__).resolve().parent / "hooks" / "skill_suggest.py"
@@ -448,6 +462,159 @@ def _command_disable_hook(args: argparse.Namespace) -> int:
     return 0
 
 
+class _LoginCallbackHandler(BaseHTTPRequestHandler):
+    """One-shot local HTTP handler for the OAuth loopback redirect. The
+    backend's /auth/{provider}/callback redirects the browser here with the
+    minted CLI token once login completes -- see backend/accounts_api.py."""
+
+    def do_GET(self) -> None:  # noqa: N802 (BaseHTTPRequestHandler's naming)
+        parsed = urlparse(self.path)
+        if parsed.path != "/callback":
+            self.send_response(404)
+            self.end_headers()
+            return
+        token = (parse_qs(parsed.query).get("token") or [None])[0]
+        self.server.received_token = token  # type: ignore[attr-defined]
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.end_headers()
+        message = (
+            "Login complete -- you can close this tab and return to your terminal."
+            if token
+            else "Login failed -- no token received. Return to your terminal and try again."
+        )
+        self.wfile.write(f"<html><body><p>{message}</p></body></html>".encode("utf-8"))
+
+    def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
+        pass  # keep the CLI's own output clean; failures still surface via _command_login
+
+
+async def _command_login(args: argparse.Namespace) -> int:
+    provider = args.provider
+    if not provider:
+        answer = input("Log in with [1] Google or [2] GitHub? ").strip()
+        provider = "github" if answer == "2" else "google"
+
+    server = HTTPServer(("127.0.0.1", 0), _LoginCallbackHandler)
+    server.received_token = None  # type: ignore[attr-defined]
+    server.timeout = 120  # bound handle_request() so an abandoned login doesn't hang forever
+    port = server.server_address[1]
+
+    thread = threading.Thread(target=server.handle_request, daemon=True)
+    thread.start()
+
+    start_url = f"{get_autoskill_url()}/auth/{provider}/start?port={port}"
+    print(f"Opening your browser to log in with {provider}...")
+    print(f"If it doesn't open automatically, visit: {start_url}")
+    webbrowser.open(start_url)
+
+    thread.join(timeout=125)
+    server.server_close()
+
+    token = server.received_token  # type: ignore[attr-defined]
+    if not token:
+        print("error: login timed out or failed", file=sys.stderr)
+        return 1
+
+    save_credentials({"token": token})
+    profile = await whoami()
+    print(f"Logged in as {profile['email']}" if profile else "Logged in.")
+    return 0
+
+
+async def _command_logout(args: argparse.Namespace) -> int:
+    await logout_backend()
+    clear_credentials()
+    print("logged out")
+    return 0
+
+
+async def _command_whoami(args: argparse.Namespace) -> int:
+    profile = await whoami()
+    if not profile:
+        print("not logged in")
+        return 1
+    print(f"email: {profile['email']}")
+    if profile.get("name"):
+        print(f"name: {profile['name']}")
+    return 0
+
+
+async def _command_favorite(args: argparse.Namespace) -> int:
+    try:
+        await add_favorite(args.skill_id)
+    except NotLoggedInError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print(f"favorited: {args.skill_id}")
+    return 0
+
+
+async def _command_unfavorite(args: argparse.Namespace) -> int:
+    try:
+        removed = await remove_favorite(args.skill_id)
+    except NotLoggedInError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print(f"unfavorited: {args.skill_id}" if removed else f"not favorited: {args.skill_id}")
+    return 0 if removed else 1
+
+
+async def _command_favorites(args: argparse.Namespace) -> int:
+    try:
+        favorites = await list_favorites()
+    except NotLoggedInError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    if not favorites:
+        print("no favorites yet")
+        return 0
+    for index, skill in enumerate(favorites, start=1):
+        print(f"{index}. {skill.get('name')}")
+        if skill.get("url"):
+            print(f"   {skill['url']}")
+    return 0
+
+
+async def _command_my_skills_add(args: argparse.Namespace) -> int:
+    joined = " ".join(args.content)
+    source = Path(joined)
+    content = source.read_text(encoding="utf-8") if len(args.content) == 1 and source.exists() else joined
+    try:
+        skill = await submit_private_skill(args.name, args.description, content)
+    except NotLoggedInError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print(f"added private skill: {skill['name']} ({skill['id']})")
+    return 0
+
+
+async def _command_my_skills_list(args: argparse.Namespace) -> int:
+    try:
+        skills = await list_private_skills()
+    except NotLoggedInError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    if not skills:
+        print("no private skills yet")
+        return 0
+    for index, skill in enumerate(skills, start=1):
+        print(f"{index}. {skill['name']} ({skill['id']})")
+        if skill.get("description"):
+            print(f"   {skill['description']}")
+    return 0
+
+
+async def _command_my_skills_remove(args: argparse.Namespace) -> int:
+    try:
+        removed = await remove_private_skill(args.skill_id)
+    except NotLoggedInError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print(f"removed: {args.skill_id}" if removed else f"not found: {args.skill_id}")
+    return 0 if removed else 1
+
+
 async def _command_doctor(args: argparse.Namespace) -> int:
     ok = True
     settings_path = Path(args.settings_path) if args.settings_path else _default_settings_path()
@@ -509,6 +676,10 @@ async def _command_doctor(args: argparse.Namespace) -> int:
         print(f"mcp: unavailable ({exc})")
         ok = False
     print("codex permanent skill install: unsupported; use MCP route_task in-turn")
+
+    profile = await whoami()
+    print(f"account: logged in as {profile['email']}" if profile else "account: not logged in (run `auto-skill login`)")
+
     return 0 if ok else 1
 
 
@@ -568,6 +739,44 @@ def build_parser() -> argparse.ArgumentParser:
     disable_hook = subparsers.add_parser("disable-hook", help="Remove the auto-skill routing hook from Claude Code settings.")
     disable_hook.add_argument("--settings-path", default="", help="Override the Claude Code settings.json path (for testing).")
     disable_hook.set_defaults(func=_command_disable_hook)
+
+    login = subparsers.add_parser("login", help="Log in with Google or GitHub to get your own auto-skill account.")
+    login.add_argument("--provider", choices=["google", "github"], default="", help="Skip the interactive prompt.")
+    login.set_defaults(func=_command_login)
+
+    logout = subparsers.add_parser("logout", help="Log out and forget the stored session.")
+    logout.set_defaults(func=_command_logout)
+
+    whoami_cmd = subparsers.add_parser("whoami", help="Show the logged-in account, if any.")
+    whoami_cmd.set_defaults(func=_command_whoami)
+
+    favorite = subparsers.add_parser("favorite", help="Favorite a skill by id (requires login).")
+    favorite.add_argument("skill_id", help="Skill id to favorite.")
+    favorite.set_defaults(func=_command_favorite)
+
+    unfavorite = subparsers.add_parser("unfavorite", help="Remove a favorited skill by id (requires login).")
+    unfavorite.add_argument("skill_id", help="Skill id to unfavorite.")
+    unfavorite.set_defaults(func=_command_unfavorite)
+
+    favorites = subparsers.add_parser("favorites", help="List your favorited skills (requires login).")
+    favorites.set_defaults(func=_command_favorites)
+
+    my_skills = subparsers.add_parser("my-skills", help="Manage your private skill submissions (requires login).")
+    my_skills_sub = my_skills.add_subparsers(dest="my_skills_command", required=True)
+
+    my_skills_add = my_skills_sub.add_parser("add", help="Submit a private skill.")
+    my_skills_add.add_argument("name", help="Skill name.")
+    my_skills_add.add_argument("content", nargs="+", help="Skill content, or a path to a SKILL.md file.")
+    my_skills_add.add_argument("--description", default="", help="Short description.")
+    my_skills_add.set_defaults(func=_command_my_skills_add)
+
+    my_skills_list = my_skills_sub.add_parser("list", help="List your private skills.")
+    my_skills_list.set_defaults(func=_command_my_skills_list)
+
+    my_skills_remove = my_skills_sub.add_parser("remove", help="Remove a private skill by id.")
+    my_skills_remove.add_argument("skill_id", help="Private skill id to remove.")
+    my_skills_remove.set_defaults(func=_command_my_skills_remove)
+
     return parser
 
 

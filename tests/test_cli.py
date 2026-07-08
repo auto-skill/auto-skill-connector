@@ -15,9 +15,10 @@ def test_doctor_outputs_setup(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setenv("AUTOSKILL_URL", "")  # skip the live reachability check
-    # Isolate from the real ~/.claude/settings.json -- doctor only reads it,
-    # but a test shouldn't depend on (or be affected by) the developer's
-    # actual local hook registration.
+    # Isolate from the real ~/.claude/settings.json and ~/.autoskill/credentials.json
+    # -- doctor only reads them, but a test shouldn't depend on (or be affected
+    # by) the developer's actual local hook registration or login session.
+    monkeypatch.setenv("AUTOSKILL_CREDENTIALS_PATH", str(tmp_path / "credentials.json"))
     settings_path = tmp_path / "settings.json"
     result = asyncio.run(cli._command_doctor(argparse.Namespace(settings_path=str(settings_path))))
     out = capsys.readouterr().out
