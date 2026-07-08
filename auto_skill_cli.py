@@ -24,6 +24,7 @@ from auto_skill_core import (
     install_skill_from_content,
     is_url,
     recommend_skill_payload,
+    record_route_feedback,
     route_prompt_payload,
     route_task_payload,
 )
@@ -158,6 +159,20 @@ async def _command_route_prompt(args: argparse.Namespace) -> int:
     print("injectable context:")
     print(payload.get("context", ""))
     return 0
+
+
+async def _command_feedback(args: argparse.Namespace) -> int:
+    ok = await record_route_feedback(
+        args.route_id,
+        args.outcome,
+        source="auto-skill-cli",
+        note=args.note,
+    )
+    if ok:
+        print(f"recorded feedback: route_id={args.route_id} outcome={args.outcome}")
+        return 0
+    print("feedback was not recorded")
+    return 1
 
 
 async def _resolve_cli_skill(source: str) -> dict[str, Any]:
@@ -488,6 +503,12 @@ def build_parser() -> argparse.ArgumentParser:
     route_prompt.add_argument("--json", action="store_true", help="Print the full prompt-routing payload as JSON.")
     route_prompt.add_argument("--context-only", action="store_true", help="Print only the context to inject.")
     route_prompt.set_defaults(func=_command_route_prompt)
+
+    feedback = subparsers.add_parser("feedback", help="Record privacy-safe route outcome feedback.")
+    feedback.add_argument("route_id", help="Route id returned by route or route-prompt JSON.")
+    feedback.add_argument("outcome", choices=["used", "skipped", "installed", "failed", "dismissed"], help="Outcome to record.")
+    feedback.add_argument("--note", default="", help="Optional short note; do not include raw prompts.")
+    feedback.set_defaults(func=_command_feedback)
 
     preview = subparsers.add_parser("preview", help="Preview a skill by URL or task description.")
     preview.add_argument("source", nargs="+", help="Skill URL or task description.")

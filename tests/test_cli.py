@@ -110,6 +110,40 @@ def test_route_prompt_skips_non_task(
     assert "skip: too short" in out
 
 
+def test_feedback_command_records_outcome(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    async def fake_feedback(route_id: str, outcome: str, *, source: str, note: str, client: object | None = None) -> bool:
+        del client
+        assert route_id == "route-123"
+        assert outcome == "used"
+        assert source == "auto-skill-cli"
+        assert note == "worked"
+        return True
+
+    monkeypatch.setattr(cli, "record_route_feedback", fake_feedback)
+    result = cli.main(["feedback", "route-123", "used", "--note", "worked"])
+    out = capsys.readouterr().out
+    assert result == 0
+    assert "recorded feedback" in out
+
+
+def test_feedback_command_reports_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    async def fake_feedback(route_id: str, outcome: str, *, source: str, note: str, client: object | None = None) -> bool:
+        del route_id, outcome, source, note, client
+        return False
+
+    monkeypatch.setattr(cli, "record_route_feedback", fake_feedback)
+    result = cli.main(["feedback", "route-123", "used"])
+    out = capsys.readouterr().out
+    assert result == 1
+    assert "not recorded" in out
+
+
 def test_install_dry_run_does_not_write(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

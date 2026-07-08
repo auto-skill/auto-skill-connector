@@ -18,6 +18,7 @@ from auto_skill_core import (
     _slugify,
     install_skill_from_url,
     recommend_skill_payload,
+    record_route_feedback,
     route_prompt_payload,
     route_task_payload,
 )
@@ -31,6 +32,7 @@ __all__ = [
     "_slugify",
     "main",
     "recommend_skill",
+    "record_feedback",
     "route_prompt",
     "route_task",
 ]
@@ -87,6 +89,17 @@ async def recommend_skill(task: str) -> dict:
     expensive and less conservative than route_task's hint/no-route policy.
     """
     return await recommend_skill_payload(task)
+
+
+@mcp.tool()
+async def record_feedback(route_id: str, outcome: str, note: str = "") -> dict:
+    """Record privacy-safe outcome feedback for a previous route.
+
+    Use only after a route result has actually been used, skipped, installed,
+    dismissed, or failed. Do not include raw prompts in note.
+    """
+    ok = await record_route_feedback(route_id, outcome, source="auto-skill-mcp", note=note)
+    return {"ok": ok, "route_id": route_id, "outcome": outcome}
 
 
 @mcp.custom_route("/healthz", methods=["GET"])

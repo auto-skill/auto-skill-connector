@@ -177,6 +177,9 @@ instead of round-tripping through DNS and the tunnel.
 - `recommend_skill(task)` searches for a matching skill and returns the full
   instructions for the single best usable match. Use this for explicit preview
   or recommendation flows, not as the always-on router.
+- `record_feedback(route_id, outcome, note?)` records privacy-safe route
+  outcome feedback after a route is used, skipped, installed, dismissed, or
+  fails. Do not include raw prompts in notes.
 - `install_skill(url, name?, target?, force?, dry_run?)` fetches and installs a
   Claude-style skill with overwrite protection. **Only registered on stdio**
   (`claude mcp add` / Claude Desktop's local subprocess config) -- it writes
