@@ -931,6 +931,42 @@ async def route_task_payload(task: str, client: httpx.AsyncClient | None = None)
     }
 
 
+async def record_route_feedback(
+    route_id: str,
+    outcome: str,
+    *,
+    source: str = CLIENT_NAME,
+    note: str = "",
+    client: httpx.AsyncClient | None = None,
+) -> bool:
+    """Best-effort local-host feedback for route outcome analytics."""
+    route_id = (route_id or "").strip()
+    outcome = (outcome or "").strip().lower()
+    if not route_id or outcome not in {"used", "skipped", "installed", "failed", "dismissed"}:
+        return False
+    if client is None:
+        async with httpx.AsyncClient() as owned:
+            return await record_route_feedback(route_id, outcome, source=source, note=note, client=owned)
+
+    url = get_autoskill_url()
+    if not url:
+        return False
+    try:
+        response = await client.post(
+            f"{url}/route-feedback",
+            json={
+                "route_id": route_id,
+                "outcome": outcome,
+                "source": source[:80],
+                "note": note[:300],
+            },
+            timeout=5,
+        )
+        return response.status_code == 200
+    except Exception:
+        return False
+
+
 def build_route_context(route_payload: dict[str, Any]) -> str:
     """Create compact context that a prompt hook can inject for an agent."""
     if not route_payload.get("routed"):

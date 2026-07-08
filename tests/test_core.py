@@ -293,6 +293,35 @@ def test_route_task_payload_handles_no_route() -> None:
     assert result["route_type"] == "none"
 
 
+def test_record_route_feedback_posts_privacy_safe_payload(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AUTOSKILL_URL", "http://localhost:8000")
+
+    class FeedbackClient:
+        async def post(self, url: str, **kwargs: object) -> FakeResponse:
+            assert url == "http://localhost:8000/route-feedback"
+            assert kwargs["json"] == {
+                "route_id": "route-123",
+                "outcome": "used",
+                "source": core.CLIENT_NAME,
+                "note": "",
+            }
+            return FakeResponse(200, {"ok": True})
+
+    assert asyncio.run(core.record_route_feedback("route-123", "used", client=FeedbackClient())) is True
+
+
+def test_record_route_feedback_fails_closed_for_public_or_invalid(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AUTOSKILL_URL", "http://localhost:8000")
+
+    class FeedbackClient:
+        async def post(self, url: str, **kwargs: object) -> FakeResponse:
+            del url, kwargs
+            return FakeResponse(403, {"error": "read-only public API"})
+
+    assert asyncio.run(core.record_route_feedback("route-123", "used", client=FeedbackClient())) is False
+    assert asyncio.run(core.record_route_feedback("route-123", "raw prompt text", client=FeedbackClient())) is False
+
+
 def test_route_task_falls_back_for_legacy_backend_without_route(monkeypatch: pytest.MonkeyPatch) -> None:
     class LegacyClient:
         async def post(self, url: str, **kwargs: object) -> FakeResponse:
