@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+httpx
+ddgs
+numpy
+onnxruntime
+tokenizers
+huggingface_hub
+mcp>=1.0
