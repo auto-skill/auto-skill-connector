@@ -146,6 +146,10 @@ auto-skill enable-hook --yes
 auto-skill disable-hook
 ```
 
+When the backend provides route metrics, `auto-skill route` prints a short
+`metrics:` line with latency, skill-find time, injected tokens, and response
+tokens. Use it during live smoke checks to spot slow routing or token churn.
+
 Install safety defaults:
 
 - Installs preview the destination and source before writing.

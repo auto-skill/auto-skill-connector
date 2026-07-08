@@ -92,7 +92,16 @@ class RouteClient:
                 },
                 "content": VALID_SKILL,
                 "route_id": "route-123",
-                "score_debug": {"tier": "full", "quality_status": "active"},
+                "score_debug": {
+                    "tier": "full",
+                    "quality_status": "active",
+                    "metrics": {
+                        "latency_ms": 42,
+                        "skill_find_ms": 30,
+                        "injected_tokens": 120,
+                        "response_tokens": 160,
+                    },
+                },
                 "config_version": "test",
             },
         )
@@ -187,6 +196,8 @@ def test_route_task_payload_returns_router_decision(monkeypatch: pytest.MonkeyPa
     assert result["selected_skill"]["name"] == "spreadsheet-router"
     assert result["selected_skill"]["quality_status"] == "active"
     assert result["route_id"] == "route-123"
+    assert result["route_metrics"]["skill_find_ms"] == 30
+    assert result["route_metrics"]["injected_tokens"] == 120
     assert "Generate the workbook" in result["skill_content"]
     assert "apply it immediately" in result["instructions"]
 

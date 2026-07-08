@@ -62,6 +62,25 @@ def _print_candidate(index: int, candidate: dict[str, Any]) -> None:
         print(f"   {candidate.get('url')}")
 
 
+def _print_route_metrics(payload: dict[str, Any]) -> None:
+    metrics = payload.get("route_metrics")
+    if not isinstance(metrics, dict) or not metrics:
+        return
+    parts = []
+    for key, label in (
+        ("latency_ms", "latency"),
+        ("skill_find_ms", "skill_find"),
+        ("injected_tokens", "injected_tokens"),
+        ("response_tokens", "response_tokens"),
+    ):
+        value = metrics.get(key)
+        if isinstance(value, (int, float)):
+            unit = "ms" if key.endswith("_ms") else ""
+            parts.append(f"{label}={int(value)}{unit}")
+    if parts:
+        print(f"metrics: {', '.join(parts)}")
+
+
 async def _command_search(args: argparse.Namespace) -> int:
     task = " ".join(args.task).strip()
     async with httpx.AsyncClient() as client:
@@ -102,6 +121,7 @@ async def _command_route(args: argparse.Namespace) -> int:
     print(f"route: {payload.get('route_type')}")
     if payload.get("route_tier"):
         print(f"tier: {payload.get('route_tier')}")
+    _print_route_metrics(payload)
 
     if not payload.get("routed"):
         print(payload.get("message", "No matching skill found."))

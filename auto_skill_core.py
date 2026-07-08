@@ -626,6 +626,7 @@ async def _route_selfhosted(
 
     tier = str(route.get("tier") or "none").lower()
     debug = route.get("score_debug") if isinstance(route.get("score_debug"), dict) else {}
+    metrics = debug.get("metrics") if isinstance(debug.get("metrics"), dict) else {}
     warnings = list(debug.get("warnings") or route.get("warnings") or [])
     selected = _public_backend_skill(route.get("skill") if isinstance(route.get("skill"), dict) else None, task, tier)
     raw_candidates = route.get("candidates") if isinstance(route.get("candidates"), list) else []
@@ -644,6 +645,7 @@ async def _route_selfhosted(
         "search_backend": "self-hosted-route",
         "warnings": warnings,
         "score_debug": debug,
+        "route_metrics": metrics,
         "config_version": route.get("config_version"),
         "route_id": route.get("route_id"),
         "ttl": route.get("ttl"),

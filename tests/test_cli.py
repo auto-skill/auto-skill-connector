@@ -45,6 +45,12 @@ def test_route_outputs_selected_skill(
                 "risk_score": 0,
             },
             "skill_content": "name: spreadsheet-router\n",
+            "route_metrics": {
+                "latency_ms": 42,
+                "skill_find_ms": 30,
+                "injected_tokens": 120,
+                "response_tokens": 160,
+            },
         }
 
     monkeypatch.setattr(cli, "route_task_payload", fake_route)
@@ -52,6 +58,7 @@ def test_route_outputs_selected_skill(
     out = capsys.readouterr().out
     assert result == 0
     assert "route: skill" in out
+    assert "metrics: latency=42ms, skill_find=30ms, injected_tokens=120, response_tokens=160" in out
     assert "spreadsheet-router" in out
 
 
