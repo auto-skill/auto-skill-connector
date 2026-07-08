@@ -628,6 +628,17 @@ async def _route_selfhosted(
     debug = route.get("score_debug") if isinstance(route.get("score_debug"), dict) else {}
     warnings = list(debug.get("warnings") or route.get("warnings") or [])
     selected = _public_backend_skill(route.get("skill") if isinstance(route.get("skill"), dict) else None, task, tier)
+    raw_candidates = route.get("candidates") if isinstance(route.get("candidates"), list) else []
+    normalized_candidates = []
+    for candidate in raw_candidates:
+        if not isinstance(candidate, dict):
+            continue
+        public_candidate = _public_backend_skill(candidate, task, "hint")
+        if public_candidate.get("name") or public_candidate.get("url"):
+            normalized_candidates.append(public_candidate)
+    route_candidates = _safe_candidates(normalized_candidates)[:3]
+    if tier == "hint" and selected:
+        route_candidates = _safe_candidates(_dedupe_candidates([{**selected, "routing_tier": "hint"}, *route_candidates]))[:3]
     common = {
         "task": task,
         "search_backend": "self-hosted-route",
@@ -637,6 +648,8 @@ async def _route_selfhosted(
         "route_id": route.get("route_id"),
         "ttl": route.get("ttl"),
     }
+    if tier == "hint" and route_candidates:
+        common["candidates"] = route_candidates
 
     if tier == "none" or not selected:
         return {
@@ -690,11 +703,13 @@ async def _route_selfhosted(
         and not _is_unconfirmed_action_content(content)
     ):
         warnings.append("Backend selected a full route, but usable SKILL.md content was unavailable; downgraded to hint.")
+        hint_selected = {**selected, "routing_tier": "hint"}
         return {
             "routed": True,
             "route_type": "hint",
             "route_tier": "hint",
-            "selected_skill": {**selected, "routing_tier": "hint"},
+            "selected_skill": hint_selected,
+            "candidates": _safe_candidates(_dedupe_candidates([hint_selected, *route_candidates]))[:3],
             "skill_content": "",
             "message": "A matching skill exists, but full content was unavailable. Treat this as a hint.",
             "instructions": "Do not inject or follow full SKILL.md content for this task.",
@@ -703,11 +718,13 @@ async def _route_selfhosted(
         }
     if _content_exceeds_budget(content):
         warnings.append("Backend selected a full route, but SKILL.md content exceeded the connector injection budget; downgraded to hint.")
+        hint_selected = {**selected, "routing_tier": "hint"}
         return {
             "routed": True,
             "route_type": "hint",
             "route_tier": "hint",
-            "selected_skill": {**selected, "routing_tier": "hint"},
+            "selected_skill": hint_selected,
+            "candidates": _safe_candidates(_dedupe_candidates([hint_selected, *route_candidates]))[:3],
             "skill_content": "",
             "message": "A matching skill exists, but full content exceeded the injection budget. Treat this as a hint.",
             "instructions": "Do not inject or follow full SKILL.md content for this task.",
@@ -1026,10 +1043,19 @@ def build_route_context(route_payload: dict[str, Any]) -> str:
     score_text = f", score={score}" if score is not None else ""
     if route_payload.get("route_type") == "hint":
         description = selected.get("description") or ""
+        candidates = route_payload.get("candidates") if isinstance(route_payload.get("candidates"), list) else []
+        option_lines = []
+        for index, candidate in enumerate(candidates[:3], start=1):
+            candidate_name = candidate.get("name") or "unknown"
+            candidate_url = candidate.get("url") or ""
+            candidate_description = (candidate.get("description") or "")[:160]
+            option_lines.append(f"{index}. {candidate_name}: {candidate_description} Source: {candidate_url}")
+        options_text = "\nCandidate options:\n" + "\n".join(option_lines) if option_lines else ""
         return (
             f"[auto-skill] Related skill hint: {name}{risk_text}{score_text}, tier={tier}. Source: {url}\n"
             f"Only use this as a hint if it clearly fits the user's task. Do not treat it as active instructions.\n"
             f"{description[:300]}"
+            f"{options_text}"
         )
     return (
         f"[auto-skill] Route selected: {name}{risk_text}{score_text}, tier={tier}. Source: {url}\n\n"

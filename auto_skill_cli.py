@@ -112,6 +112,12 @@ async def _command_route(args: argparse.Namespace) -> int:
     _print_candidate(1, skill)
     print()
     if payload.get("route_type") == "hint":
+        candidates = payload.get("candidates") or []
+        if candidates:
+            print("candidate options:")
+            for index, candidate in enumerate(candidates[:3], start=1):
+                _print_candidate(index, candidate)
+            print()
         print("next action: treat this as a suggestion; do not inject full skill content")
         return 0
 
@@ -156,6 +162,12 @@ async def _command_route_prompt(args: argparse.Namespace) -> int:
     print("selected skill:")
     _print_candidate(1, skill)
     print()
+    candidates = route.get("candidates") or []
+    if route.get("route_type") == "hint" and candidates:
+        print("candidate options:")
+        for index, candidate in enumerate(candidates[:3], start=1):
+            _print_candidate(index, candidate)
+        print()
     print("injectable context:")
     print(payload.get("context", ""))
     return 0

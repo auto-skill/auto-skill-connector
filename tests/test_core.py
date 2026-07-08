@@ -245,6 +245,24 @@ def test_route_task_payload_returns_hint_without_fetch(monkeypatch: pytest.Monke
                         "similarity": 0.88,
                         "risk_score": 0,
                     },
+                    "candidates": [
+                        {
+                            "name": "spreadsheet-router",
+                            "description": "Create spreadsheet reports.",
+                            "url": "https://github.com/example/skills/tree/main/spreadsheet",
+                            "route_score": 0.88,
+                            "similarity": 0.88,
+                            "risk_score": 0,
+                        },
+                        {
+                            "name": "spreadsheet-cleanup",
+                            "description": "Clean and normalize spreadsheet data.",
+                            "url": "https://github.com/example/skills/tree/main/spreadsheet-cleanup",
+                            "route_score": 0.78,
+                            "similarity": 0.78,
+                            "risk_score": 0,
+                        },
+                    ],
                     "score_debug": {"tier": "hint"},
                 },
             )
@@ -258,6 +276,11 @@ def test_route_task_payload_returns_hint_without_fetch(monkeypatch: pytest.Monke
     assert result["route_type"] == "hint"
     assert result["route_tier"] == "hint"
     assert result["skill_content"] == ""
+    assert [c["name"] for c in result["candidates"]] == ["spreadsheet-router", "spreadsheet-cleanup"]
+    context = core.build_route_context(result)
+    assert "Candidate options:" in context
+    assert "spreadsheet-cleanup" in context
+    assert "active instructions" in context
 
 
 def test_route_task_skips_platform_specific_false_positive(monkeypatch: pytest.MonkeyPatch) -> None:

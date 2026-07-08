@@ -55,6 +55,52 @@ def test_route_outputs_selected_skill(
     assert "spreadsheet-router" in out
 
 
+def test_route_outputs_hint_candidates(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    async def fake_route(task: str, client: object | None = None) -> dict:
+        del client
+        assert task == "make a spreadsheet"
+        return {
+            "routed": True,
+            "route_type": "hint",
+            "route_tier": "hint",
+            "search_backend": "test",
+            "warnings": [],
+            "selected_skill": {
+                "name": "spreadsheet-router",
+                "description": "Create spreadsheet reports.",
+                "url": "https://example.com/spreadsheet",
+                "risk_score": 0,
+            },
+            "candidates": [
+                {
+                    "name": "spreadsheet-router",
+                    "description": "Create spreadsheet reports.",
+                    "url": "https://example.com/spreadsheet",
+                    "risk_score": 0,
+                },
+                {
+                    "name": "spreadsheet-cleanup",
+                    "description": "Clean spreadsheet data.",
+                    "url": "https://example.com/spreadsheet-cleanup",
+                    "risk_score": 0,
+                },
+            ],
+            "skill_content": "",
+        }
+
+    monkeypatch.setattr(cli, "route_task_payload", fake_route)
+    result = cli.main(["route", "make", "a", "spreadsheet"])
+    out = capsys.readouterr().out
+    assert result == 0
+    assert "route: hint" in out
+    assert "candidate options:" in out
+    assert "spreadsheet-cleanup" in out
+    assert "do not inject full skill content" in out
+
+
 def test_route_json_outputs_payload(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
