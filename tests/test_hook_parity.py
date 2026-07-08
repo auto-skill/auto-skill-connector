@@ -10,6 +10,8 @@ other fails CI instead of shipping quietly.
 from __future__ import annotations
 
 import importlib.util
+import io
+import json
 import sys
 from pathlib import Path
 
@@ -109,3 +111,50 @@ def test_route_filter_parity(prompt: str) -> None:
     separate implementations of the same filter -- must agree on whether a
     prompt is skill-shaped, even though their reason strings may differ."""
     assert core.should_route_prompt(prompt)["should_route"] == hook._should_route(prompt)[0]
+
+
+def test_hook_hint_output_includes_candidates_and_metrics(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    def fake_route(prompt: str) -> dict:
+        assert prompt == "make a spreadsheet report"
+        return {
+            "tier": "hint",
+            "skill": {
+                "name": "spreadsheet-router",
+                "description": "Create spreadsheet reports.",
+                "url": "https://example.com/spreadsheet",
+                "risk_score": 0,
+            },
+            "candidates": [
+                {
+                    "name": "spreadsheet-router",
+                    "description": "Create spreadsheet reports.",
+                    "url": "https://example.com/spreadsheet",
+                    "risk_score": 0,
+                },
+                {
+                    "name": "spreadsheet-cleanup",
+                    "description": "Normalize spreadsheet data.",
+                    "url": "https://example.com/spreadsheet-cleanup",
+                    "risk_score": 0,
+                },
+            ],
+            "score_debug": {
+                "metrics": {
+                    "latency_ms": 42,
+                    "skill_find_ms": 30,
+                    "injected_tokens": 0,
+                    "response_tokens": 160,
+                }
+            },
+        }
+
+    monkeypatch.setattr(hook, "_selfhosted_route", fake_route)
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps({"prompt": "make a spreadsheet report"})))
+
+    hook.main()
+
+    out = capsys.readouterr().out
+    assert "Candidate options:" in out
+    assert "spreadsheet-cleanup" in out
+    assert "Route metrics: latency=42ms, skill_find=30ms, injected_tokens=0, response_tokens=160" in out
+    assert "Choose a candidate only if the fit is obvious" in out

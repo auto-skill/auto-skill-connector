@@ -241,7 +241,8 @@ def main() -> None:
     if route is not None:
         tier = str(route.get("tier") or "none").lower()
         skill = route.get("skill") or {}
-        matches = [skill] if skill else []
+        candidates = route.get("candidates") if isinstance(route.get("candidates"), list) else []
+        matches = _safe_dedupe(([skill] if skill else []) + [c for c in candidates if isinstance(c, dict)])
     else:
         found = _selfhosted_matches(prompt)
         if found is None:
@@ -259,14 +260,36 @@ def main() -> None:
     url = skill.get("url") or skill.get("source_url") or ""
     risk = skill.get("risk_score")
     risk_text = f", risk={risk}" if risk is not None else ""
+    metrics = route.get("score_debug", {}).get("metrics", {}) if isinstance(route, dict) else {}
+    metric_parts = []
+    for key, label in (
+        ("latency_ms", "latency"),
+        ("skill_find_ms", "skill_find"),
+        ("injected_tokens", "injected_tokens"),
+        ("response_tokens", "response_tokens"),
+    ):
+        value = metrics.get(key)
+        if isinstance(value, (int, float)):
+            suffix = "ms" if key.endswith("_ms") else ""
+            metric_parts.append(f"{label}={int(value)}{suffix}")
+    metrics_text = f" Route metrics: {', '.join(metric_parts)}." if metric_parts else ""
 
     def _print_hint(reason: str) -> None:
         desc = (skill.get("description") or "").replace("\n", " ")[:160]
+        option_lines = []
+        for index, candidate in enumerate(matches[:3], start=1):
+            candidate_name = candidate.get("name") or "unknown"
+            candidate_url = candidate.get("url") or candidate.get("source_url") or ""
+            candidate_description = (candidate.get("description") or "").replace("\n", " ")[:120]
+            option_lines.append(f"{index}. {candidate_name}: {candidate_description} ({candidate_url})")
+        options_text = "\nCandidate options:\n" + "\n".join(option_lines) if option_lines else ""
         print(
             f"[auto-skill] Possible match (not injected -- {reason}): "
             f"\"{name}\"{risk_text} — {desc} ({url}). "
-            "If this fits the user's task, call the auto-skill MCP tool route_task "
-            "with a specific task and apply content only when route_tier is full."
+            "Choose a candidate only if the fit is obvious; otherwise continue normally. "
+            "Apply content only when route_tier is full."
+            f"{metrics_text}"
+            f"{options_text}"
         )
 
     if tier == "hint":

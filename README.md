@@ -306,6 +306,12 @@ the Claude Code hook call `/route` first so the backend owns quality gates,
 platform-trap handling, and full/hint/no-route tiers. `/find-semantic` remains
 as a compatibility fallback for older self-hosted backends.
 
+Hint routes are intentionally low-token: they show names, descriptions, URLs,
+candidate options, and route metrics such as `skill_find_ms` and
+`injected_tokens`, but never inject full `SKILL.md` content. Full routes carry
+the selected skill content plus the same metrics so benchmark regressions are
+visible during manual testing.
+
 Before a public launch or backend deploy, run the live smoke test from a source
 checkout:
 
