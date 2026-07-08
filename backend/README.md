@@ -65,6 +65,12 @@ python reindex.py
 python launch_check.py --base-url http://127.0.0.1:8000
 ```
 
+For a quick public status read before the heavier launch gate:
+
+```powershell
+python launch_status.py
+```
+
 To track retrieval quality, route latency, and token churn across changes:
 
 ```powershell
@@ -118,6 +124,17 @@ intentionally does not allow `/route-metrics` or `/route-feedback`.
 - `litestream`: SQLite WAL replication to Cloudflare R2.
 - `library-backup`: daily R2 tarballs for `skills_library/` until content
   moves into SQLite.
+
+For launch, prefer this single-host VPS path over a managed online DB rewrite.
+The runbook's hosting ladder spells out when to keep SQLite/Litestream/R2 and
+when Turso, Postgres/pgvector, or another hosted vector store is actually worth
+the migration.
+
+Before starting the compose stack on a host, run:
+
+```powershell
+python deploy\compose_preflight.py
+```
 
 The current app still stores SKILL.md files under `skills_library/`, so that
 directory needs its own backup until content is moved into SQLite.

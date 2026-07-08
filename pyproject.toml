@@ -19,6 +19,9 @@ dev = [
 auto-skill = "auto_skill_cli:main"
 auto-skill-mcp = "mcp_server:main"
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
 [build-system]
 requires = ["setuptools>=64"]
 build-backend = "setuptools.build_meta"

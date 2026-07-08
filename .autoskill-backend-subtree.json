@@ -1,0 +1,10 @@
+{
+  "upstream_url": "https://github.com/auto-skill/auto-skill.git",
+  "upstream_branch": "main",
+  "upstream_commit": "d4b59dadec265671b7cb32557f5326646115bf0c",
+  "subtree_path": "backend",
+  "notes": [
+    "backend/ is synced from the standalone backend repo.",
+    "The standalone backend workflow is intentionally moved to .github/workflows/backend-ci.yml in this combined repo."
+  ]
+}
