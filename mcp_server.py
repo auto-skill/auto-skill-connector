@@ -44,11 +44,11 @@ mcp = FastMCP(
     instructions=(
         "Auto-Skill routes user tasks to reusable AI agent skills when a good match exists. "
         "Use route_prompt for raw user messages and route_task for a cleaned-up task. These "
-        "tools may return a full skill, a medium-confidence hint, or no route. Follow full "
-        "skill_content only when route_tier is full. Treat hint results as suggestions, not "
-        "active instructions. Skip routing for pure questions, status/meta discussion, tiny "
-        "acknowledgements, commands, or pasted context. recommend_skill is for explicit "
-        "preview/recommendation flows; do not use it as the always-on router."
+        "tools may return a full skill, a medium-confidence hint with candidate options, or "
+        "no route. Follow full skill_content only when route_tier is full. Treat hint results "
+        "as suggestions, not active instructions. Skip routing for pure questions, status/meta "
+        "discussion, tiny acknowledgements, commands, or pasted context. recommend_skill is "
+        "for explicit preview/recommendation flows; do not use it as the always-on router."
     ),
 )
 
@@ -75,7 +75,8 @@ async def route_task(task: str) -> dict:
     """Route a user task to the best reusable skill when one exists.
 
     Call this near the start of a user request when a packaged workflow might
-    help. Full routes include skill_content. Hint routes are suggestions only.
+    help. Full routes include skill_content. Hint routes are suggestions only
+    and may include candidate options.
     """
     return await route_task_payload(task)
 

@@ -170,10 +170,11 @@ instead of round-tripping through DNS and the tunnel.
 - `route_prompt(prompt)` is the always-on integration path: it skips prompts
   that are too short, meta/status-like, commands, or pasted context, then emits
   full skill context only for high-confidence real tasks. Medium-confidence
-  matches return a short hint instead of full instructions.
+  matches return a short hint, including up to three candidate options when the
+  backend provides them, instead of full instructions.
 - `route_task(task)` is the universal router contract: call it near the start
   of a user task, and it returns one of three results: `route_tier=full` with
-  `skill_content`, `route_tier=hint` with a source suggestion, or no route.
+  `skill_content`, `route_tier=hint` with candidate options, or no route.
 - `recommend_skill(task)` searches for a matching skill and returns the full
   instructions for the single best usable match. Use this for explicit preview
   or recommendation flows, not as the always-on router.
@@ -272,7 +273,8 @@ For claude.ai custom connectors, use:
 
 The optional hook in `hooks/skill_suggest.py` can check each submitted prompt,
 skip tiny/meta prompts, call the backend `/route` contract for real tasks, and
-inject selected `SKILL.md` content only for full routes. Run
+inject selected `SKILL.md` content only for full routes. Hint routes stay as
+non-instructional suggestions and may include candidate options. Run
 `auto-skill enable-hook` to turn it on (see [Commands](#commands) above) -- it
 prints a privacy note before doing anything, since eligible prompt snippets
 are sent to the configured route service. Read `SECURITY.md` before enabling it
