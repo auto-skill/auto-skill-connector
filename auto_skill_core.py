@@ -622,6 +622,7 @@ async def _route_selfhosted(
         "warnings": warnings,
         "score_debug": debug,
         "config_version": route.get("config_version"),
+        "route_id": route.get("route_id"),
         "ttl": route.get("ttl"),
     }
 

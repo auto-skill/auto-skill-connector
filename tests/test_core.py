@@ -91,6 +91,7 @@ class RouteClient:
                     "quality_score": 92,
                 },
                 "content": VALID_SKILL,
+                "route_id": "route-123",
                 "score_debug": {"tier": "full", "quality_status": "active"},
                 "config_version": "test",
             },
@@ -185,6 +186,7 @@ def test_route_task_payload_returns_router_decision(monkeypatch: pytest.MonkeyPa
     assert result["route_tier"] == "full"
     assert result["selected_skill"]["name"] == "spreadsheet-router"
     assert result["selected_skill"]["quality_status"] == "active"
+    assert result["route_id"] == "route-123"
     assert "Generate the workbook" in result["skill_content"]
     assert "apply it immediately" in result["instructions"]
 
