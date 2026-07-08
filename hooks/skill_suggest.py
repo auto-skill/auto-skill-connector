@@ -20,6 +20,8 @@ from pathlib import Path
 from urllib.parse import quote
 
 AUTOSKILL_URL = os.getenv("AUTOSKILL_URL", "https://skills.avalahome.com").rstrip("/")
+CLIENT_NAME = "auto-skill-hook"
+CLIENT_VERSION = "0.1.0"
 ROUTING_LOG_PATH = Path(os.getenv("AUTOSKILL_ROUTING_LOG", "")) if os.getenv("AUTOSKILL_ROUTING_LOG") else Path.home() / ".claude" / "auto-skill-routing.jsonl"
 MAX_LOG_LINES = 2000
 TIMEOUT_SECONDS = 3.0
@@ -83,7 +85,14 @@ def _selfhosted_route(prompt: str) -> dict | None:
     if not AUTOSKILL_URL:
         return None
     try:
-        body = json.dumps({"task": prompt[:500], "limit": 8}).encode("utf-8")
+        body = json.dumps(
+            {
+                "task": prompt[:500],
+                "limit": 8,
+                "client": CLIENT_NAME,
+                "client_version": CLIENT_VERSION,
+            }
+        ).encode("utf-8")
         request = urllib.request.Request(
             f"{AUTOSKILL_URL}/route",
             data=body,

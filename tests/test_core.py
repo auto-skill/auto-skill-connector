@@ -74,6 +74,8 @@ class RouteClient:
     async def post(self, url: str, **kwargs: object) -> FakeResponse:
         assert url.endswith("/route")
         assert kwargs["json"]["task"] == "make a spreadsheet"
+        assert kwargs["json"]["client"] == core.CLIENT_NAME
+        assert kwargs["json"]["client_version"] == core.CLIENT_VERSION
         return FakeResponse(
             200,
             {
@@ -193,8 +195,9 @@ def test_route_task_payload_returns_hint_without_fetch(monkeypatch: pytest.Monke
             raise AssertionError(f"hint routes should not fetch full content: {url} {kwargs}")
 
         async def post(self, url: str, **kwargs: object) -> FakeResponse:
-            del kwargs
             assert url.endswith("/route")
+            assert kwargs["json"]["client"] == core.CLIENT_NAME
+            assert kwargs["json"]["client_version"] == core.CLIENT_VERSION
             return FakeResponse(
                 200,
                 {
@@ -228,8 +231,9 @@ def test_route_task_skips_platform_specific_false_positive(monkeypatch: pytest.M
             raise AssertionError(f"backend /route should own platform reranking: {url} {kwargs}")
 
         async def post(self, url: str, **kwargs: object) -> FakeResponse:
-            del kwargs
             assert url.endswith("/route")
+            assert kwargs["json"]["client"] == core.CLIENT_NAME
+            assert kwargs["json"]["client_version"] == core.CLIENT_VERSION
             return FakeResponse(
                 200,
                 {

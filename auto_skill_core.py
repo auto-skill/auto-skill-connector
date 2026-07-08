@@ -10,6 +10,8 @@ from typing import Any
 import httpx
 
 DEFAULT_AUTOSKILL_URL = "https://skills.avalahome.com"
+CLIENT_NAME = "auto-skill-connector"
+CLIENT_VERSION = "0.1.0"
 
 _BLOB_RE = re.compile(r"github\.com/([^/]+)/([^/]+)/blob/([^/]+)/(.*)")
 _TREE_RE = re.compile(r"github\.com/([^/]+)/([^/]+)/tree/([^/]+)/(.*)")
@@ -578,7 +580,16 @@ async def _route_selfhosted(
         return None
 
     try:
-        r = await client.post(f"{url}/route", json={"task": task, "limit": 8}, timeout=10)
+        r = await client.post(
+            f"{url}/route",
+            json={
+                "task": task,
+                "limit": 8,
+                "client": CLIENT_NAME,
+                "client_version": CLIENT_VERSION,
+            },
+            timeout=10,
+        )
     except Exception:
         return None
 
