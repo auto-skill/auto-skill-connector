@@ -274,7 +274,15 @@ def test_route_task_payload_returns_hint_without_fetch(monkeypatch: pytest.Monke
                             "risk_score": 0,
                         },
                     ],
-                    "score_debug": {"tier": "hint"},
+                    "score_debug": {
+                        "tier": "hint",
+                        "metrics": {
+                            "latency_ms": 45,
+                            "skill_find_ms": 30,
+                            "injected_tokens": 0,
+                            "response_tokens": 180,
+                        },
+                    },
                 },
             )
 
@@ -291,6 +299,9 @@ def test_route_task_payload_returns_hint_without_fetch(monkeypatch: pytest.Monke
     context = core.build_route_context(result)
     assert "Candidate options:" in context
     assert "spreadsheet-cleanup" in context
+    assert "Route metrics:" in context
+    assert "skill_find" in context
+    assert "Choose a listed candidate yourself only when the fit is obvious" in context
     assert "active instructions" in context
 
 
