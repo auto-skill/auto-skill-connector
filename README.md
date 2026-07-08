@@ -25,6 +25,18 @@ copy, and install by hand.
 - Keep permanent installs honest: Claude skills install to Claude; Codex uses
   MCP instructions in the current turn.
 
+## Repo Layout
+
+This repo holds both halves of Auto-Skill:
+
+- **Client** (repo root) -- `auto_skill_cli.py`, `mcp_server.py`, `hooks/`: the
+  package end users `pip install`, which talks to the hosted backend over
+  HTTP.
+- **Backend** (`backend/`) -- the FastAPI/SQLite service that powers
+  `skills.avalahome.com` (scraper, embeddings, deterministic router, deploy
+  scripts). It has its own run story (`python backend/scraper.py`) and its own
+  CI (`.github/workflows/backend-ci.yml`); it is not part of the pip package.
+
 ## Demo
 
 Three real tasks, run against the live index (2026-07-07) -- not placeholder

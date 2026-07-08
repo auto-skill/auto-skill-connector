@@ -6,3 +6,13 @@ dist/
 .venv/
 PLAN.md
 LAUNCH_DRAFTS.md
+
+# backend/ dev artifacts (the DB is hundreds of MB and machine-specific)
+local_skills.db
+local_skills.db-wal
+local_skills.db-shm
+skills_library/
+content_blobs/
+migrate_state.json
+*.log
+.claude/
