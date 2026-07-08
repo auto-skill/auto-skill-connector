@@ -1,5 +1,7 @@
 param(
     [string]$Branch = "main",
+    [string]$ConnectorBranch = "master",
+    [string]$ConnectorDir = "",
     [string]$BaseUrl = "https://skills.avalahome.com",
     [string]$McpHealthUrl = "https://mcp.avalahome.com/healthz",
     [string]$LocalApiUrl = "http://127.0.0.1:8000",
@@ -12,7 +14,9 @@ param(
     [switch]$SkipTests,
     [switch]$SkipTaskInstall,
     [switch]$SkipBackupTask,
-    [switch]$SkipLaunchCheck
+    [switch]$SkipLaunchCheck,
+    [switch]$SkipConnectorPull,
+    [switch]$StopStalePortOwners
 )
 
 $ErrorActionPreference = "Stop"
@@ -36,6 +40,114 @@ function Invoke-Step {
 function Test-TaskMissing {
     param([string]$Name)
     return $null -eq (Get-ScheduledTask -TaskName $Name -ErrorAction SilentlyContinue)
+}
+
+function Get-UriValue {
+    param([string]$Url)
+    try {
+        return [Uri]$Url
+    } catch {
+        throw "Could not parse URL '$Url': $($_.Exception.Message)"
+    }
+}
+
+function Get-EndpointPort {
+    param($Uri)
+    if ($Uri.Port -gt 0) {
+        return $Uri.Port
+    }
+    if ($Uri.Scheme -eq "https") {
+        return 443
+    }
+    return 80
+}
+
+function Stop-ScopedPortOwners {
+    param(
+        [string]$Name,
+        [int]$Port,
+        [string[]]$AllowedCommandPatterns
+    )
+
+    $listeners = @(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue)
+    if (-not $listeners) {
+        Write-Host "[PASS] $Name`: no existing listener on port $Port"
+        return
+    }
+
+    foreach ($listener in $listeners) {
+        $pidValue = [int]$listener.OwningProcess
+        $process = Get-Process -Id $pidValue -ErrorAction SilentlyContinue
+        $cim = Get-CimInstance Win32_Process -Filter "ProcessId = $pidValue" -ErrorAction SilentlyContinue
+        $commandLine = if ($cim -and $cim.CommandLine) { [string]$cim.CommandLine } else { "" }
+        $identity = "$(if ($process) { $process.ProcessName } else { 'pid' }):$pidValue $commandLine"
+
+        $matched = $false
+        foreach ($pattern in $AllowedCommandPatterns) {
+            if ($identity -match $pattern) {
+                $matched = $true
+                break
+            }
+        }
+        if (-not $matched) {
+            Write-Host "[WARN] $Name`: not stopping non-Auto-Skill listener on port ${Port}: $identity"
+            continue
+        }
+
+        Write-Host "[WARN] $Name`: stopping stale Auto-Skill listener on port ${Port}: $identity"
+        Stop-Process -Id $pidValue -Force -ErrorAction Stop
+    }
+}
+
+function Find-ConnectorDir {
+    $candidates = @()
+    if ($ConnectorDir) {
+        $candidates += $ConnectorDir
+    }
+    if ($env:AUTO_SKILL_CONNECTOR_DIR) {
+        $candidates += $env:AUTO_SKILL_CONNECTOR_DIR
+    }
+    $candidates += @(
+        (Join-Path $RepoRoot "..\auto-skill-connector"),
+        (Join-Path $RepoRoot "..\..\Skills"),
+        (Join-Path ([Environment]::GetFolderPath("MyDocuments")) "Skills")
+    )
+
+    foreach ($candidate in $candidates) {
+        if (-not $candidate) { continue }
+        $serverPath = Join-Path $candidate "mcp_server.py"
+        if (Test-Path -LiteralPath $serverPath) {
+            return (Resolve-Path -LiteralPath $candidate).Path
+        }
+    }
+
+    throw "Connector checkout not found. Set -ConnectorDir or AUTO_SKILL_CONNECTOR_DIR."
+}
+
+function Update-ConnectorCheckout {
+    param([string]$Path)
+
+    Push-Location -LiteralPath $Path
+    try {
+        $branch = (& git rev-parse --abbrev-ref HEAD).Trim()
+        if ($LASTEXITCODE -ne 0) {
+            throw "Could not determine connector git branch in $Path"
+        }
+        if ($branch -ne $ConnectorBranch) {
+            throw "Connector checkout is on '$branch', expected '$ConnectorBranch'."
+        }
+        $dirty = (& git status --porcelain)
+        if ($dirty) {
+            if (-not $AllowDirty) {
+                throw "Connector checkout has uncommitted changes. Commit/stash them, or pass -AllowDirty after reviewing them."
+            }
+            Write-Host "Connector dirty check skipped because -AllowDirty was passed."
+        }
+        Invoke-Step "git fetch connector $ConnectorBranch" { git fetch origin $ConnectorBranch }
+        Invoke-Step "git pull connector --ff-only origin $ConnectorBranch" { git pull --ff-only origin $ConnectorBranch }
+    } finally {
+        Pop-Location
+    }
 }
 
 function Wait-JsonOk {
@@ -72,10 +184,14 @@ function Wait-JsonOk {
 Write-Host "Auto-Skill host recovery"
 Write-Host "Repo: $RepoRoot"
 Write-Host "Branch: $Branch"
+Write-Host "Connector branch: $ConnectorBranch"
 Write-Host "Public URL: $BaseUrl"
 Write-Host "MCP health URL: $McpHealthUrl"
 
 try {
+    $apiPort = Get-EndpointPort (Get-UriValue $LocalApiUrl)
+    $mcpPort = Get-EndpointPort (Get-UriValue $LocalMcpHealthUrl)
+
     $serviceTasks = @("$TaskPrefix-API", "$TaskPrefix-MCP", "$TaskPrefix-Tunnel")
     $missingTasks = @($serviceTasks | Where-Object { Test-TaskMissing $_ })
     if ($missingTasks.Count -gt 0) {
@@ -92,6 +208,23 @@ try {
         }
     } else {
         Write-Host "[PASS] scheduled tasks installed: $($serviceTasks -join ', ')"
+    }
+
+    $resolvedConnectorDir = Find-ConnectorDir
+    Write-Host "[PASS] connector checkout: $resolvedConnectorDir"
+    if (-not $SkipConnectorPull -and -not $SkipPull) {
+        Update-ConnectorCheckout $resolvedConnectorDir
+    } elseif ($SkipConnectorPull) {
+        Write-Host "Skipping connector pull because -SkipConnectorPull was passed."
+    } else {
+        Write-Host "Skipping connector pull because -SkipPull was passed."
+    }
+
+    if ($StopStalePortOwners) {
+        Invoke-Step "stop scoped stale local listeners" {
+            Stop-ScopedPortOwners "local API" $apiPort @("scraper\.py", "start_scraper\.ps1")
+            Stop-ScopedPortOwners "local MCP" $mcpPort @("mcp_server\.py", "start_connector_http\.ps1")
+        }
     }
 
     $updateArgs = @(

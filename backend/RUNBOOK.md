@@ -37,7 +37,7 @@ python launch_check.py --base-url https://skills.yourdomain.com --mcp-health-url
 For a local dry run before the API is running:
 
 ```powershell
-python launch_check.py --skip-http --skip-docker --skip-env
+python launch_check.py --skip-http --skip-docker --skip-env --skip-local
 ```
 
 ## Current Windows Host Update
@@ -106,12 +106,28 @@ python launch_check.py --base-url https://skills.avalahome.com --mcp-health-url 
 ```
 
 If either public hostname returns Cloudflare `1033` / HTTP `530`, the tunnel
-origin is unreachable. To apply the standard pull, task install/restart, local
-health waits, public launch check, and failure diagnosis in one pass, run this
-on the Windows host:
+origin is unreachable. To apply the standard pull, connector pull, task
+install/restart, local health waits, public launch check, and failure diagnosis
+in one pass, run this on the Windows host:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\deploy\recover-host.ps1
+```
+
+`recover-host.ps1` updates both the backend checkout and the connector checkout
+used by `start_connector_http.ps1`. If the connector repo lives outside the
+auto-detected paths, pass `-ConnectorDir C:\path\to\auto-skill-connector`. If
+the host intentionally pins connector code during an incident, pass
+`-SkipConnectorPull`.
+
+If `/healthz` still serves the stale `{"ok":true,"db_reachable":true}` body
+after a normal recovery, an old Python process may still own port `8000`.
+Inspect `.\deploy\diagnose-host.ps1`; if the listener command line is an
+Auto-Skill scraper/MCP process, rerun recovery with scoped stale-listener
+cleanup:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\deploy\recover-host.ps1 -StopStalePortOwners
 ```
 
 If you only want a read-only failure packet, run:
@@ -190,6 +206,7 @@ only when you already pulled in the same session.
 Copy-Item deploy\.env.example deploy\.env
 # Fill in Cloudflare/R2/GitHub values.
 New-Item -ItemType Directory -Force -Path data, skills_library
+python deploy\compose_preflight.py
 docker compose --env-file deploy\.env -f deploy\docker-compose.yml up -d --build
 ```
 
@@ -204,6 +221,38 @@ The compose file uses bind mounts instead of opaque Docker volumes:
 
 Seed a VPS by copying the current DB and library into those paths before the
 first `docker compose up`.
+
+`python deploy\compose_preflight.py` fails when launch-critical values are
+missing from `deploy\.env`, when the seeded DB/library files are absent, or
+when `docker compose config` cannot parse the stack. Use
+`--skip-seed-checks --skip-docker` only for CI or local config review before a
+real host exists.
+
+## Hosting Upgrade Ladder
+
+Use this ladder to keep the alpha launch practical without pretending the
+current laptop tunnel is production hosting:
+
+1. Current emergency host: Windows restart loops plus Cloudflare Tunnel. This
+   is acceptable for local debugging and recovery only. Any Cloudflare
+   `1033`/HTTP `530` from `launch_check.py` means the public alpha is down.
+2. Launch target: one cheap VPS or small VM running `deploy/docker-compose.yml`.
+   Keep SQLite on the host disk, replicate it with Litestream to R2, back up
+   `skills_library/` to R2, and run exactly one `worker` scraper process.
+3. Managed-host fallback: if a VPS is too much operational work, use a service
+   with a persistent disk and a background worker. Keep the same SQLite/R2
+   model and the same `launch_check.py` gate.
+4. Hosted DB migration: move to Turso/libSQL, Postgres/pgvector, or another
+   online vector store only after metrics prove a reason. Valid reasons are
+   repeated host reliability failures after the VPS move, SQLite write
+   contention, a need for multiple live reader regions, or route metrics
+   showing `skill_find_ms`/vector cache growth as the bottleneck.
+
+Do not split storage just because raw skill files feel awkward. For alpha,
+SQLite plus `skills_library/` backups are cheaper to operate than a new online
+DB, object store read path, and migration surface. R2 is useful now for
+backups and content-addressed blob exports; it should become runtime storage
+only after `/content/{hash}` has a local cache and restore drill.
 
 ## Hosted Storage Decision
 

@@ -248,10 +248,15 @@ function Test-ListeningPort {
         $processes = @()
         foreach ($listener in $listeners) {
             $process = Get-Process -Id $listener.OwningProcess -ErrorAction SilentlyContinue
+            $cim = Get-CimInstance Win32_Process -Filter "ProcessId = $($listener.OwningProcess)" -ErrorAction SilentlyContinue
+            $commandLine = ""
+            if ($cim -and $cim.CommandLine) {
+                $commandLine = " cmd=$($cim.CommandLine)"
+            }
             if ($process) {
-                $processes += "$($process.ProcessName):$($process.Id)"
+                $processes += "$($process.ProcessName):$($process.Id)$commandLine"
             } else {
-                $processes += "pid:$($listener.OwningProcess)"
+                $processes += "pid:$($listener.OwningProcess)$commandLine"
             }
         }
         $uniqueProcesses = $processes | Sort-Object -Unique
@@ -276,6 +281,7 @@ function Test-CloudflaredConfigIngress {
 
     try {
         $raw = Get-Content -LiteralPath $Path -Raw
+        $lines = @(Get-Content -LiteralPath $Path)
     } catch {
         Warn "cloudflared ingress" "could not read $Path`: $($_.Exception.Message)"
         return
@@ -295,10 +301,45 @@ function Test-CloudflaredConfigIngress {
         $missing += "loopback MCP service port $McpPort"
     }
 
+    function Select-IngressMatchLines {
+        param(
+            [string[]]$ConfigLines,
+            [string]$Host,
+            [int]$Port
+        )
+
+        $matches = @()
+        if ($Host) {
+            $matches += @($ConfigLines | Where-Object { $_ -match [regex]::Escape($Host) })
+        }
+        if ($Port -gt 0) {
+            $matches += @($ConfigLines | Where-Object { $_ -match "https?://(localhost|127\.0\.0\.1):$Port\b" })
+        }
+        return @($matches | Select-Object -Unique)
+    }
+
+    $apiMatches = @(Select-IngressMatchLines -ConfigLines $lines -Host $ApiHost -Port $ApiPort)
+    $mcpMatches = @(Select-IngressMatchLines -ConfigLines $lines -Host $McpHost -Port $McpPort)
+    $hostLines = @($lines | Where-Object { $_ -match "^\s*hostname\s*:" })
+    $serviceLines = @($lines | Where-Object { $_ -match "^\s*service\s*:" })
+
+    if ($ApiHost) {
+        $apiHostCount = @($lines | Where-Object { $_ -match [regex]::Escape($ApiHost) }).Count
+        if ($apiHostCount -gt 1) {
+            Warn "cloudflared ingress" "hostname $ApiHost appears $apiHostCount times; check for duplicate ingress rules"
+        }
+    }
+    if ($McpHost) {
+        $mcpHostCount = @($lines | Where-Object { $_ -match [regex]::Escape($McpHost) }).Count
+        if ($mcpHostCount -gt 1) {
+            Warn "cloudflared ingress" "hostname $McpHost appears $mcpHostCount times; check for duplicate ingress rules"
+        }
+    }
+
     if ($missing.Count -gt 0) {
-        Fail "cloudflared ingress" "config $Path is missing: $($missing -join ', ')"
+        Fail "cloudflared ingress" "config $Path is missing: $($missing -join ', '); host_lines=$($hostLines -join ' | '); service_lines=$($serviceLines -join ' | ')"
     } else {
-        Pass "cloudflared ingress" "config maps $ApiHost->$ApiPort and $McpHost->$McpPort"
+        Pass "cloudflared ingress" "config maps $ApiHost->$ApiPort and $McpHost->$McpPort; api_lines=$($apiMatches -join ' | '); mcp_lines=$($mcpMatches -join ' | ')"
     }
 }
 

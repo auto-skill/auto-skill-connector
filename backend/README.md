@@ -119,6 +119,17 @@ intentionally does not allow `/route-metrics` or `/route-feedback`.
 - `library-backup`: daily R2 tarballs for `skills_library/` until content
   moves into SQLite.
 
+For launch, prefer this single-host VPS path over a managed online DB rewrite.
+The runbook's hosting ladder spells out when to keep SQLite/Litestream/R2 and
+when Turso, Postgres/pgvector, or another hosted vector store is actually worth
+the migration.
+
+Before starting the compose stack on a host, run:
+
+```powershell
+python deploy\compose_preflight.py
+```
+
 The current app still stores SKILL.md files under `skills_library/`, so that
 directory needs its own backup until content is moved into SQLite.
 
