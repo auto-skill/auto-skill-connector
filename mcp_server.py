@@ -83,11 +83,11 @@ async def route_task(task: str) -> dict:
 
 @mcp.tool()
 async def recommend_skill(task: str) -> dict:
-    """Find the best usable skill for an explicit preview/recommendation flow.
+    """Preview one usable skill candidate for an explicit recommendation flow.
 
-    Prefer route_prompt or route_task for always-on routing. This tool fetches
-    full SKILL.md content for the best usable match and is therefore more
-    expensive and less conservative than route_task's hint/no-route policy.
+    Prefer route_prompt or route_task for normal routing. This legacy preview
+    tool fetches full SKILL.md content for inspection and does not mean the
+    caller should automatically follow it.
     """
     return await recommend_skill_payload(task)
 
@@ -122,8 +122,8 @@ async def _install_skill_impl(
     """Install a skill from a URL.
 
     Permanent installs are currently supported for Claude-style SKILL.md
-    folders only. For Codex, call route_task or recommend_skill and apply the
-    returned instructions in the current turn.
+    folders only. For Codex, call route_task and apply full routes in the
+    current turn.
     """
     if not _public_install_enabled():
         return (

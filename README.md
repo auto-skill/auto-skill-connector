@@ -4,9 +4,9 @@ Find, preview, and install reusable AI agent skills before your agent rebuilds
 them from scratch.
 
 `auto-skill` searches a large scraped index of agent skills, MCP servers, and
-plugins, auto-routes a task to the best matching `SKILL.md`, and lets an agent
-use those instructions immediately through MCP or install them safely for
-Claude-style skill clients.
+plugins, routes a task to reusable skill content when confidence is high,
+returns hints when unsure, and lets Claude-style skill clients install vetted
+skills explicitly.
 
 ## Why This Exists
 
@@ -179,9 +179,9 @@ instead of round-tripping through DNS and the tunnel.
 - `route_task(task)` is the universal router contract: call it near the start
   of a user task, and it returns one of three results: `route_tier=full` with
   `skill_content`, `route_tier=hint` with candidate options, or no route.
-- `recommend_skill(task)` searches for a matching skill and returns the full
-  instructions for the single best usable match. Use this for explicit preview
-  or recommendation flows, not as the always-on router.
+- `recommend_skill(task)` is a legacy explicit-preview path: it returns one
+  usable skill candidate with full content for inspection. Use `route_task` for
+  normal routing because it can return full, hint, or no route.
 - `record_feedback(route_id, outcome, note?)` records privacy-safe route
   outcome feedback after a route is used, skipped, installed, dismissed, or
   fails. Do not include raw prompts in notes.
@@ -192,9 +192,9 @@ instead of round-tripping through DNS and the tunnel.
   has no per-caller auth, so it's omitted there by default. See the Remote
   Connector section below.
 
-Codex note: Codex can use `route_task` or `recommend_skill` through MCP and
-follow the returned instructions in the current turn. This repo does not
-pretend Claude `SKILL.md` folders are native Codex skills.
+Codex note: Codex should use `route_task` through MCP and apply full routes in
+the current turn. This repo does not pretend Claude `SKILL.md` folders are
+native Codex skills.
 
 Universal routing note: MCP servers cannot intercept every prompt by
 themselves. A client or agent still has to call `route_task`. The optional
@@ -261,8 +261,8 @@ work.
 
 Security note: `install_skill` writes files on whichever machine is running
 the server, so it is **not** registered as a tool over streamable-http by
-default -- a caller with your tunnel URL gets `route_prompt`/`route_task`/
-`recommend_skill` only. Set `AUTOSKILL_ALLOW_REMOTE_INSTALL=1` to re-enable it
+default -- a caller with your tunnel URL gets read-only routing and preview
+tools only. Set `AUTOSKILL_ALLOW_REMOTE_INSTALL=1` to re-enable it
 remotely, but only if you've added your own auth in front of the tunnel;
 never on an unauthenticated public URL.
 

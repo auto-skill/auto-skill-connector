@@ -53,14 +53,14 @@ of a matched skill to hand back:
   fetch, and doesn't match the unconfirmed-action pattern above.
 - **hint** -- just the skill's name, description, and URL. Used when the
   content-quality gates above catch something. Nothing here is auto-applied;
-  a human or a subsequent explicit `recommend_skill` call decides.
+  a human or a subsequent explicit preview decides.
 - **none** -- nothing cleared the similarity floor; no suggestion at all.
 
-`recommend_skill` (the direct MCP tool call, as opposed to the passive
-routing paths) has no hint tier -- it either returns full content that passed
-every gate, or reports nothing found. There is no menu it can silently pick
-the wrong item from, but a demoted candidate is invisible to a caller that
-only checks `found`.
+`recommend_skill` is a legacy direct MCP preview tool, not the normal routing
+surface. It either returns full content that passed every gate, or reports
+nothing found. Treat returned content as retrieved reference material that
+still needs inspection; agents should prefer `route_task` because it can
+return full, hint, or none.
 
 ## Routing Provenance Log
 

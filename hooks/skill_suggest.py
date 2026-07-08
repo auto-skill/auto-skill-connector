@@ -265,8 +265,8 @@ def main() -> None:
         print(
             f"[auto-skill] Possible match (not injected -- {reason}): "
             f"\"{name}\"{risk_text} — {desc} ({url}). "
-            "If this fits the user's task, call the auto-skill MCP tool recommend_skill "
-            "with a short task description to fetch and apply its full content."
+            "If this fits the user's task, call the auto-skill MCP tool route_task "
+            "with a specific task and apply content only when route_tier is full."
         )
 
     if tier == "hint":

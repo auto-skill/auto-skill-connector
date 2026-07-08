@@ -425,6 +425,47 @@ def test_route_task_falls_back_for_legacy_backend_without_route(monkeypatch: pyt
     assert result["search_backend"] == "self-hosted"
 
 
+def test_recommend_skill_payload_is_explicit_preview_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    class PreviewClient:
+        async def get(self, url: str, **kwargs: object) -> FakeResponse:
+            if "find-semantic" in url:
+                return FakeResponse(
+                    200,
+                    {
+                        "results": [
+                            {
+                                "name": "spreadsheet-router",
+                                "description": "Create spreadsheet reports.",
+                                "url": "https://github.com/example/skills/tree/main/spreadsheet",
+                                "rank": 10,
+                                "similarity": 0.92,
+                                "risk_score": 0,
+                            }
+                        ]
+                    },
+                )
+            raise AssertionError(f"unexpected get: {url} {kwargs}")
+
+        async def post(self, url: str, **kwargs: object) -> FakeResponse:
+            raise AssertionError(f"recommend_skill should not call /route: {url} {kwargs}")
+
+    async def fake_fetch(client: object, url: str) -> str:
+        del client
+        assert url == "https://github.com/example/skills/tree/main/spreadsheet"
+        return VALID_SKILL
+
+    monkeypatch.setattr(core, "_fetch_content", fake_fetch)
+    result = asyncio.run(core.recommend_skill_payload("make a spreadsheet", client=PreviewClient()))
+    assert result["found"] is True
+    assert result["route_tier"] == "preview"
+    assert result["legacy_preview"] is True
+    instructions = result["instructions"].lower()
+    assert "single best" not in instructions
+    assert "immediately" not in instructions
+    assert "retrieved reference material" in instructions
+    assert "prefer route_task" in instructions
+
+
 def test_legacy_route_downgrades_oversized_fetched_content(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AUTOSKILL_MAX_INJECTED_CHARS", "260")
 
