@@ -5,13 +5,16 @@ in unit-test CI. It is for launch/release checks:
 
     python scripts/live_smoke.py
 
-Set AUTOSKILL_URL to test a staging host.
+Set AUTOSKILL_URL to test a staging backend.
+Set AUTOSKILL_MCP_HEALTH_URL to test a non-default remote MCP health endpoint.
 """
 
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
+from urllib.parse import urlparse
 
 import httpx
 
@@ -34,6 +37,15 @@ CHECKS = [
 ]
 
 TIER_ORDER = {"none": 0, "hint": 1, "full": 2}
+DEFAULT_MCP_HEALTH_URL = "https://mcp.avalahome.com/healthz"
+
+
+def get_mcp_health_url() -> str:
+    configured = (os.getenv("AUTOSKILL_MCP_HEALTH_URL") or DEFAULT_MCP_HEALTH_URL).strip()
+    parsed = urlparse(configured)
+    if parsed.path.rstrip("/") == "/mcp":
+        return configured[: -len(parsed.path)] + "/healthz"
+    return configured
 
 
 def _skill_blob(payload: dict) -> str:
@@ -54,6 +66,25 @@ async def main() -> int:
 
     failures: list[str] = []
     async with httpx.AsyncClient() as client:
+        mcp_health_url = get_mcp_health_url()
+        try:
+            mcp_response = await client.get(mcp_health_url, timeout=10)
+            if mcp_response.headers.get("content-type", "").startswith("application/json"):
+                mcp_body = mcp_response.json()
+            else:
+                mcp_body = {}
+        except Exception as exc:
+            mcp_response = None
+            mcp_body = {}
+            failures.append("remote MCP health")
+            print(f"[FAIL] remote MCP health: {exc}")
+        if mcp_response is not None:
+            if mcp_response.status_code == 200 and mcp_body.get("ok") is True:
+                print(f"[PASS] remote MCP health: {mcp_health_url}")
+            else:
+                failures.append("remote MCP health")
+                print(f"[FAIL] remote MCP health: status={mcp_response.status_code}, body={mcp_body}")
+
         skip = await route_prompt_payload("ok", client=client)
         if skip.get("should_route") is False:
             print("[PASS] prompt preflight skips acknowledgements")

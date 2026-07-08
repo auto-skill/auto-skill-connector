@@ -297,8 +297,8 @@ checkout:
 python scripts/live_smoke.py
 ```
 
-It verifies prompt preflight, a full spreadsheet route with content, and the
-generic landing-page trap that must not route to Landingi.
+It verifies remote MCP health, prompt preflight, a full spreadsheet route with
+content, and the generic landing-page trap that must not route to Landingi.
 
 There is no Supabase fallback: an earlier version of this connector fell back
 to a Supabase-hosted corpus that was frozen once storage moved local, silently

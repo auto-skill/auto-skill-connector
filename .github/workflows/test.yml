@@ -25,4 +25,4 @@ jobs:
         run: >
           python -m py_compile
           auto_skill_core.py auto_skill_cli.py mcp_server.py hooks/skill_suggest.py
-          tests/test_core.py tests/test_cli.py tests/test_hook_parity.py
+          scripts/live_smoke.py tests/test_core.py tests/test_cli.py tests/test_hook_parity.py
