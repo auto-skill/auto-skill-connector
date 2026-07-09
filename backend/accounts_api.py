@@ -33,10 +33,10 @@ import mcp_oauth
 router = APIRouter()
 
 # Where /signup sends people once they've logged in -- the site's own
-# dashboard already has the full account UX (runs, connector URL). Update
-# this once autoskill.dev's root domain is actually configured to serve the
-# site in Vercel; the .vercel.app URL is the confirmed-working one today.
-SIGNUP_DASHBOARD_URL = os.getenv("SIGNUP_DASHBOARD_URL", "https://auto-skill-site.vercel.app/dashboard.html")
+# dashboard already has the full account UX (runs, connector URL).
+# autoskill.dev's root domain now actually serves the site (confirmed live),
+# so this is the user-facing domain -- never the .vercel.app fallback.
+SIGNUP_DASHBOARD_URL = os.getenv("SIGNUP_DASHBOARD_URL", "https://autoskill.dev/dashboard.html")
 
 _DEFAULT_WEB_RETURN_ORIGINS = {
     "https://autoskill.dev",

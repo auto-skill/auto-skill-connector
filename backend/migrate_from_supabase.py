@@ -68,6 +68,14 @@ def migrate_scrape_runs(client: httpx.Client, state: dict) -> None:
     finally:
         conn.close()
     new_runs = [x for x in runs if x.get("id") not in existing]
+    # This is a frozen historical snapshot -- none of these runs are actually
+    # in progress anymore, no matter what status Supabase had recorded. Local
+    # schema has a UNIQUE partial index allowing only one status='running'
+    # row at a time (see local_store.py's scrape_runs_one_running_idx), so
+    # migrating more than one unmodified would fail outright.
+    for row in new_runs:
+        if row.get("status") == "running":
+            row["status"] = "stale"
     if new_runs:
         store.upsert_rows("scrape_runs", new_runs, None)
     state["runs_done"] = True
