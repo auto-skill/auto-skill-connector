@@ -10,12 +10,46 @@ services:
       AUTO_START_EMBEDDER: "0"
       ENABLE_OLLAMA_CHAT: "0"
       STALE_SCRAPE_RUN_SECONDS: ${STALE_SCRAPE_RUN_SECONDS:-7200}
+      BACKEND_BASE_URL: ${BACKEND_BASE_URL:-https://api.auto-skill.com}
+      AUTO_SKILL_DASHBOARD_ORIGINS: ${AUTO_SKILL_DASHBOARD_ORIGINS:-https://auto-skill.com,https://www.auto-skill.com}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
     volumes:
       - ../data:/data
       - ../skills_library:/app/skills_library
+    ports:
+      - "127.0.0.1:8000:8000"
     command: uvicorn scraper:app --host 0.0.0.0 --port 8000
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  mcp:
+    build:
+      context: ../..
+      dockerfile: backend/deploy/Dockerfile.connector
+    restart: always
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      MCP_TRANSPORT: streamable-http
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: "8765"
+      AUTOSKILL_URL: http://api:8000
+      BACKEND_BASE_URL: ${BACKEND_BASE_URL:-https://api.auto-skill.com}
+      MCP_ISSUER_URL: ${MCP_ISSUER_URL:-https://mcp.auto-skill.com}
+      MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-mcp.auto-skill.com,localhost:8765,127.0.0.1:8765}
+      AUTO_SKILL_ENABLE_PUBLIC_INSTALL: "0"
+    ports:
+      - "127.0.0.1:8765:8765"
+    command: auto-skill-mcp
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/healthz', timeout=3)"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -45,6 +79,8 @@ services:
     restart: always
     depends_on:
       api:
+        condition: service_healthy
+      mcp:
         condition: service_healthy
     command: tunnel --no-autoupdate run --token ${CLOUDFLARED_TOKEN}
 

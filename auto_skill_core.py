@@ -11,7 +11,7 @@ import httpx
 
 from auto_skill_auth import auth_headers
 
-DEFAULT_AUTOSKILL_URL = "https://skills.avalahome.com"
+DEFAULT_AUTOSKILL_URL = "https://api.auto-skill.com"
 CLIENT_NAME = "auto-skill-connector"
 CLIENT_VERSION = "0.1.0"
 
@@ -570,6 +570,42 @@ def _public_backend_skill(skill: dict[str, Any] | None, task: str, tier: str) ->
     return public
 
 
+def _compact_route_metrics(metrics: dict[str, Any]) -> dict[str, int]:
+    compact: dict[str, int] = {}
+    for key in ("latency_ms", "skill_find_ms", "injected_tokens", "response_tokens"):
+        value = metrics.get(key)
+        if isinstance(value, (int, float)):
+            compact[key] = int(value)
+    return compact
+
+
+def _with_route_summary(payload: dict[str, Any]) -> dict[str, Any]:
+    """Attach a compact decision summary for clients that should not inspect full content."""
+    tier = str(payload.get("route_tier") or payload.get("route_type") or "none").lower()
+    selected = payload.get("selected_skill") if isinstance(payload.get("selected_skill"), dict) else {}
+    candidates = payload.get("candidates") if isinstance(payload.get("candidates"), list) else []
+    metrics = payload.get("route_metrics") if isinstance(payload.get("route_metrics"), dict) else {}
+    if tier == "full":
+        decision = "apply_skill_content"
+        reason = "High-confidence route. Apply skill_content in this turn."
+    elif tier == "hint":
+        decision = "consider_hint"
+        reason = "Medium-confidence route. Treat candidates as suggestions only."
+    else:
+        decision = "continue_normally"
+        reason = payload.get("message") or "No reusable skill was selected."
+    payload["route_summary"] = {
+        "decision": decision,
+        "route_tier": tier,
+        "selected_name": selected.get("name") or "",
+        "selected_url": selected.get("url") or "",
+        "candidate_count": len(candidates),
+        "reason": reason,
+        "metrics": _compact_route_metrics(metrics),
+    }
+    return payload
+
+
 async def _fetch_backend_content_url(client: httpx.AsyncClient, autoskill_url: str, content_url: str) -> str:
     target = content_url if is_url(content_url) else f"{autoskill_url.rstrip('/')}/{content_url.lstrip('/')}"
     # Only send our bearer token to our own backend -- content_url could in
@@ -629,7 +665,7 @@ async def _route_selfhosted(
     if r.status_code in {403, 404, 405}:
         return None
     if r.status_code != 200:
-        return {
+        return _with_route_summary({
             "routed": False,
             "route_type": "none",
             "route_tier": "none",
@@ -638,7 +674,7 @@ async def _route_selfhosted(
             "instructions": "Continue normally.",
             "warnings": [f"Self-hosted route at {url}/route was unavailable."],
             "search_backend": "self-hosted-route",
-        }
+        })
 
     try:
         route = r.json()
@@ -895,12 +931,12 @@ async def route_task_payload(
 
     route = await _route_selfhosted(client, task, auth_header=auth_header)
     if route is not None:
-        return route
+        return _with_route_summary(route)
 
     try:
         result = await _search(client, task, auth_header=auth_header)
     except Exception as exc:
-        return {
+        return _with_route_summary({
             "routed": False,
             "route_type": "none",
             "route_tier": "none",
@@ -909,7 +945,7 @@ async def route_task_payload(
             "instructions": "Continue normally.",
             "warnings": [],
             "search_backend": None,
-        }
+        })
 
     common = {
         "task": task,
@@ -917,7 +953,7 @@ async def route_task_payload(
         "warnings": list(result.get("warnings", [])),
     }
     if result.get("type") in {"none", "clarify"}:
-        return {
+        return _with_route_summary({
             "routed": False,
             "route_type": "none",
             "route_tier": "none",
@@ -927,18 +963,18 @@ async def route_task_payload(
                 "with a more specific task description if a reusable workflow likely exists."
             ),
             **common,
-        }
+        })
 
     candidates = _candidate_pool(result, task)
     if not candidates:
-        return {
+        return _with_route_summary({
             "routed": False,
             "route_type": "none",
             "route_tier": "none",
             "message": "No safe matching skill found.",
             "instructions": "Continue normally.",
             **common,
-        }
+        })
 
     for candidate in candidates:
         tier = _routing_tier(candidate, task)
@@ -947,7 +983,7 @@ async def route_task_payload(
             continue
 
         if tier == "hint":
-            return {
+            return _with_route_summary({
                 "routed": True,
                 "route_type": "hint",
                 "route_tier": "hint",
@@ -966,7 +1002,7 @@ async def route_task_payload(
                     "an in-turn suggestion only."
                 ),
                 **common,
-            }
+            })
 
         content = await _fetch_content(client, candidate.get("url", ""))
         if not content:
@@ -978,7 +1014,7 @@ async def route_task_payload(
             common["warnings"].append(
                 f"Downgraded matched skill because its SKILL.md content exceeded the injection budget: {candidate.get('url')}"
             )
-            return {
+            return _with_route_summary({
                 "routed": True,
                 "route_type": "hint",
                 "route_tier": "hint",
@@ -988,9 +1024,9 @@ async def route_task_payload(
                 "instructions": "Do not inject or follow full SKILL.md content for this task.",
                 "install_hint": "Preview the selected_skill.url before installing.",
                 **common,
-            }
+            })
 
-        return {
+        return _with_route_summary({
             "routed": True,
             "route_type": "skill",
             "route_tier": "full",
@@ -1007,9 +1043,9 @@ async def route_task_payload(
                 "this workflow is worth keeping permanently. Codex should use this route in-turn."
             ),
             **common,
-        }
+        })
 
-    return {
+    return _with_route_summary({
         "routed": False,
         "route_type": "none",
         "route_tier": "none",
@@ -1019,7 +1055,7 @@ async def route_task_payload(
             "with a more specific task description if a reusable workflow likely exists."
         ),
         **common,
-    }
+    })
 
 
 async def record_route_feedback(

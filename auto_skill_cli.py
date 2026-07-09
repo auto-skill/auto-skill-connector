@@ -95,6 +95,22 @@ def _print_route_metrics(payload: dict[str, Any]) -> None:
         print(f"metrics: {', '.join(parts)}")
 
 
+def _print_route_summary(payload: dict[str, Any]) -> None:
+    summary = payload.get("route_summary")
+    if not isinstance(summary, dict) or not summary:
+        return
+    decision = summary.get("decision")
+    reason = summary.get("reason")
+    selected = summary.get("selected_name")
+    parts = [f"decision={decision}"] if decision else []
+    if selected:
+        parts.append(f"selected={selected}")
+    if reason:
+        parts.append(str(reason))
+    if parts:
+        print(f"summary: {'; '.join(parts)}")
+
+
 async def _command_search(args: argparse.Namespace) -> int:
     task = " ".join(args.task).strip()
     async with httpx.AsyncClient() as client:
@@ -135,6 +151,7 @@ async def _command_route(args: argparse.Namespace) -> int:
     print(f"route: {payload.get('route_type')}")
     if payload.get("route_tier"):
         print(f"tier: {payload.get('route_tier')}")
+    _print_route_summary(payload)
     _print_route_metrics(payload)
 
     if not payload.get("routed"):
@@ -219,6 +236,76 @@ async def _command_feedback(args: argparse.Namespace) -> int:
         return 0
     print("feedback was not recorded")
     return 1
+
+
+def _print_route_metrics_summary(payload: dict[str, Any]) -> None:
+    window = payload.get("window_hours")
+    total = int(payload.get("total") or 0)
+    print(f"window_hours: {window}")
+    print(f"routes: {total}")
+    print(
+        "p95: "
+        f"latency={int(payload.get('p95_latency_ms') or 0)}ms, "
+        f"skill_find={int(payload.get('p95_skill_find_ms') or 0)}ms, "
+        f"injected_tokens={int(payload.get('p95_injected_tokens') or 0)}, "
+        f"response_tokens={int(payload.get('p95_response_tokens') or 0)}"
+    )
+    breaches = payload.get("budget_breaches") if isinstance(payload.get("budget_breaches"), dict) else {}
+    print(
+        "budget_breaches: "
+        f"any={int(breaches.get('any') or 0)}, "
+        f"latency={int(breaches.get('latency_ms') or 0)}, "
+        f"skill_find={int(breaches.get('skill_find_ms') or 0)}, "
+        f"injected_tokens={int(breaches.get('injected_tokens') or 0)}, "
+        f"response_tokens={int(breaches.get('response_tokens') or 0)}"
+    )
+    tiers = payload.get("tiers") if isinstance(payload.get("tiers"), dict) else {}
+    outcomes = payload.get("outcomes") if isinstance(payload.get("outcomes"), dict) else {}
+    if tiers:
+        print("tiers: " + ", ".join(f"{key}={value}" for key, value in sorted(tiers.items())))
+    if outcomes:
+        print("outcomes: " + ", ".join(f"{key}={value}" for key, value in sorted(outcomes.items())))
+    top_skills = payload.get("top_skills") if isinstance(payload.get("top_skills"), list) else []
+    if top_skills:
+        print("top skills:")
+        for skill in top_skills[:5]:
+            name = skill.get("skill_name") or "unknown"
+            count = int(skill.get("count") or 0)
+            positives = int(skill.get("positive_count") or 0)
+            avg_find = int(skill.get("avg_skill_find_ms") or 0)
+            avg_tokens = int(skill.get("avg_injected_tokens") or 0)
+            print(f"- {name}: count={count}, positive={positives}, avg_find={avg_find}ms, avg_injected={avg_tokens}")
+
+
+async def _command_metrics(args: argparse.Namespace) -> int:
+    base_url = (args.base_url or get_autoskill_url()).rstrip("/")
+    if not base_url:
+        print("error: AUTOSKILL_URL is not configured; pass --base-url for a local API", file=sys.stderr)
+        return 1
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{base_url}/route-metrics",
+                params={"hours": str(args.hours)},
+                headers={"Accept": "application/json"},
+                timeout=10,
+            )
+    except Exception as exc:
+        print(f"error: route metrics unavailable ({exc})", file=sys.stderr)
+        return 1
+    if response.status_code == 403:
+        print("error: /route-metrics is local-only; point --base-url at the host loopback API", file=sys.stderr)
+        return 2
+    if response.status_code != 200:
+        print(f"error: /route-metrics returned HTTP {response.status_code}: {response.text[:300]}", file=sys.stderr)
+        return 1
+    payload = response.json()
+    if args.json:
+        print(json.dumps(payload, indent=2))
+        return 0
+    _print_route_metrics_summary(payload)
+    breaches = payload.get("budget_breaches") if isinstance(payload.get("budget_breaches"), dict) else {}
+    return 1 if int(breaches.get("any") or 0) else 0
 
 
 async def _resolve_cli_skill(source: str) -> dict[str, Any]:
@@ -712,6 +799,12 @@ def build_parser() -> argparse.ArgumentParser:
     feedback.add_argument("outcome", choices=["used", "skipped", "installed", "failed", "dismissed"], help="Outcome to record.")
     feedback.add_argument("--note", default="", help="Optional short note; do not include raw prompts.")
     feedback.set_defaults(func=_command_feedback)
+
+    metrics = subparsers.add_parser("metrics", help="Show local route analytics and launch budget breaches.")
+    metrics.add_argument("--hours", type=int, default=24, help="Recent route-event window to inspect.")
+    metrics.add_argument("--base-url", default="", help="Override AUTOSKILL_URL; use a local/loopback API.")
+    metrics.add_argument("--json", action="store_true", help="Print raw /route-metrics JSON.")
+    metrics.set_defaults(func=_command_metrics)
 
     preview = subparsers.add_parser("preview", help="Preview a skill by URL or task description.")
     preview.add_argument("source", nargs="+", help="Skill URL or task description.")

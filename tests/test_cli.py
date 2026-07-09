@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 from pathlib import Path
 
 import pytest
@@ -46,6 +47,11 @@ def test_route_outputs_selected_skill(
                 "risk_score": 0,
             },
             "skill_content": "name: spreadsheet-router\n",
+            "route_summary": {
+                "decision": "apply_skill_content",
+                "selected_name": "spreadsheet-router",
+                "reason": "High-confidence route. Apply skill_content in this turn.",
+            },
             "route_metrics": {
                 "latency_ms": 42,
                 "skill_find_ms": 30,
@@ -59,6 +65,7 @@ def test_route_outputs_selected_skill(
     out = capsys.readouterr().out
     assert result == 0
     assert "route: skill" in out
+    assert "summary: decision=apply_skill_content; selected=spreadsheet-router" in out
     assert "metrics: latency=42ms, skill_find=30ms, injected_tokens=120, response_tokens=160" in out
     assert "spreadsheet-router" in out
 
@@ -196,6 +203,108 @@ def test_feedback_command_reports_failure(
     out = capsys.readouterr().out
     assert result == 1
     assert "not recorded" in out
+
+
+class FakeMetricsResponse:
+    def __init__(self, status_code: int, payload: dict | None = None, text: str = "") -> None:
+        self.status_code = status_code
+        self._payload = payload or {}
+        self.text = text or json.dumps(self._payload)
+
+    def json(self) -> dict:
+        return self._payload
+
+
+def test_metrics_command_outputs_summary(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    class MetricsClient:
+        async def __aenter__(self) -> "MetricsClient":
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            pass
+
+        async def get(self, url: str, **kwargs: object) -> FakeMetricsResponse:
+            assert url == "http://127.0.0.1:8000/route-metrics"
+            assert kwargs["params"] == {"hours": "12"}
+            return FakeMetricsResponse(
+                200,
+                {
+                    "ok": True,
+                    "window_hours": 12,
+                    "total": 3,
+                    "tiers": {"full": 2, "hint": 1},
+                    "outcomes": {"used": 1, "pending": 2},
+                    "p95_latency_ms": 80,
+                    "p95_skill_find_ms": 50,
+                    "p95_injected_tokens": 700,
+                    "p95_response_tokens": 900,
+                    "budget_breaches": {"any": 0},
+                    "top_skills": [
+                        {
+                            "skill_name": "spreadsheet-router",
+                            "count": 2,
+                            "positive_count": 1,
+                            "avg_skill_find_ms": 30,
+                            "avg_injected_tokens": 500,
+                        }
+                    ],
+                },
+            )
+
+    monkeypatch.setattr(cli.httpx, "AsyncClient", lambda: MetricsClient())
+    result = cli.main(["metrics", "--base-url", "http://127.0.0.1:8000", "--hours", "12"])
+    out = capsys.readouterr().out
+    assert result == 0
+    assert "routes: 3" in out
+    assert "budget_breaches: any=0" in out
+    assert "spreadsheet-router" in out
+
+
+def test_metrics_command_fails_on_budget_breach(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    class MetricsClient:
+        async def __aenter__(self) -> "MetricsClient":
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            pass
+
+        async def get(self, url: str, **kwargs: object) -> FakeMetricsResponse:
+            del url, kwargs
+            return FakeMetricsResponse(200, {"ok": True, "total": 1, "budget_breaches": {"any": 1}})
+
+    monkeypatch.setattr(cli.httpx, "AsyncClient", lambda: MetricsClient())
+    result = cli.main(["metrics", "--base-url", "http://127.0.0.1:8000"])
+    out = capsys.readouterr().out
+    assert result == 1
+    assert "budget_breaches: any=1" in out
+
+
+def test_metrics_command_reports_public_guard(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    class MetricsClient:
+        async def __aenter__(self) -> "MetricsClient":
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            pass
+
+        async def get(self, url: str, **kwargs: object) -> FakeMetricsResponse:
+            del url, kwargs
+            return FakeMetricsResponse(403, {"error": "read-only public API"})
+
+    monkeypatch.setattr(cli.httpx, "AsyncClient", lambda: MetricsClient())
+    result = cli.main(["metrics", "--base-url", "https://skills.example.com"])
+    captured = capsys.readouterr()
+    assert result == 2
+    assert "local-only" in captured.err
 
 
 def test_install_dry_run_does_not_write(

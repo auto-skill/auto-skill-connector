@@ -34,6 +34,12 @@ exists so the scraper, worker, and recommender can share the SQLite store over
 loopback; public clients should use `/route`, `/find-semantic`, and
 `/content/{content_hash}`.
 
+Dashboard OAuth redirects are allowlisted. Set
+`AUTO_SKILL_DASHBOARD_ORIGINS` to a comma-separated list of dashboard origins
+on the host, for example
+`https://auto-skill.com,https://www.auto-skill.com`. Local development origins
+are allowed by default when the variable is not set.
+
 `/readyz` and `/route-metrics` include `vector_index` stats so search latency
 can be correlated with active corpus size, valid embeddings, and embedding
 matrix cache state before moving to a new vector backend. `/readyz` also
@@ -118,9 +124,11 @@ intentionally does not allow `/route-metrics` or `/route-feedback`.
 `deploy/docker-compose.yml` is a small VPS-oriented skeleton:
 
 - `api`: public/read-oriented FastAPI service.
+- `mcp`: hosted streamable-http connector with MCP OAuth, routed to the API
+  over the compose network.
 - `worker`: scraper and embedding loop, writing through the API's local REST
   surface.
-- `cloudflared`: tunnel to the API.
+- `cloudflared`: tunnel to the API and MCP connector.
 - `litestream`: SQLite WAL replication to Cloudflare R2.
 - `library-backup`: daily R2 tarballs for `skills_library/` until content
   moves into SQLite.
@@ -139,12 +147,19 @@ python deploy\compose_preflight.py
 The current app still stores SKILL.md files under `skills_library/`, so that
 directory needs its own backup until content is moved into SQLite.
 
-On the current Windows host, run `.\deploy\backup-local.ps1 -PackContentBlobs`
+The old Windows/laptop tunnel is emergency-only. Before moving it off that
+machine, run `.\deploy\backup-local.ps1 -PackContentBlobs`
 before deploys to create a timestamped SQLite/library/blob backup under
 `data\backups\`; timestamped local backups are pruned after 14 days by
 default. Add `-UploadR2` when R2 credentials are available. Use
 `.\deploy\install-windows-tasks.ps1` to keep the service loops and daily local
 backup registered in Task Scheduler.
+Backup manifests include file sizes and SHA-256 hashes. Verify a backup before
+restore or after an R2 download:
+
+```powershell
+python deploy\verify_backup.py data\backups\20260708T200000Z
+```
 
 For cheaper content-addressed storage, build gzip blobs keyed by normalized
 content hash:
@@ -156,5 +171,4 @@ python pack_content_blobs.py
 The output in `content_blobs/` can be synced to R2 later without duplicating
 identical skill bodies.
 
-See `RUNBOOK.md` for operations notes and the current Windows host update
-path.
+See `RUNBOOK.md` for operations notes and the VPS migration path.

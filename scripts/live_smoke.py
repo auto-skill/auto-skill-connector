@@ -37,7 +37,7 @@ CHECKS = [
 ]
 
 TIER_ORDER = {"none": 0, "hint": 1, "full": 2}
-DEFAULT_MCP_HEALTH_URL = "https://mcp.avalahome.com/healthz"
+DEFAULT_MCP_HEALTH_URL = "https://mcp.auto-skill.com/healthz"
 
 
 def get_mcp_health_url() -> str:
@@ -58,6 +58,42 @@ def _skill_blob(payload: dict) -> str:
 
 def _content_blob(payload: dict) -> str:
     return f"{_skill_blob(payload)} {payload.get('skill_content') or ''}".lower()
+
+
+def validate_route_payload(check: dict, payload: dict) -> tuple[bool, list[str]]:
+    failures: list[str] = []
+    tier = payload.get("route_tier") or "none"
+    blob = _content_blob(payload)
+
+    if payload.get("routed") is not True:
+        failures.append("not routed")
+    if TIER_ORDER.get(tier, 0) < TIER_ORDER[check["min_tier"]]:
+        failures.append(f"tier {tier!r} below required {check['min_tier']!r}")
+    missing_words = [word for word in check.get("must_include", ()) if word not in blob]
+    if missing_words:
+        failures.append(f"missing expected word(s): {', '.join(missing_words)}")
+    forbidden_words = [word for word in check.get("must_not_include", ()) if word in blob]
+    if forbidden_words:
+        failures.append(f"included forbidden word(s): {', '.join(forbidden_words)}")
+    if check["min_tier"] == "full" and not payload.get("skill_content"):
+        failures.append("full route did not include skill_content")
+
+    summary = payload.get("route_summary") if isinstance(payload.get("route_summary"), dict) else {}
+    expected_decision = "apply_skill_content" if tier == "full" else "consider_hint" if tier == "hint" else "continue_normally"
+    if summary.get("decision") != expected_decision:
+        failures.append(f"route_summary decision {summary.get('decision')!r} != {expected_decision!r}")
+    if not summary.get("selected_name") and tier in {"full", "hint"}:
+        failures.append("route_summary missing selected_name")
+
+    metrics = payload.get("route_metrics") if isinstance(payload.get("route_metrics"), dict) else {}
+    for key in ("latency_ms", "skill_find_ms", "injected_tokens", "response_tokens"):
+        if not isinstance(metrics.get(key), (int, float)):
+            failures.append(f"route_metrics missing {key}")
+    summary_metrics = summary.get("metrics") if isinstance(summary.get("metrics"), dict) else {}
+    if metrics and not summary_metrics:
+        failures.append("route_summary missing compact metrics")
+
+    return not failures, failures
 
 
 async def main() -> int:
@@ -95,23 +131,18 @@ async def main() -> int:
         for check in CHECKS:
             payload = await route_task_payload(check["task"], client=client)
             tier = payload.get("route_tier") or "none"
-            blob = _content_blob(payload)
             skill = payload.get("selected_skill") or {}
             label = skill.get("name") or "<none>"
             backend = payload.get("search_backend")
 
-            ok = payload.get("routed") is True
-            ok = ok and TIER_ORDER.get(tier, 0) >= TIER_ORDER[check["min_tier"]]
-            ok = ok and all(word in blob for word in check.get("must_include", ()))
-            ok = ok and not any(word in blob for word in check.get("must_not_include", ()))
-            if check["min_tier"] == "full":
-                ok = ok and bool(payload.get("skill_content"))
+            ok, route_failures = validate_route_payload(check, payload)
 
             if ok:
                 print(f"[PASS] {check['name']}: tier={tier}, skill={label}, backend={backend}")
             else:
                 failures.append(check["name"])
                 print(f"[FAIL] {check['name']}: tier={tier}, skill={label}, backend={backend}")
+                print(f"       contract_failures={route_failures}")
                 print(f"       message={payload.get('message')}")
                 print(f"       warnings={payload.get('warnings')}")
 

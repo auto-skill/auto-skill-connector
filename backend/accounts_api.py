@@ -9,15 +9,17 @@ why there is no external database or auth framework here.
 
 Endpoints:
   GET  /auth/{provider}/start?flow=cli|web|mcp&...  -> redirect into provider OAuth
-  GET  /auth/{provider}/callback?code&state         -> redirect back per flow (see mcp_oauth.py for flow=mcp)
+  GET  /auth/{provider}/callback?code&state         -> redirect back per flow
   GET  /auth/whoami                           -> current user
   POST /auth/logout                           -> revoke the bearer token
   GET  /runs                                  -> current user's recent route_events (dashboard metrics)
   GET/POST/DELETE /favorites[/{skill_id}]     -> per-user favorited skills
   GET/POST        /installs                   -> per-user install history
+  GET             /runs                       -> per-user route run history
   GET/POST/DELETE /private-skills[/{id}]      -> per-user private skill submissions
 """
-from urllib.parse import parse_qsl, quote, urlencode, urlparse, urlunparse
+import os
+from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunparse, urlunsplit
 
 from fastapi import APIRouter, Header, HTTPException
 from fastapi.responses import PlainTextResponse, RedirectResponse
@@ -28,6 +30,16 @@ import local_store as store
 import mcp_oauth
 
 router = APIRouter()
+
+_DEFAULT_WEB_RETURN_ORIGINS = {
+    "https://auto-skill.com",
+    "https://www.auto-skill.com",
+    "https://auto-skill-site.pages.dev",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+}
 
 
 def _append_query(url: str, **params: str | None) -> str:
@@ -42,6 +54,38 @@ def _require_user(authorization: str | None) -> dict:
     if user is None:
         raise HTTPException(status_code=401, detail="missing or invalid bearer token")
     return user
+
+
+def _origin_for_url(value: str) -> str | None:
+    parsed = urlsplit(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.username or parsed.password:
+        return None
+    return urlunsplit((parsed.scheme.lower(), parsed.netloc.lower(), "", "", ""))
+
+
+def _allowed_web_return_origins() -> set[str]:
+    configured = os.environ.get("AUTO_SKILL_DASHBOARD_ORIGINS", "")
+    values = [v.strip() for v in configured.split(",") if v.strip()]
+    origins = {_origin_for_url(v) for v in values} if values else set(_DEFAULT_WEB_RETURN_ORIGINS)
+    return {origin for origin in origins if origin}
+
+
+def _safe_return_to(value: str) -> str:
+    if not value or len(value) > 600:
+        raise HTTPException(status_code=400, detail="invalid return_to")
+    origin = _origin_for_url(value)
+    if origin is None:
+        raise HTTPException(status_code=400, detail="invalid return_to")
+    if origin not in _allowed_web_return_origins():
+        raise HTTPException(status_code=400, detail="return_to origin is not allowed")
+    return value
+
+
+def _with_token_fragment(return_to: str, token: str) -> str:
+    parsed = urlsplit(return_to)
+    params = dict(parse_qsl(parsed.fragment, keep_blank_values=True))
+    params["token"] = token
+    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, parsed.query, urlencode(params)))
 
 
 @router.get("/auth/{provider}/start")
@@ -61,12 +105,19 @@ async def auth_start(
         raise HTTPException(status_code=404, detail="unknown provider")
     if not auth.PROVIDERS[provider]["client_id"]:
         raise HTTPException(status_code=503, detail=f"{provider} login is not configured on this server")
+    flow = (flow or "cli").strip().lower()
     if flow == "cli" and port is None:
         raise HTTPException(status_code=400, detail="port is required for the cli flow")
     if flow == "web" and not return_to:
         raise HTTPException(status_code=400, detail="return_to is required for the web flow")
     if flow == "mcp" and not login_state:
         raise HTTPException(status_code=400, detail="login_state is required for the mcp flow")
+    if flow not in {"cli", "web", "mcp"}:
+        raise HTTPException(status_code=400, detail="unknown login flow")
+    if flow == "cli" and (int(port or 0) <= 0 or int(port or 0) > 65535):
+        raise HTTPException(status_code=400, detail="port is required for CLI login")
+    if flow == "web":
+        return_to = _safe_return_to(str(return_to or ""))
     state = auth.create_state(
         provider, {"flow": flow, "port": port, "login_state": login_state, "return_to": return_to}
     )
@@ -89,7 +140,7 @@ async def auth_callback(provider: str, code: str, state: str):
     flow = resolved.get("flow", "cli")
 
     if flow == "web":
-        return RedirectResponse(f"{resolved['return_to']}#token={quote(cli_token)}")
+        return RedirectResponse(_with_token_fragment(str(resolved.get("return_to") or ""), cli_token))
 
     if flow == "mcp":
         pending = mcp_oauth.pop_pending(resolved.get("login_state") or "")
@@ -101,7 +152,7 @@ async def auth_callback(provider: str, code: str, state: str):
         redirect_url = _append_query(pending["redirect_uri"], code=auth_code, state=pending["mcp_state"])
         return RedirectResponse(redirect_url)
 
-    return RedirectResponse(f"http://127.0.0.1:{resolved['port']}/callback?token={cli_token}")
+    return RedirectResponse(f"http://127.0.0.1:{int(resolved['port'])}/callback?token={cli_token}")
 
 
 @router.get("/auth/whoami")
@@ -111,9 +162,9 @@ async def whoami(authorization: str | None = Header(None)):
 
 
 @router.get("/runs")
-async def get_runs(authorization: str | None = Header(None)):
+async def get_runs(limit: int = 50, authorization: str | None = Header(None)):
     user = _require_user(authorization)
-    return {"runs": store.list_route_events_for_user(user["id"])}
+    return {"runs": store.list_route_events_for_user(user["id"], limit)}
 
 
 @router.post("/auth/logout")
