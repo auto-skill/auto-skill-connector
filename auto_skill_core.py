@@ -1062,6 +1062,41 @@ async def record_route_feedback(
         return False
 
 
+async def record_route_skip(
+    prompt: str,
+    reason: str,
+    *,
+    client: httpx.AsyncClient | None = None,
+    auth_header: dict[str, str] | None = None,
+) -> bool:
+    """Best-effort log of a prompt should_route_prompt() decided not to
+    route, so "why didn't this trigger" has an actual record to answer
+    from instead of silence. Never raises -- a logging failure must not
+    block the user's actual turn."""
+    if client is None:
+        async with httpx.AsyncClient() as owned:
+            return await record_route_skip(prompt, reason, client=owned, auth_header=auth_header)
+
+    url = get_autoskill_url()
+    if not url:
+        return False
+    try:
+        response = await client.post(
+            f"{url}/route-skip",
+            json={
+                "prompt": prompt,
+                "reason": reason[:200],
+                "client": CLIENT_NAME,
+                "client_version": CLIENT_VERSION,
+            },
+            headers=auth_header if auth_header is not None else auth_headers(),
+            timeout=5,
+        )
+        return response.status_code == 200
+    except Exception:
+        return False
+
+
 def build_route_context(route_payload: dict[str, Any]) -> str:
     """Create compact context that a prompt hook can inject for an agent."""
     if not route_payload.get("routed"):
@@ -1124,6 +1159,7 @@ async def route_prompt_payload(
     """Run the prompt preflight gate, then route skill-shaped prompts."""
     decision = should_route_prompt(prompt)
     if not decision["should_route"]:
+        await record_route_skip(prompt, decision["reason"], client=client, auth_header=auth_header)
         return {
             "should_route": False,
             "reason": decision["reason"],

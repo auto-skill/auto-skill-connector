@@ -44,14 +44,14 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 # mcp_server) do not. Public callers get search/read endpoints, the /auth,
 # /mcp-oauth, and /favorites/installs/private-skills/runs account endpoints
 # (each of those enforces its own bearer-token auth in accounts_api.py -- this
-# guard just decides what reaches FastAPI at all), and /route -- the local
-# REST surface has no auth of its own, so every /rest/v1 path must stay
-# loopback-only.
+# guard just decides what reaches FastAPI at all), and /route/route-skip --
+# the local REST surface has no auth of its own, so every /rest/v1 path must
+# stay loopback-only.
 PUBLIC_GET_PATHS = frozenset(
     {"/", "/healthz", "/readyz", "/status", "/find-semantic", "/favorites", "/installs", "/private-skills", "/runs"}
 )
 PUBLIC_GET_PREFIXES = ("/content/", "/auth/", "/mcp-oauth/")
-PUBLIC_POST_PATHS = frozenset({"/route", "/favorites", "/installs", "/private-skills"})
+PUBLIC_POST_PATHS = frozenset({"/route", "/route-skip", "/favorites", "/installs", "/private-skills"})
 PUBLIC_POST_PREFIXES = ("/auth/", "/mcp-oauth/")
 PUBLIC_DELETE_PREFIXES = ("/favorites/", "/private-skills/")
 

@@ -766,6 +766,7 @@ async def route(body: RouteRequest, authorization: str | None = Header(None)):
             "user_id": user["id"] if user else None,
             "query_hash": _query_hash(query),
             "query_chars": len(query),
+            "prompt_text": query,
             "tier": tier,
             "skill_id": skill.get("id") if skill else None,
             "skill_name": skill.get("name") if skill else None,
@@ -797,6 +798,40 @@ async def route(body: RouteRequest, authorization: str | None = Header(None)):
         "config_version": CONFIG_VERSION,
         "ttl": ROUTE_TTL_SECONDS,
     }
+
+
+class RouteSkipRequest(BaseModel):
+    prompt: str
+    reason: str = ""
+    client: str = ""
+    client_version: str = ""
+
+
+@router.post("/route-skip")
+async def route_skip(body: RouteSkipRequest, authorization: str | None = Header(None)):
+    """Log a prompt that auto_skill_core.py's should_route_prompt() decided
+    not to route, before it ever reached /route -- so "why didn't this
+    trigger" has an actual record (prompt text + reason) to answer from,
+    not just silence."""
+    user = auth.user_from_authorization_header(authorization)
+    query = body.prompt.strip()
+    if not query:
+        return {"ok": False}
+    await _record_route_event(
+        {
+            "client": body.client[:80],
+            "client_version": body.client_version[:80],
+            "id": str(uuid.uuid4()),
+            "user_id": user["id"] if user else None,
+            "query_hash": _query_hash(query),
+            "query_chars": len(query),
+            "prompt_text": query,
+            "skip_reason": body.reason[:200],
+            "tier": "skipped",
+            "config_version": CONFIG_VERSION,
+        }
+    )
+    return {"ok": True}
 
 
 @router.get("/find-semantic")

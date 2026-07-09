@@ -211,10 +211,41 @@ def _fetch_backend_content(content_url: str) -> str:
     return ""
 
 
+def _report_outcome(route: dict | None, outcome: str, note: str) -> None:
+    """Attach this hook's local application decision (was a match actually
+    shown/applied, downgraded, or rejected) to the route_events row /route
+    already created for this call -- reuses the existing route-feedback
+    contract instead of writing a second, duplicate row. Best-effort,
+    never allowed to affect routing itself."""
+    route_id = (route or {}).get("route_id")
+    if not route_id or not AUTOSKILL_URL:
+        return
+    try:
+        body = json.dumps(
+            {"route_id": route_id, "outcome": outcome, "source": CLIENT_NAME, "note": note[:300]}
+        ).encode("utf-8")
+        request = urllib.request.Request(
+            f"{AUTOSKILL_URL}/route-feedback",
+            data=body,
+            headers={"Content-Type": "application/json", **_auth_headers()},
+            method="POST",
+        )
+        urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS)
+    except Exception:
+        pass
+
+
 def _log_routing_decision(prompt: str, tier: str, skill: dict | None = None, reason: str = "") -> None:
     """Append one JSONL record so a derailed session can be diagnosed later
     without needing to reproduce the exact prompt. Local-only, never
-    transmitted; best-effort and never allowed to break routing itself."""
+    transmitted; best-effort and never allowed to break routing itself.
+
+    The prompt text itself is also stored server-side, in the route_events
+    row /route already created for this call (see recommender.py) -- that
+    part is intentionally not local-only, so "why didn't this trigger" has
+    an actual record to answer from. This JSONL file is a redundant local
+    copy for offline/no-network debugging, not the only place it lives.
+    """
     try:
         record = {
             "at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
@@ -312,6 +343,7 @@ def main() -> None:
         # whichever happened to rank first among near-ties.
         _print_hint("multiple candidates plausible")
         _log_routing_decision(prompt, "hint", skill, reason="multiple candidates plausible")
+        _report_outcome(route, "dismissed", "multiple candidates plausible; shown as hint, not auto-applied")
         return
 
     content = ""
@@ -323,6 +355,7 @@ def main() -> None:
         content = _fetch_content(url)
     if not content:
         _log_routing_decision(prompt, "none", skill, reason="content fetch failed or rejected (HTML/stub)")
+        _report_outcome(route, "failed", "content fetch failed or rejected (HTML/stub)")
         return
     if _is_unconfirmed_action_content(content):
         # Stopgap: this skill's body pairs an action verb (send/post/delete/...)
@@ -331,6 +364,7 @@ def main() -> None:
         # it as a hint and let a human/Claude decide with eyes open.
         _print_hint("looks like it takes an action without asking for confirmation")
         _log_routing_decision(prompt, "hint", skill, reason="unconfirmed-action content downgrade")
+        _report_outcome(route, "dismissed", "unconfirmed-action content downgrade; shown as hint only")
         return
     if len(content) > MAX_CONTENT_CHARS:
         content = f"{content[:MAX_CONTENT_CHARS]}\n\n[auto-skill: truncated]"
@@ -344,6 +378,7 @@ def main() -> None:
         "</auto_skill_content>"
     )
     _log_routing_decision(prompt, "full", skill)
+    _report_outcome(route, "used", "injected as active task instructions")
 
 
 if __name__ == "__main__":

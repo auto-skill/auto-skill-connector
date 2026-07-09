@@ -221,6 +221,7 @@ class ApiContractTests(unittest.TestCase):
             ("GET", "/find-semantic"),
             ("GET", "/content/{hash_value}"),
             ("POST", "/route"),
+            ("POST", "/route-skip"),
             ("GET", "/auth/{provider}/start"),
             ("GET", "/auth/{provider}/callback"),
             ("GET", "/auth/whoami"),

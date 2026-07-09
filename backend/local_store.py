@@ -222,6 +222,8 @@ ROUTE_EVENT_COLUMN_DEFAULTS = {
     "candidate_tokens": "INTEGER",
     "injected_tokens": "INTEGER",
     "user_id": "TEXT",
+    "prompt_text": "TEXT",
+    "skip_reason": "TEXT",
 }
 
 
