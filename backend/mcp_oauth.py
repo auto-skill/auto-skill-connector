@@ -113,22 +113,87 @@ async def authorize(
     return RedirectResponse(f"/mcp-oauth/choose?login_state={login_state}")
 
 
+def _choose_page(body: str, status_code: int = 200) -> HTMLResponse:
+    """Shared chrome for the login-chooser page, matching the terminal-card
+    look of auto-skill-site's index.html/dashboard.html (same palette, same
+    Geist/Geist Mono fonts) so this doesn't read as a bare unstyled bounce
+    page in the middle of the connect flow."""
+    html = f"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sign in to Auto-Skill</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {{
+    --paper: #f7f7f2; --panel: #fffefa; --ink: #111111; --muted: #666666;
+    --line: #d9d9d1; --line-dark: #222222; --blue: #1f6fff;
+    --button: #111111; --button-rail: #1f6fff;
+  }}
+  * {{ box-sizing: border-box; }}
+  body {{
+    margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    background: var(--paper); color: var(--ink); font-family: "Geist", Arial, sans-serif;
+  }}
+  a {{ color: inherit; text-decoration: none; }}
+  .card {{
+    width: min(380px, calc(100% - 40px)); border: 1px solid var(--line-dark);
+    background: var(--panel); box-shadow: 0 18px 60px rgba(0, 0, 0, 0.08); padding: 32px 28px;
+  }}
+  .brand {{ display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 650; margin-bottom: 20px; }}
+  .mark {{
+    width: 26px; height: 26px; display: grid; place-items: center; border: 1px solid var(--ink);
+    color: var(--blue); font-family: "Geist Mono", Consolas, monospace; font-size: 13px; font-weight: 700;
+  }}
+  h1 {{ margin: 0 0 8px; font-size: 20px; line-height: 1.25; }}
+  p {{ margin: 0 0 22px; color: var(--muted); font-size: 14px; line-height: 1.5; }}
+  .providers {{ display: flex; flex-direction: column; gap: 10px; }}
+  .button {{
+    min-height: 40px; display: flex; align-items: center; justify-content: center;
+    padding: 0 40px 0 16px; border: 0; position: relative;
+    background: linear-gradient(90deg, var(--button) 0, var(--button) calc(100% - 28px), var(--button-rail) calc(100% - 28px), var(--button-rail) 100%);
+    color: #ffffff; font-size: 14px; font-weight: 500;
+    box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.14);
+  }}
+  .button::after {{
+    content: ">"; position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+    font-family: "Geist Mono", Consolas, monospace; font-size: 13px;
+  }}
+  .button:hover {{ filter: brightness(1.06); }}
+  .error {{ color: #b3261e; font-size: 14px; line-height: 1.5; margin: 0; }}
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="brand"><span class="mark" aria-hidden="true">&gt;_</span><span>Auto-Skill</span></div>
+    {body}
+  </div>
+</body>
+</html>"""
+    return HTMLResponse(html, status_code=status_code)
+
+
 @router.get("/choose")
 async def choose(login_state: str):
     if peek_pending(login_state) is None:
-        return HTMLResponse(
-            "Login expired or invalid -- please retry connecting in your MCP client.", status_code=400
+        return _choose_page(
+            '<p class="error">Login expired or invalid -- please retry connecting in your MCP client.</p>',
+            status_code=400,
         )
-    links = "".join(
-        f'<p><a href="/auth/{provider}/start?flow=mcp&login_state={login_state}">Continue with {label}</a></p>'
+    buttons = "".join(
+        f'<a class="button" href="/auth/{provider}/start?flow=mcp&login_state={login_state}">'
+        f"Continue with {label}</a>"
         for provider, label in (("google", "Google"), ("github", "GitHub"))
     )
-    html = (
-        "<!doctype html><html><body style=\"font-family:sans-serif;max-width:420px;"
-        "margin:80px auto;text-align:center\">"
-        "<h2>Sign in to connect Auto-Skill</h2>" + links + "</body></html>"
+    body = (
+        "<h1>Sign in to connect Auto-Skill</h1>"
+        "<p>Claude needs your account to route tasks and track your run history.</p>"
+        f'<div class="providers">{buttons}</div>'
     )
-    return HTMLResponse(html)
+    return _choose_page(body)
 
 
 @router.get("/codes/{code}")
