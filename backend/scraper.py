@@ -48,7 +48,18 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 # the local REST surface has no auth of its own, so every /rest/v1 path must
 # stay loopback-only.
 PUBLIC_GET_PATHS = frozenset(
-    {"/", "/healthz", "/readyz", "/status", "/find-semantic", "/favorites", "/installs", "/private-skills", "/runs"}
+    {
+        "/",
+        "/healthz",
+        "/readyz",
+        "/status",
+        "/find-semantic",
+        "/favorites",
+        "/installs",
+        "/private-skills",
+        "/runs",
+        "/signup",
+    }
 )
 PUBLIC_GET_PREFIXES = ("/content/", "/auth/", "/mcp-oauth/")
 PUBLIC_POST_PATHS = frozenset({"/route", "/route-skip", "/favorites", "/installs", "/private-skills"})
@@ -83,6 +94,40 @@ async def public_readonly_guard(request, call_next):
     if is_public:
         if not public_api_allows(request.method, request.url.path):
             return JSONResponse({"error": "read-only public API"}, status_code=403)
+    return await call_next(request)
+
+
+# --- Account-required guard --------------------------------------------------
+# Auto-Skill's public API is account-only: every tunneled request needs a
+# valid bearer token, except the login/OAuth machinery itself (can't require
+# login to reach the thing that logs you in) and bare health/readiness
+# checks (monitoring shouldn't need an account either). A browser without a
+# token gets bounced to /signup; anything else (curl, the MCP connector, a
+# tool call) gets a 401 with a signup_url to act on.
+ACCOUNT_EXEMPT_PATHS = frozenset({"/healthz", "/readyz", "/signup"})
+ACCOUNT_EXEMPT_PREFIXES = ("/auth/", "/mcp-oauth/")
+
+
+def _account_exempt(path: str) -> bool:
+    path = path.rstrip("/") or "/"
+    return path in ACCOUNT_EXEMPT_PATHS or any(path.startswith(prefix) for prefix in ACCOUNT_EXEMPT_PREFIXES)
+
+
+@app.middleware("http")
+async def require_account_guard(request, call_next):
+    from fastapi.responses import JSONResponse, RedirectResponse
+
+    if request.method == "OPTIONS":
+        return await call_next(request)
+    is_public = bool(request.headers.get("cf-connecting-ip") or request.headers.get("x-forwarded-for"))
+    if is_public and not _account_exempt(request.url.path):
+        import auth
+
+        user = auth.user_from_authorization_header(request.headers.get("authorization"))
+        if user is None:
+            if "text/html" in (request.headers.get("accept") or ""):
+                return RedirectResponse("/signup")
+            return JSONResponse({"error": "account required", "signup_url": "/signup"}, status_code=401)
     return await call_next(request)
 
 # Local SQLite-backed store, replacing Supabase for new writes (see SUPABASE_URL

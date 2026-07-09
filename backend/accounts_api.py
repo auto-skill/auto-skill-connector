@@ -17,12 +17,13 @@ Endpoints:
   GET/POST        /installs                   -> per-user install history
   GET             /runs                       -> per-user route run history
   GET/POST/DELETE /private-skills[/{id}]      -> per-user private skill submissions
+  GET  /signup                                -> account-required landing page (see scraper.py's account guard)
 """
 import os
-from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunparse, urlunsplit
+from urllib.parse import parse_qsl, quote, urlencode, urlparse, urlsplit, urlunparse, urlunsplit
 
 from fastapi import APIRouter, Header, HTTPException, Request
-from fastapi.responses import PlainTextResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from pydantic import BaseModel
 
 import auth
@@ -30,6 +31,12 @@ import local_store as store
 import mcp_oauth
 
 router = APIRouter()
+
+# Where /signup sends people once they've logged in -- the site's own
+# dashboard already has the full account UX (runs, connector URL). Update
+# this once autoskill.dev's root domain is actually configured to serve the
+# site in Vercel; the .vercel.app URL is the confirmed-working one today.
+SIGNUP_DASHBOARD_URL = os.getenv("SIGNUP_DASHBOARD_URL", "https://auto-skill-site.vercel.app/dashboard.html")
 
 _DEFAULT_WEB_RETURN_ORIGINS = {
     "https://autoskill.dev",
@@ -169,6 +176,80 @@ async def auth_callback(request: Request, provider: str, code: str, state: str):
         return RedirectResponse(redirect_url)
 
     return RedirectResponse(f"http://127.0.0.1:{int(resolved['port'])}/callback?token={cli_token}")
+
+
+def _signup_page() -> HTMLResponse:
+    """Landing page for anyone scraper.py's account guard turned away --
+    same terminal-card look as mcp_oauth.py's login chooser, so a browser
+    hitting this API directly doesn't get a bare 401 or an unstyled page."""
+    return_to = quote(SIGNUP_DASHBOARD_URL, safe="")
+    buttons = "".join(
+        f'<a class="button" href="/auth/{provider}/start?flow=web&return_to={return_to}">'
+        f"Continue with {label}</a>"
+        for provider, label in (("google", "Google"), ("github", "GitHub"))
+    )
+    html = f"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sign in to Auto-Skill</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {{
+    --paper: #f7f7f2; --panel: #fffefa; --ink: #111111; --muted: #666666;
+    --line: #d9d9d1; --line-dark: #222222; --blue: #1f6fff;
+    --button: #111111; --button-rail: #1f6fff;
+  }}
+  * {{ box-sizing: border-box; }}
+  body {{
+    margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    background: var(--paper); color: var(--ink); font-family: "Geist", Arial, sans-serif;
+  }}
+  a {{ color: inherit; text-decoration: none; }}
+  .card {{
+    width: min(400px, calc(100% - 40px)); border: 1px solid var(--line-dark);
+    background: var(--panel); box-shadow: 0 18px 60px rgba(0, 0, 0, 0.08); padding: 32px 28px;
+  }}
+  .brand {{ display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 650; margin-bottom: 20px; }}
+  .mark {{
+    width: 26px; height: 26px; display: grid; place-items: center; border: 1px solid var(--ink);
+    color: var(--blue); font-family: "Geist Mono", Consolas, monospace; font-size: 13px; font-weight: 700;
+  }}
+  h1 {{ margin: 0 0 8px; font-size: 20px; line-height: 1.25; }}
+  p {{ margin: 0 0 22px; color: var(--muted); font-size: 14px; line-height: 1.5; }}
+  .providers {{ display: flex; flex-direction: column; gap: 10px; }}
+  .button {{
+    min-height: 40px; display: flex; align-items: center; justify-content: center;
+    padding: 0 40px 0 16px; border: 0; position: relative;
+    background: linear-gradient(90deg, var(--button) 0, var(--button) calc(100% - 28px), var(--button-rail) calc(100% - 28px), var(--button-rail) 100%);
+    color: #ffffff; font-size: 14px; font-weight: 500;
+    box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.14);
+  }}
+  .button::after {{
+    content: ">"; position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+    font-family: "Geist Mono", Consolas, monospace; font-size: 13px;
+  }}
+  .button:hover {{ filter: brightness(1.06); }}
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="brand"><span class="mark" aria-hidden="true">&gt;_</span><span>Auto-Skill</span></div>
+    <h1>An account is required</h1>
+    <p>Auto-Skill's API is account-only. Sign in with Google or GitHub -- if you don't have an account yet, this creates one automatically.</p>
+    <div class="providers">{buttons}</div>
+  </div>
+</body>
+</html>"""
+    return HTMLResponse(html)
+
+
+@router.get("/signup")
+async def signup():
+    return _signup_page()
 
 
 @router.get("/auth/whoami")

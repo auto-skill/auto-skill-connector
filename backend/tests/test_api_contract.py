@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
+import auth
 import local_store
 import scraper
 
@@ -77,6 +78,11 @@ class ApiContractTests(unittest.TestCase):
         local_store.invalidate_vector_cache()
         local_store.DB_PATH = self.old_db_path
         scraper.store.DB_PATH = self.old_db_path
+
+    def _auth_headers(self) -> dict:
+        user = local_store.get_or_create_user("public-guard@example.com", "Public Guard", None)
+        token = auth.issue_cli_token(user["id"])
+        return {"x-forwarded-for": "203.0.113.10", "Authorization": f"Bearer {token}"}
 
     def _insert_skill(self, *, active: bool = True, embedded: bool = True) -> None:
         status = "active" if active else "rejected"
@@ -177,10 +183,38 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(scraper_summary["recent_runs"][0]["id"], "run-done")
         self.assertGreater(scraper_summary["recent_runs"][1]["age_seconds"], scraper.STALE_SCRAPE_RUN_SECONDS)
 
+    def test_public_guard_requires_an_account_for_everything_but_login(self) -> None:
+        """Auto-Skill's public API is account-only (see scraper.py's
+        require_account_guard) -- unauthenticated public traffic gets bounced
+        to /signup for every path except health/readiness and the
+        login/OAuth machinery, regardless of what that path would otherwise
+        do."""
+        no_auth = {"x-forwarded-for": "203.0.113.10"}
+        for path in ("/readyz", "/healthz", "/signup"):
+            self.assertNotEqual(self.client.get(path, headers=no_auth).status_code, 401, path)
+
+        for method, path, json_body in (
+            ("get", "/", None),
+            ("get", "/status", None),
+            ("get", "/find-semantic?q=x", None),
+            ("post", "/route", {"task": "x"}),
+            ("post", "/route-skip", {"prompt": "x", "reason": "test"}),
+            ("get", "/scrape", None),
+            ("get", "/rest/v1/skills?select=id", None),
+        ):
+            request = getattr(self.client, method)
+            kwargs = {"headers": no_auth}
+            if json_body is not None:
+                kwargs["json"] = json_body
+            blocked = request(path, **kwargs)
+            self.assertEqual(blocked.status_code, 401, (method, path))
+            self.assertEqual(blocked.json()["signup_url"], "/signup", (method, path))
+
     def test_public_guard_allows_readiness_and_route_but_blocks_writes(self) -> None:
-        self.assertEqual(self.client.get("/readyz", headers={"x-forwarded-for": "203.0.113.10"}).status_code, 503)
+        headers = self._auth_headers()
+        self.assertEqual(self.client.get("/readyz", headers=headers).status_code, 503)
         self.assertNotEqual(
-            self.client.post("/route", json={"task": ""}, headers={"x-forwarded-for": "203.0.113.10"}).status_code,
+            self.client.post("/route", json={"task": ""}, headers=headers).status_code,
             403,
         )
         probes = [
@@ -205,7 +239,7 @@ class ApiContractTests(unittest.TestCase):
         ]
         for method, path, json_body in probes:
             request = getattr(self.client, method)
-            kwargs = {"headers": {"x-forwarded-for": "203.0.113.10"}}
+            kwargs = {"headers": headers}
             if json_body is not None:
                 kwargs["json"] = json_body
             blocked = request(path, **kwargs)
@@ -242,8 +276,10 @@ class ApiContractTests(unittest.TestCase):
             ("GET", "/mcp-oauth/choose"),
             ("GET", "/mcp-oauth/codes/{code}"),
             ("POST", "/mcp-oauth/token"),
+            ("GET", "/signup"),
         }
         discovered_public_routes = set()
+        headers = self._auth_headers()
 
         for route in _registered_routes(scraper.app):
             path_format = getattr(route, "path_format", None) or getattr(route, "path", "")
@@ -254,8 +290,12 @@ class ApiContractTests(unittest.TestCase):
                     discovered_public_routes.add((method, path_format))
                     continue
 
+                # Authenticated (an account alone isn't enough to reach
+                # admin/write-only paths -- require_account_guard only
+                # covers "logged in or not", public_readonly_guard still
+                # draws this line beneath it).
                 request = getattr(self.client, method.lower())
-                kwargs = {"headers": {"x-forwarded-for": "203.0.113.10"}}
+                kwargs = {"headers": headers}
                 json_body = _route_json_body(method, path_format)
                 if json_body is not None:
                     kwargs["json"] = json_body
