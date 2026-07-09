@@ -202,6 +202,7 @@ class ApiContractTests(unittest.TestCase):
         for method, path, json_body in (
             ("get", "/status", None),
             ("get", "/find-semantic?q=x", None),
+            ("get", "/skills-catalog", None),
             ("post", "/route", {"task": "x"}),
             ("post", "/route-skip", {"prompt": "x", "reason": "test"}),
             ("post", "/route-feedback", {"route_id": "route-1", "outcome": "used"}),
@@ -290,6 +291,7 @@ class ApiContractTests(unittest.TestCase):
             ("GET", "/installs"),
             ("POST", "/installs"),
             ("GET", "/runs"),
+            ("GET", "/skills-catalog"),
             ("GET", "/private-skills"),
             ("POST", "/private-skills"),
             ("DELETE", "/private-skills/{skill_id}"),

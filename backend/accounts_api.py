@@ -13,6 +13,7 @@ Endpoints:
   GET  /auth/whoami                           -> current user
   POST /auth/logout                           -> revoke the bearer token
   GET  /runs                                  -> current user's recent route_events (dashboard metrics)
+  GET  /skills-catalog                        -> paginated skill browse (account-only)
   GET/POST/DELETE /favorites[/{skill_id}]     -> per-user favorited skills
   GET/POST        /installs                   -> per-user install history
   GET/POST/DELETE /private-skills[/{id}]      -> per-user private skill submissions
@@ -273,6 +274,18 @@ async def whoami(authorization: str | None = Header(None)):
 async def get_runs(limit: int = 50, authorization: str | None = Header(None)):
     user = _require_user(authorization)
     return {"runs": store.list_route_events_for_user(user["id"], limit)}
+
+
+@router.get("/skills-catalog")
+async def skills_catalog(
+    q: str = "", limit: int = 50, offset: int = 0, authorization: str | None = Header(None)
+):
+    """Browse the full skill corpus (site's skills.html). Account-only: the
+    require_account_guard already turns away anonymous public callers, but
+    require a bearer here too so the endpoint stays gated even for loopback
+    or misconfigured-proxy traffic."""
+    _require_user(authorization)
+    return store.list_skills_catalog(q=q, limit=limit, offset=offset)
 
 
 @router.post("/auth/logout")

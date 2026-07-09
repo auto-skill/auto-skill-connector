@@ -59,6 +59,7 @@ PUBLIC_GET_PATHS = frozenset(
         "/installs",
         "/private-skills",
         "/runs",
+        "/skills-catalog",
         "/signup",
         "/account",
         # Only the two browser-facing MCP OAuth pages are public. The

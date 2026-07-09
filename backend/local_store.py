@@ -1095,8 +1095,8 @@ def consume_mcp_auth_code(code: str, client_id: str) -> dict | None:
 
 
 def list_route_events_for_user(user_id: str, limit: int = 100) -> list[dict]:
-    """Every route_events column for this user -- all privacy-safe by
-    construction (query_hash/query_chars only, never raw prompt text)."""
+    """Every route_events column for this user, including prompt_text (raw
+    prompt retention is disclosed on the site's trust section)."""
     conn = get_conn()
     try:
         rows = conn.execute(
@@ -1109,6 +1109,42 @@ def list_route_events_for_user(user_id: str, limit: int = 100) -> list[dict]:
             event["warnings"] = json.loads(event["warnings"]) if event.get("warnings") else []
             events.append(event)
         return events
+    finally:
+        conn.close()
+
+
+def list_skills_catalog(q: str = "", limit: int = 50, offset: int = 0) -> dict:
+    """Paginated public-safe slice of the skills table for the site's
+    account-only browse page -- never raw/embedding columns, those stay
+    internal. `q` is a case-insensitive substring match on name/description."""
+    limit = max(1, min(int(limit), 200))
+    offset = max(0, int(offset))
+    where, params = "", []
+    if q:
+        where = "WHERE name LIKE ? COLLATE NOCASE OR description LIKE ? COLLATE NOCASE"
+        needle = f"%{q}%"
+        params = [needle, needle]
+    conn = get_conn()
+    try:
+        total = conn.execute(f"SELECT COUNT(*) FROM skills {where}", params).fetchone()[0]
+        rows = conn.execute(
+            f"""
+            SELECT id, name, description, source, url, tags, discovered_at, risk_score
+            FROM skills {where}
+            ORDER BY discovered_at DESC, id
+            LIMIT ? OFFSET ?
+            """,
+            [*params, limit, offset],
+        ).fetchall()
+        skills = []
+        for row in rows:
+            skill = dict(row)
+            try:
+                skill["tags"] = json.loads(skill["tags"]) if skill.get("tags") else []
+            except (TypeError, ValueError):
+                skill["tags"] = []
+            skills.append(skill)
+        return {"total": total, "skills": skills}
     finally:
         conn.close()
 

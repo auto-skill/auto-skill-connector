@@ -22,6 +22,14 @@ from urllib.parse import quote
 AUTOSKILL_URL = os.getenv("AUTOSKILL_URL", "https://skills.autoskill.dev").rstrip("/")
 CLIENT_NAME = "auto-skill-hook"
 CLIENT_VERSION = "0.1.0"
+
+# Cloudflare's bot protection on the hosted backend rejects urllib's default
+# "Python-urllib/x.y" user agent outright (error 1010), which silently killed
+# every call this hook made. Install a real product UA globally so all
+# urlopen() call sites -- including the bare-URL content fetches -- send it.
+_opener = urllib.request.build_opener()
+_opener.addheaders = [("User-Agent", f"{CLIENT_NAME}/{CLIENT_VERSION}")]
+urllib.request.install_opener(_opener)
 ROUTING_LOG_PATH = Path(os.getenv("AUTOSKILL_ROUTING_LOG", "")) if os.getenv("AUTOSKILL_ROUTING_LOG") else Path.home() / ".claude" / "auto-skill-routing.jsonl"
 MAX_LOG_LINES = 2000
 TIMEOUT_SECONDS = 3.0

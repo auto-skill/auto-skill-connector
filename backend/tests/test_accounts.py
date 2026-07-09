@@ -159,6 +159,39 @@ class AccountsEndpointTests(unittest.TestCase):
     def _login_host(self) -> str:
         return next(iter(auth.ALLOWED_LOGIN_HOSTS))
 
+    def test_skills_catalog_requires_account_and_paginates(self) -> None:
+        conn = local_store.get_conn()
+        try:
+            for i in range(3):
+                conn.execute(
+                    "INSERT INTO skills (id, name, description, source, url, tags, discovered_at)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (f"skill-{i}", f"catalog-skill-{i}", "spreadsheet helper" if i == 0 else "other",
+                     "test", f"https://example.com/{i}", '["t"]', f"2026-07-0{i + 1}T00:00:00+00:00"),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+
+        self.assertEqual(self.client.get("/skills-catalog").status_code, 401)
+
+        headers = {"Authorization": f"Bearer {self._login('a@example.com')}"}
+        r = self.client.get("/skills-catalog?limit=2", headers=headers)
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertEqual(body["total"], 3)
+        self.assertEqual(len(body["skills"]), 2)
+        self.assertEqual(body["skills"][0]["name"], "catalog-skill-2")
+        self.assertEqual(body["skills"][0]["tags"], ["t"])
+        self.assertNotIn("raw", body["skills"][0])
+
+        page2 = self.client.get("/skills-catalog?limit=2&offset=2", headers=headers).json()
+        self.assertEqual([s["name"] for s in page2["skills"]], ["catalog-skill-0"])
+
+        search = self.client.get("/skills-catalog?q=SPREADSHEET", headers=headers).json()
+        self.assertEqual(search["total"], 1)
+        self.assertEqual(search["skills"][0]["name"], "catalog-skill-0")
+
     def test_web_login_start_accepts_dashboard_return_url(self) -> None:
         with (
             patch.dict(auth.PROVIDERS["google"], {"client_id": "test-id"}),
