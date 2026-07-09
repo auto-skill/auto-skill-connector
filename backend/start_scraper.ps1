@@ -32,7 +32,7 @@ if (-not $env:SEARXNG_URL) {
     $env:SEARXNG_URL = "http://localhost:8888"
 }
 
-# auth.py's own default fallback now points at the *planned* auto-skill.dev
+# auth.py's own default fallback now points at the *planned* autoskill.dev
 # domain, not what this machine's cloudflared tunnel actually serves (see
 # start_cloudflared.ps1) -- pin it explicitly so a supervisor restart never
 # silently starts building Google/GitHub OAuth redirect URIs for a domain

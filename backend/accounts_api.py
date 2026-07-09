@@ -32,8 +32,8 @@ import mcp_oauth
 router = APIRouter()
 
 _DEFAULT_WEB_RETURN_ORIGINS = {
-    "https://auto-skill.dev",
-    "https://www.auto-skill.dev",
+    "https://autoskill.dev",
+    "https://www.autoskill.dev",
     "https://auto-skill-site.pages.dev",
     "https://auto-skill-site.vercel.app",
     "http://localhost:5173",

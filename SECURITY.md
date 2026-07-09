@@ -6,7 +6,7 @@ skills like code: read them before trusting them.
 ## Remote Search
 
 Search and route queries are sent to the configured search backend:
-`AUTOSKILL_URL`, defaulting to `https://skills.avalahome.com`. There is no
+`AUTOSKILL_URL`, defaulting to `https://skills.autoskill.dev`. There is no
 fallback backend -- if this is unreachable, search reports no route found
 rather than silently querying a second, possibly stale service.
 

@@ -8,8 +8,8 @@ function Write-Log {
     Add-Content -Path $logPath -Value "$(Get-Date -Format o) [start_cloudflared] $Message"
 }
 
-# Runs the named "auto-skill" tunnel that exposes skills.avalahome.com ->
-# localhost:8000 and mcp.avalahome.com -> localhost:8765 (see
+# Runs the named "auto-skill" tunnel that exposes skills.autoskill.dev ->
+# localhost:8000 and mcp.autoskill.dev -> localhost:8765 (see
 # ~/.cloudflared/config.yml ingress rules). Restart loop mirrors
 # start_scraper.ps1/start_connector_http.ps1 so all three services survive
 # a crash the same way.

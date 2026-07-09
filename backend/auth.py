@@ -14,7 +14,7 @@ import httpx
 
 import local_store as store
 
-BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "https://api.auto-skill.dev").rstrip("/")
+BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "https://skills.autoskill.dev").rstrip("/")
 
 PROVIDERS = {
     "google": {

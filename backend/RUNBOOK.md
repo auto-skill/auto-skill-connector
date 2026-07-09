@@ -55,8 +55,8 @@ friend's laptop or desktop as launch hosting.
   `localhost:8765`. It auto-detects common connector checkout locations; set
   `AUTO_SKILL_CONNECTOR_DIR` before launching if the connector repo lives
   somewhere else.
-- `start_cloudflared.ps1`: exposes `skills.avalahome.com` and
-  `mcp.avalahome.com` to those local ports.
+- `start_cloudflared.ps1`: exposes `skills.autoskill.dev` and
+  `mcp.autoskill.dev` to those local ports.
 
 The first fix for public `403 {"error":"read-only public API"}` responses on
 `/readyz` or `/route` is to pull and restart the API host. Old code allowed
@@ -112,7 +112,7 @@ Finally prove the legacy public service is serving the new code:
 python launch_readiness.py
 python launch_status.py
 python launch_status.py --profile canonical
-python launch_check.py --base-url https://skills.avalahome.com --mcp-health-url https://mcp.avalahome.com/healthz --skip-env --skip-docker
+python launch_check.py --base-url https://skills.autoskill.dev --mcp-health-url https://mcp.autoskill.dev/healthz --skip-env --skip-docker
 ```
 
 `launch_readiness.py` is the quick "are we ready?" answer. It checks local
@@ -156,8 +156,8 @@ Alternatively, pass the copied zip directly to the recovery path:
 ```
 
 The `alpha` launch-status profile checks the current emergency hostnames:
-`skills.avalahome.com` and `mcp.avalahome.com`. The `canonical` profile checks
-the production-facing hostnames: `api.auto-skill.dev` and `mcp.auto-skill.dev`.
+`skills.autoskill.dev` and `mcp.autoskill.dev`. The `canonical` profile checks
+the production-facing hostnames: `skills.autoskill.dev` and `mcp.autoskill.dev`.
 Do not call the hosted product production-ready until the canonical profile
 resolves in DNS and passes the same health, readiness, route, and MCP checks as
 the alpha profile.
@@ -324,7 +324,7 @@ docker compose --env-file deploy\.env -f deploy\docker-compose.yml up -d --build
 
 Set `AUTO_SKILL_DASHBOARD_ORIGINS` in `deploy\.env` to the exact production
 dashboard origins that are allowed to receive OAuth token fragments, for
-example `https://auto-skill.dev,https://www.auto-skill.dev`. Do not include
+example `https://autoskill.dev,https://www.autoskill.dev`. Do not include
 wildcards or temporary preview domains on the production host.
 
 Or run the guarded launcher, which runs preflight first, starts compose, waits

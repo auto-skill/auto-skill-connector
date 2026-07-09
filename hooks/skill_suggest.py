@@ -19,7 +19,7 @@ import urllib.request
 from pathlib import Path
 from urllib.parse import quote
 
-AUTOSKILL_URL = os.getenv("AUTOSKILL_URL", "https://skills.avalahome.com").rstrip("/")
+AUTOSKILL_URL = os.getenv("AUTOSKILL_URL", "https://skills.autoskill.dev").rstrip("/")
 CLIENT_NAME = "auto-skill-hook"
 CLIENT_VERSION = "0.1.0"
 ROUTING_LOG_PATH = Path(os.getenv("AUTOSKILL_ROUTING_LOG", "")) if os.getenv("AUTOSKILL_ROUTING_LOG") else Path.home() / ".claude" / "auto-skill-routing.jsonl"

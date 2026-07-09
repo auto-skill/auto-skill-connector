@@ -1,6 +1,6 @@
 param(
-    [string]$BaseUrl = "https://skills.avalahome.com",
-    [string]$McpHealthUrl = "https://mcp.avalahome.com/healthz",
+    [string]$BaseUrl = "https://skills.autoskill.dev",
+    [string]$McpHealthUrl = "https://mcp.autoskill.dev/healthz",
     [string]$LocalApiUrl = "http://127.0.0.1:8000",
     [string]$LocalMcpHealthUrl = "http://127.0.0.1:8765/healthz",
     [string]$TaskPrefix = "AutoSkill",

@@ -18,10 +18,10 @@ from dataclasses import dataclass, asdict
 from urllib import error, request
 
 
-ALPHA_BASE_URL = "https://skills.avalahome.com"
-ALPHA_MCP_HEALTH_URL = "https://mcp.avalahome.com/healthz"
-CANONICAL_BASE_URL = "https://api.auto-skill.dev"
-CANONICAL_MCP_HEALTH_URL = "https://mcp.auto-skill.dev/healthz"
+ALPHA_BASE_URL = "https://skills.autoskill.dev"
+ALPHA_MCP_HEALTH_URL = "https://mcp.autoskill.dev/healthz"
+CANONICAL_BASE_URL = "https://skills.autoskill.dev"
+CANONICAL_MCP_HEALTH_URL = "https://mcp.autoskill.dev/healthz"
 
 PROFILES = {
     "alpha": (ALPHA_BASE_URL, ALPHA_MCP_HEALTH_URL),

@@ -1,7 +1,7 @@
 param(
     [string]$Branch = "main",
-    [string]$BaseUrl = "https://skills.avalahome.com",
-    [string]$McpHealthUrl = "https://mcp.avalahome.com/healthz",
+    [string]$BaseUrl = "https://skills.autoskill.dev",
+    [string]$McpHealthUrl = "https://mcp.autoskill.dev/healthz",
     [switch]$AllowDirty,
     [switch]$SkipPull,
     [switch]$SkipInstall,

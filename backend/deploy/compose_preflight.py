@@ -125,7 +125,7 @@ def check_dashboard_origins(env: dict[str, str], checks: list[Check]) -> None:
             checks,
             "WARN",
             "env AUTO_SKILL_DASHBOARD_ORIGINS",
-            "unset; compose uses the production auto-skill.dev defaults, but set it explicitly on the host",
+            "unset; compose uses the production autoskill.dev defaults, but set it explicitly on the host",
         )
         return
 

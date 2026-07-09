@@ -54,7 +54,7 @@ if _TRANSPORT == "streamable-http":
         get_public_backend_base_url,
     )
 
-    _issuer_url = os.getenv("MCP_ISSUER_URL", "https://mcp.auto-skill.dev")
+    _issuer_url = os.getenv("MCP_ISSUER_URL", "https://mcp.autoskill.dev")
     _auth_kwargs = {
         "auth_server_provider": BackendOAuthProvider(
             get_public_backend_base_url(), get_loopback_backend_base_url()

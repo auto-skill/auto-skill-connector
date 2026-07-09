@@ -157,7 +157,7 @@ def _iso_to_epoch(value: str) -> float:
 
 
 def get_public_backend_base_url() -> str:
-    return os.getenv("BACKEND_BASE_URL", "https://skills.avalahome.com").rstrip("/")
+    return os.getenv("BACKEND_BASE_URL", "https://skills.autoskill.dev").rstrip("/")
 
 
 def get_loopback_backend_base_url() -> str | None:

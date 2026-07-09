@@ -11,7 +11,7 @@ import httpx
 
 from auto_skill_auth import auth_headers
 
-DEFAULT_AUTOSKILL_URL = "https://api.auto-skill.dev"
+DEFAULT_AUTOSKILL_URL = "https://skills.autoskill.dev"
 CLIENT_NAME = "auto-skill-connector"
 CLIENT_VERSION = "0.1.0"
 

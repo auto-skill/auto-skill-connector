@@ -37,7 +37,7 @@ loopback; public clients should use `/route`, `/find-semantic`, and
 Dashboard OAuth redirects are allowlisted. Set
 `AUTO_SKILL_DASHBOARD_ORIGINS` to a comma-separated list of dashboard origins
 on the host, for example
-`https://auto-skill.dev,https://www.auto-skill.dev`. Local development origins
+`https://autoskill.dev,https://www.autoskill.dev`. Local development origins
 are allowed by default when the variable is not set.
 
 `/readyz` and `/route-metrics` include `vector_index` stats so search latency

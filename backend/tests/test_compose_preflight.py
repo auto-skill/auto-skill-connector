@@ -160,7 +160,7 @@ services:
                     "R2_BUCKET=autoskill-backups",
                     "R2_ACCESS_KEY_ID=access",
                     "R2_SECRET_ACCESS_KEY=secret",
-                    "AUTO_SKILL_DASHBOARD_ORIGINS=https://auto-skill.dev,https://www.auto-skill.dev",
+                    "AUTO_SKILL_DASHBOARD_ORIGINS=https://autoskill.dev,https://www.autoskill.dev",
                     "STALE_SCRAPE_RUN_SECONDS=7200",
                     "LIBRARY_BACKUP_INTERVAL_SECONDS=86400",
                     "",
@@ -279,7 +279,7 @@ services:
                     "R2_BUCKET=autoskill-backups",
                     "R2_ACCESS_KEY_ID=access",
                     "R2_SECRET_ACCESS_KEY=secret",
-                    "AUTO_SKILL_DASHBOARD_ORIGINS=https://*.bad.test,https://auto-skill.dev/dashboard",
+                    "AUTO_SKILL_DASHBOARD_ORIGINS=https://*.bad.test,https://autoskill.dev/dashboard",
                     "",
                 ]
             )
@@ -290,7 +290,7 @@ services:
         self.assertEqual(exit_code, 1, output)
         self.assertIn("[FAIL] env AUTO_SKILL_DASHBOARD_ORIGINS", output)
         self.assertIn("https://*.bad.test", output)
-        self.assertIn("https://auto-skill.dev/dashboard", output)
+        self.assertIn("https://autoskill.dev/dashboard", output)
 
     def test_rejects_compose_that_starts_scraper_in_api(self) -> None:
         (self.root / "deploy" / "docker-compose.yml").write_text(

@@ -18,7 +18,7 @@ if env_path.exists():
         key, value = line.split("=", 1)
         os.environ[key.strip()] = value.strip()
 
-# auth.py's own default fallback now points at the planned auto-skill.dev
+# auth.py's own default fallback now points at the planned autoskill.dev
 # domain, not what this machine's cloudflared tunnel actually serves -- pin
 # it explicitly so this doesn't silently start building OAuth redirect URIs
 # for a domain that isn't registered against the Google/GitHub OAuth apps.

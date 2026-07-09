@@ -18,7 +18,7 @@ if (-not $env:MCP_PORT) { $env:MCP_PORT = "8765" }
 # hostname, so Host-header DNS-rebinding protection is re-enabled here.
 $env:MCP_ALLOWED_HOSTS = "mcp.avalahome.com,localhost:8765,127.0.0.1:8765"
 # mcp_server.py's own default fallback now points at the *planned*
-# auto-skill.dev domain, not this machine's actual tunnel -- pin it
+# autoskill.dev domain, not this machine's actual tunnel -- pin it
 # explicitly so a supervisor restart never silently starts advertising OAuth
 # metadata for a domain that isn't this deployment.
 if (-not $env:MCP_ISSUER_URL) { $env:MCP_ISSUER_URL = "https://mcp.avalahome.com" }
