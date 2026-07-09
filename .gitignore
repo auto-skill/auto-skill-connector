@@ -16,3 +16,7 @@ content_blobs/
 migrate_state.json
 *.log
 .claude/
+
+# real secrets for the compose deploy (OAuth/GitHub/Cloudflare tunnel tokens)
+backend/deploy/.env
+backend/data/
