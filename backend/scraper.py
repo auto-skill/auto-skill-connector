@@ -41,17 +41,18 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 # When this app is exposed to the internet through a tunnel (cloudflared runs
 # on this machine and proxies to loopback), tunneled requests carry forwarding
 # headers while genuinely local callers (scraper itself, recommender, hook,
-# mcp_server) do not. Public callers get search/read endpoints, the /auth and
-# /favorites/installs/private-skills account endpoints (each of those enforces
-# its own bearer-token auth in accounts_api.py -- this guard just decides what
-# reaches FastAPI at all), and /route -- the local REST surface has no auth of
-# its own, so every /rest/v1 path must stay loopback-only.
+# mcp_server) do not. Public callers get search/read endpoints, the /auth,
+# /mcp-oauth, and /favorites/installs/private-skills/runs account endpoints
+# (each of those enforces its own bearer-token auth in accounts_api.py -- this
+# guard just decides what reaches FastAPI at all), and /route -- the local
+# REST surface has no auth of its own, so every /rest/v1 path must stay
+# loopback-only.
 PUBLIC_GET_PATHS = frozenset(
-    {"/", "/healthz", "/readyz", "/status", "/find-semantic", "/favorites", "/installs", "/private-skills"}
+    {"/", "/healthz", "/readyz", "/status", "/find-semantic", "/favorites", "/installs", "/private-skills", "/runs"}
 )
-PUBLIC_GET_PREFIXES = ("/content/", "/auth/")
+PUBLIC_GET_PREFIXES = ("/content/", "/auth/", "/mcp-oauth/")
 PUBLIC_POST_PATHS = frozenset({"/route", "/favorites", "/installs", "/private-skills"})
-PUBLIC_POST_PREFIXES = ("/auth/",)
+PUBLIC_POST_PREFIXES = ("/auth/", "/mcp-oauth/")
 PUBLIC_DELETE_PREFIXES = ("/favorites/", "/private-skills/")
 
 
@@ -70,6 +71,14 @@ def public_api_allows(method: str, path: str) -> bool:
 @app.middleware("http")
 async def public_readonly_guard(request, call_next):
     from fastapi.responses import JSONResponse
+    # CORS preflight has no side effects and must reach CORSMiddleware (added
+    # below) to get its Access-Control-Allow-* headers -- this guard runs
+    # outermost, so blocking OPTIONS here would silently break every
+    # cross-origin browser call that sends a custom header (e.g. the
+    # dashboard's Authorization bearer), well before the real request this
+    # guard is meant to gate is ever made.
+    if request.method == "OPTIONS":
+        return await call_next(request)
     is_public = bool(request.headers.get("cf-connecting-ip") or request.headers.get("x-forwarded-for"))
     if is_public:
         if not public_api_allows(request.method, request.url.path):
@@ -87,6 +96,11 @@ app.include_router(local_db_router)
 # skills, all backed by the same local SQLite store -- see auth.py.
 from accounts_api import router as accounts_router  # noqa: E402
 app.include_router(accounts_router)
+
+# MCP OAuth authorization server endpoints for the hosted connector -- see
+# mcp_oauth.py.
+from mcp_oauth import router as mcp_oauth_router  # noqa: E402
+app.include_router(mcp_oauth_router)
 
 # Semantic recommender (hybrid pgvector search + optional Ollama chat) lives in
 # its own module; it also embeds newly scraped skills in the background.

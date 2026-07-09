@@ -37,6 +37,38 @@ __all__ = [
     "route_task",
 ]
 
+_TRANSPORT = os.getenv("MCP_TRANSPORT", "stdio")
+
+# On streamable-http, every caller shares this one server process, so the
+# hosted connector needs real per-caller identity -- see mcp_oauth_provider.py
+# and backend/mcp_oauth.py. On stdio (the local `claude mcp add` case) there's
+# exactly one caller (whoever is running the process), already identified via
+# the file-based CLI login in auto_skill_auth.py, so no MCP-level auth is set.
+_auth_kwargs: dict = {}
+if _TRANSPORT == "streamable-http":
+    from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions
+
+    from mcp_oauth_provider import (
+        BackendOAuthProvider,
+        get_loopback_backend_base_url,
+        get_public_backend_base_url,
+    )
+
+    _issuer_url = os.getenv("MCP_ISSUER_URL", "https://mcp.avalahome.com")
+    _auth_kwargs = {
+        "auth_server_provider": BackendOAuthProvider(
+            get_public_backend_base_url(), get_loopback_backend_base_url()
+        ),
+        "auth": AuthSettings(
+            issuer_url=_issuer_url,
+            resource_server_url=_issuer_url,
+            client_registration_options=ClientRegistrationOptions(
+                enabled=True, valid_scopes=["route"], default_scopes=["route"]
+            ),
+            required_scopes=["route"],
+        ),
+    }
+
 # The `instructions` string is surfaced to the client model. Keep it honest:
 # route first, then follow only high-confidence full routes.
 mcp = FastMCP(
@@ -50,13 +82,28 @@ mcp = FastMCP(
         "discussion, tiny acknowledgements, commands, or pasted context. recommend_skill is "
         "for explicit preview/recommendation flows; do not use it as the always-on router."
     ),
+    **_auth_kwargs,
 )
 
 
 def _public_install_enabled() -> bool:
-    if os.getenv("MCP_TRANSPORT", "stdio") != "streamable-http":
+    if _TRANSPORT != "streamable-http":
         return True
     return os.getenv("AUTO_SKILL_ENABLE_PUBLIC_INSTALL", "").lower() in {"1", "true", "yes"}
+
+
+def _caller_auth_header() -> dict[str, str] | None:
+    """The per-caller bearer token for the current MCP request, when this
+    server is running as the hosted streamable-http connector. Threaded down
+    to auto_skill_core instead of that module's default file-based
+    auth_headers(), which would otherwise attribute every remote caller's
+    activity to whichever account is logged in on this host."""
+    if _TRANSPORT != "streamable-http":
+        return None
+    from mcp.server.auth.middleware.auth_context import get_access_token
+
+    token = get_access_token()
+    return {"Authorization": f"Bearer {token.token}"} if token else None
 
 
 @mcp.tool()
@@ -67,7 +114,7 @@ async def route_prompt(prompt: str) -> dict:
     commands, status/meta prompts, and pasted walls of context, then routes
     real tasks to one reusable skill when possible.
     """
-    return await route_prompt_payload(prompt)
+    return await route_prompt_payload(prompt, auth_header=_caller_auth_header())
 
 
 @mcp.tool()
@@ -78,7 +125,7 @@ async def route_task(task: str) -> dict:
     help. Full routes include skill_content. Hint routes are suggestions only
     and may include candidate options.
     """
-    return await route_task_payload(task)
+    return await route_task_payload(task, auth_header=_caller_auth_header())
 
 
 @mcp.tool()
@@ -89,7 +136,7 @@ async def recommend_skill(task: str) -> dict:
     tool fetches full SKILL.md content for inspection and does not mean the
     caller should automatically follow it.
     """
-    return await recommend_skill_payload(task)
+    return await recommend_skill_payload(task, auth_header=_caller_auth_header())
 
 
 @mcp.tool()
@@ -99,7 +146,9 @@ async def record_feedback(route_id: str, outcome: str, note: str = "") -> dict:
     Use only after a route result has actually been used, skipped, installed,
     dismissed, or failed. Do not include raw prompts in note.
     """
-    ok = await record_route_feedback(route_id, outcome, source="auto-skill-mcp", note=note)
+    ok = await record_route_feedback(
+        route_id, outcome, source="auto-skill-mcp", note=note, auth_header=_caller_auth_header()
+    )
     return {"ok": ok, "route_id": route_id, "outcome": outcome}
 
 
@@ -166,17 +215,17 @@ def main() -> None:
     registered as a tool ONLY on stdio -- the transport used by a user's own
     local `claude mcp add`, where they are installing skills onto their own
     machine. The streamable-http transport is meant to be tunneled to a public
-    URL (see README's remote-connector section), and MCP has no per-caller
-    auth here, so publishing install_skill on it would let any caller with the
-    URL write arbitrary skill files onto whoever is hosting the tunnel. Set
-    AUTOSKILL_ALLOW_REMOTE_INSTALL=1 to override, e.g. behind your own auth
-    proxy -- never set it on an unauthenticated public tunnel.
+    URL (see README's remote-connector section) and does require callers to
+    complete the MCP OAuth login (see mcp_oauth_provider.py), but that only
+    establishes who is calling -- it still doesn't imply they should be able
+    to write files on whoever is hosting the tunnel. Set
+    AUTOSKILL_ALLOW_REMOTE_INSTALL=1 to override, e.g. behind your own access
+    control -- never set it on an unauthenticated public tunnel.
     """
-    transport = os.getenv("MCP_TRANSPORT", "stdio")
-    if transport != "streamable-http" or os.getenv("AUTOSKILL_ALLOW_REMOTE_INSTALL") == "1":
+    if _TRANSPORT != "streamable-http" or os.getenv("AUTOSKILL_ALLOW_REMOTE_INSTALL") == "1":
         mcp.tool(name="install_skill")(_install_skill_impl)
 
-    if transport == "streamable-http":
+    if _TRANSPORT == "streamable-http":
         mcp.settings.host = os.getenv("MCP_HOST", "127.0.0.1")
         mcp.settings.port = int(os.getenv("MCP_PORT", "8765"))
         allowed = [h.strip() for h in os.getenv("MCP_ALLOWED_HOSTS", "").split(",") if h.strip()]

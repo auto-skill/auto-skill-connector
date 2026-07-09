@@ -225,6 +225,7 @@ class ApiContractTests(unittest.TestCase):
             ("GET", "/auth/{provider}/callback"),
             ("GET", "/auth/whoami"),
             ("POST", "/auth/logout"),
+            ("POST", "/auth/refresh"),
             ("GET", "/favorites"),
             ("POST", "/favorites"),
             ("DELETE", "/favorites/{skill_id}"),
@@ -233,6 +234,13 @@ class ApiContractTests(unittest.TestCase):
             ("GET", "/private-skills"),
             ("POST", "/private-skills"),
             ("DELETE", "/private-skills/{skill_id}"),
+            ("GET", "/runs"),
+            ("POST", "/mcp-oauth/clients"),
+            ("GET", "/mcp-oauth/clients/{client_id}"),
+            ("GET", "/mcp-oauth/authorize"),
+            ("GET", "/mcp-oauth/choose"),
+            ("GET", "/mcp-oauth/codes/{code}"),
+            ("POST", "/mcp-oauth/token"),
         }
         discovered_public_routes = set()
 

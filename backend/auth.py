@@ -35,34 +35,39 @@ PROVIDERS = {
     },
 }
 
-# In-memory state -> (provider, loopback_port, expiry_epoch) for the login
-# handshake. This is a single-process "alpha infra" service (see
-# backend/README.md); a restart mid-login just means the user retries.
+# In-memory state -> (payload dict, expiry_epoch) for the login handshake.
+# This is a single-process "alpha infra" service (see backend/README.md); a
+# restart mid-login just means the user retries. The payload carries whatever
+# the caller needs after the provider redirect round-trip: the CLI loopback
+# flow stashes {"flow": "cli", "port": ...}, the web dashboard login stashes
+# {"flow": "web", "return_to": ...}, and the MCP OAuth authorize step stashes
+# {"flow": "mcp", "login_state": ...} pointing at the pending authorization
+# request (see mcp_oauth.py).
 _STATE_TTL_SECONDS = 600
-_states: dict[str, tuple[str, int, float]] = {}
+_states: dict[str, tuple[dict, float]] = {}
 
 
 def _purge_expired_states() -> None:
     now = time.time()
-    expired = [s for s, (_, _, exp) in _states.items() if exp < now]
+    expired = [s for s, (_, exp) in _states.items() if exp < now]
     for s in expired:
         _states.pop(s, None)
 
 
-def create_state(provider: str, port: int) -> str:
+def create_state(provider: str, payload: dict | None = None) -> str:
     _purge_expired_states()
     state = secrets.token_urlsafe(24)
-    _states[state] = (provider, port, time.time() + _STATE_TTL_SECONDS)
+    _states[state] = ({"provider": provider, **(payload or {})}, time.time() + _STATE_TTL_SECONDS)
     return state
 
 
-def pop_state(state: str) -> tuple[str, int] | None:
+def pop_state(state: str) -> dict | None:
     _purge_expired_states()
     entry = _states.pop(state, None)
     if entry is None:
         return None
-    provider, port, _ = entry
-    return provider, port
+    payload, _ = entry
+    return payload
 
 
 def redirect_uri_for(provider: str) -> str:

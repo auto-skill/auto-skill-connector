@@ -8,22 +8,33 @@ already backs the rest of the backend -- see auth.py's module docstring for
 why there is no external database or auth framework here.
 
 Endpoints:
-  GET  /auth/{provider}/start?port=...       -> redirect into provider OAuth
-  GET  /auth/{provider}/callback?code&state   -> redirect to CLI loopback
+  GET  /auth/{provider}/start?flow=cli|web|mcp&...  -> redirect into provider OAuth
+  GET  /auth/{provider}/callback?code&state         -> redirect back per flow (see mcp_oauth.py for flow=mcp)
   GET  /auth/whoami                           -> current user
   POST /auth/logout                           -> revoke the bearer token
+  GET  /runs                                  -> current user's recent route_events (dashboard metrics)
   GET/POST/DELETE /favorites[/{skill_id}]     -> per-user favorited skills
   GET/POST        /installs                   -> per-user install history
   GET/POST/DELETE /private-skills[/{id}]      -> per-user private skill submissions
 """
+from urllib.parse import parse_qsl, quote, urlencode, urlparse, urlunparse
+
 from fastapi import APIRouter, Header, HTTPException
 from fastapi.responses import PlainTextResponse, RedirectResponse
 from pydantic import BaseModel
 
 import auth
 import local_store as store
+import mcp_oauth
 
 router = APIRouter()
+
+
+def _append_query(url: str, **params: str | None) -> str:
+    parsed = urlparse(url)
+    query = parse_qsl(parsed.query)
+    query.extend((k, v) for k, v in params.items() if v is not None)
+    return urlunparse(parsed._replace(query=urlencode(query)))
 
 
 def _require_user(authorization: str | None) -> dict:
@@ -34,32 +45,75 @@ def _require_user(authorization: str | None) -> dict:
 
 
 @router.get("/auth/{provider}/start")
-async def auth_start(provider: str, port: int):
+async def auth_start(
+    provider: str,
+    port: int | None = None,
+    flow: str = "cli",
+    login_state: str | None = None,
+    return_to: str | None = None,
+):
+    """Three login flavors share this one Google/GitHub handshake:
+    flow=cli (default) is the `auto-skill login` loopback flow (needs `port`);
+    flow=web is the auto-skill-site dashboard login (needs `return_to`);
+    flow=mcp is the hosted MCP connector's OAuth authorize step (needs
+    `login_state`, see mcp_oauth.py). See auth_callback for the payoff."""
     if provider not in auth.PROVIDERS:
         raise HTTPException(status_code=404, detail="unknown provider")
     if not auth.PROVIDERS[provider]["client_id"]:
         raise HTTPException(status_code=503, detail=f"{provider} login is not configured on this server")
-    state = auth.create_state(provider, port)
+    if flow == "cli" and port is None:
+        raise HTTPException(status_code=400, detail="port is required for the cli flow")
+    if flow == "web" and not return_to:
+        raise HTTPException(status_code=400, detail="return_to is required for the web flow")
+    if flow == "mcp" and not login_state:
+        raise HTTPException(status_code=400, detail="login_state is required for the mcp flow")
+    state = auth.create_state(
+        provider, {"flow": flow, "port": port, "login_state": login_state, "return_to": return_to}
+    )
     return RedirectResponse(auth.build_authorize_url(provider, state))
 
 
 @router.get("/auth/{provider}/callback")
 async def auth_callback(provider: str, code: str, state: str):
     resolved = auth.pop_state(state)
-    if resolved is None or resolved[0] != provider:
+    if resolved is None or resolved.get("provider") != provider:
         return PlainTextResponse("Login expired or invalid -- please retry `auto-skill login`.", status_code=400)
-    _, port = resolved
     try:
-        _user, cli_token = await auth.complete_login(provider, code)
+        user, cli_token = await auth.complete_login(provider, code)
     except Exception:
+        import traceback
+
+        traceback.print_exc()
         return PlainTextResponse("Login failed while talking to the provider -- please retry.", status_code=502)
-    return RedirectResponse(f"http://127.0.0.1:{port}/callback?token={cli_token}")
+
+    flow = resolved.get("flow", "cli")
+
+    if flow == "web":
+        return RedirectResponse(f"{resolved['return_to']}#token={quote(cli_token)}")
+
+    if flow == "mcp":
+        pending = mcp_oauth.pop_pending(resolved.get("login_state") or "")
+        if pending is None:
+            return PlainTextResponse(
+                "Login expired or invalid -- please retry connecting in your MCP client.", status_code=400
+            )
+        auth_code = mcp_oauth.mint_authorization_code(pending, user["id"])
+        redirect_url = _append_query(pending["redirect_uri"], code=auth_code, state=pending["mcp_state"])
+        return RedirectResponse(redirect_url)
+
+    return RedirectResponse(f"http://127.0.0.1:{resolved['port']}/callback?token={cli_token}")
 
 
 @router.get("/auth/whoami")
 async def whoami(authorization: str | None = Header(None)):
     user = _require_user(authorization)
-    return {"email": user["email"], "name": user["name"], "avatar_url": user["avatar_url"]}
+    return {"id": user["id"], "email": user["email"], "name": user["name"], "avatar_url": user["avatar_url"]}
+
+
+@router.get("/runs")
+async def get_runs(authorization: str | None = Header(None)):
+    user = _require_user(authorization)
+    return {"runs": store.list_route_events_for_user(user["id"])}
 
 
 @router.post("/auth/logout")
@@ -69,6 +123,23 @@ async def logout(authorization: str | None = Header(None)):
     raw_token = authorization[len("Bearer "):].strip()
     auth.revoke_cli_token(raw_token)
     return {"ok": True}
+
+
+@router.post("/auth/refresh")
+async def refresh(authorization: str | None = Header(None)):
+    """Rotate a still-valid bearer token: issue a new one and revoke the old.
+
+    Backs the MCP OAuth refresh_token grant (mcp_oauth_provider.py) -- our
+    tokens don't otherwise expire, but MCP clients that request the
+    refresh_token grant type (required by the `mcp` SDK's own registration
+    handler) still expect a working refresh path, not just a token that
+    happens to never expire.
+    """
+    user = _require_user(authorization)
+    raw_token = authorization[len("Bearer "):].strip()  # type: ignore[union-attr]
+    new_token = auth.issue_cli_token(user["id"])
+    auth.revoke_cli_token(raw_token)
+    return {"access_token": new_token}
 
 
 class FavoriteRequest(BaseModel):

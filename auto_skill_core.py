@@ -520,6 +520,7 @@ async def _search_selfhosted(
     client: httpx.AsyncClient,
     task: str,
     autoskill_url: str | None = None,
+    auth_header: dict[str, str] | None = None,
 ) -> dict[str, Any] | None:
     """Search the self-hosted index. Return None on failure or no safe hits."""
     url = (autoskill_url if autoskill_url is not None else get_autoskill_url()).rstrip("/")
@@ -529,7 +530,7 @@ async def _search_selfhosted(
         r = await client.get(
             f"{url}/find-semantic",
             params={"q": task, "limit": 8},
-            headers=auth_headers(),
+            headers=auth_header if auth_header is not None else auth_headers(),
             timeout=10,
         )
         if r.status_code != 200:
@@ -593,11 +594,18 @@ async def _route_selfhosted(
     client: httpx.AsyncClient,
     task: str,
     autoskill_url: str | None = None,
+    auth_header: dict[str, str] | None = None,
 ) -> dict[str, Any] | None:
     """Use the backend-owned deterministic route contract when available.
 
     Return None only when the endpoint is unavailable/unsupported so callers
     can fall back to the legacy /find-semantic compatibility path.
+
+    `auth_header` overrides the default file-based `auth_headers()` -- the
+    hosted streamable-http connector passes the current MCP caller's own
+    bearer token here instead, since auth_headers() reads local CLI
+    credentials that belong to whoever operates the server, not the remote
+    caller (see mcp_server.py's _caller_auth_header).
     """
     url = (autoskill_url if autoskill_url is not None else get_autoskill_url()).rstrip("/")
     if not url:
@@ -612,7 +620,7 @@ async def _route_selfhosted(
                 "client": CLIENT_NAME,
                 "client_version": CLIENT_VERSION,
             },
-            headers=auth_headers(),
+            headers=auth_header if auth_header is not None else auth_headers(),
             timeout=10,
         )
     except Exception:
@@ -771,6 +779,7 @@ async def _search(
     client: httpx.AsyncClient | None,
     task: str,
     autoskill_url: str | None = None,
+    auth_header: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Search the self-hosted index. No fallback to Supabase: the edge
     function and REST corpus there were frozen on 2026-07-05 when storage
@@ -780,10 +789,10 @@ async def _search(
     get no suggestion for that turn."""
     if client is None:
         async with httpx.AsyncClient() as owned:
-            return await _search(owned, task, autoskill_url=autoskill_url)
+            return await _search(owned, task, autoskill_url=autoskill_url, auth_header=auth_header)
 
     warnings: list[str] = []
-    selfhosted = await _search_selfhosted(client, task, autoskill_url=autoskill_url)
+    selfhosted = await _search_selfhosted(client, task, autoskill_url=autoskill_url, auth_header=auth_header)
     if selfhosted is not None:
         return _with_backend(selfhosted, "self-hosted", warnings)
 
@@ -797,14 +806,16 @@ async def _search(
     )
 
 
-async def recommend_skill_payload(task: str, client: httpx.AsyncClient | None = None) -> dict[str, Any]:
+async def recommend_skill_payload(
+    task: str, client: httpx.AsyncClient | None = None, auth_header: dict[str, str] | None = None
+) -> dict[str, Any]:
     """Return the MCP payload for a task recommendation."""
     if client is None:
         async with httpx.AsyncClient() as owned:
-            return await recommend_skill_payload(task, client=owned)
+            return await recommend_skill_payload(task, client=owned, auth_header=auth_header)
 
     try:
-        result = await _search(client, task)
+        result = await _search(client, task, auth_header=auth_header)
     except Exception as exc:
         return {"found": False, "message": f"Skill database is unavailable right now ({exc}). Try again shortly."}
 
@@ -874,18 +885,20 @@ async def recommend_skill_payload(task: str, client: httpx.AsyncClient | None = 
     }
 
 
-async def route_task_payload(task: str, client: httpx.AsyncClient | None = None) -> dict[str, Any]:
+async def route_task_payload(
+    task: str, client: httpx.AsyncClient | None = None, auth_header: dict[str, str] | None = None
+) -> dict[str, Any]:
     """Return a universal routing decision for an agent task."""
     if client is None:
         async with httpx.AsyncClient() as owned:
-            return await route_task_payload(task, client=owned)
+            return await route_task_payload(task, client=owned, auth_header=auth_header)
 
-    route = await _route_selfhosted(client, task)
+    route = await _route_selfhosted(client, task, auth_header=auth_header)
     if route is not None:
         return route
 
     try:
-        result = await _search(client, task)
+        result = await _search(client, task, auth_header=auth_header)
     except Exception as exc:
         return {
             "routed": False,
@@ -1016,6 +1029,7 @@ async def record_route_feedback(
     source: str = CLIENT_NAME,
     note: str = "",
     client: httpx.AsyncClient | None = None,
+    auth_header: dict[str, str] | None = None,
 ) -> bool:
     """Best-effort local-host feedback for route outcome analytics."""
     route_id = (route_id or "").strip()
@@ -1024,7 +1038,9 @@ async def record_route_feedback(
         return False
     if client is None:
         async with httpx.AsyncClient() as owned:
-            return await record_route_feedback(route_id, outcome, source=source, note=note, client=owned)
+            return await record_route_feedback(
+                route_id, outcome, source=source, note=note, client=owned, auth_header=auth_header
+            )
 
     url = get_autoskill_url()
     if not url:
@@ -1038,7 +1054,7 @@ async def record_route_feedback(
                 "source": source[:80],
                 "note": note[:300],
             },
-            headers=auth_headers(),
+            headers=auth_header if auth_header is not None else auth_headers(),
             timeout=5,
         )
         return response.status_code == 200
@@ -1102,7 +1118,9 @@ def build_route_context(route_payload: dict[str, Any]) -> str:
     )
 
 
-async def route_prompt_payload(prompt: str, client: httpx.AsyncClient | None = None) -> dict[str, Any]:
+async def route_prompt_payload(
+    prompt: str, client: httpx.AsyncClient | None = None, auth_header: dict[str, str] | None = None
+) -> dict[str, Any]:
     """Run the prompt preflight gate, then route skill-shaped prompts."""
     decision = should_route_prompt(prompt)
     if not decision["should_route"]:
@@ -1114,7 +1132,7 @@ async def route_prompt_payload(prompt: str, client: httpx.AsyncClient | None = N
             "context": "",
         }
 
-    route = await route_task_payload(prompt, client=client)
+    route = await route_task_payload(prompt, client=client, auth_header=auth_header)
     return {
         "should_route": True,
         "reason": decision["reason"],

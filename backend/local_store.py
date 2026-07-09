@@ -168,6 +168,24 @@ CREATE TABLE IF NOT EXISTS private_skills (
     created_at TEXT
 );
 CREATE INDEX IF NOT EXISTS private_skills_owner_idx ON private_skills(owner_user_id);
+
+CREATE TABLE IF NOT EXISTS oauth_clients (
+    client_id TEXT PRIMARY KEY,
+    client_info TEXT NOT NULL,
+    created_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS mcp_auth_codes (
+    code TEXT PRIMARY KEY,
+    client_id TEXT NOT NULL,
+    code_challenge TEXT NOT NULL,
+    redirect_uri TEXT NOT NULL,
+    scopes TEXT DEFAULT '[]',
+    user_id TEXT NOT NULL,
+    created_at TEXT,
+    expires_at TEXT,
+    consumed_at TEXT
+);
 """
 
 TABLES = {
@@ -180,6 +198,8 @@ TABLES = {
     "favorites": {"unique": None, "json_cols": set()},
     "installs": {"unique": None, "json_cols": set()},
     "private_skills": {"unique": None, "json_cols": set()},
+    "oauth_clients": {"unique": None, "json_cols": {"client_info"}},
+    "mcp_auth_codes": {"unique": None, "json_cols": {"scopes"}},
 }
 
 SKILL_COLUMN_DEFAULTS = {
@@ -991,6 +1011,102 @@ def revoke_cli_token(token_hash: str) -> bool:
         )
         conn.commit()
         return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def create_oauth_client(client_id: str, client_info: dict) -> None:
+    """Store a dynamically-registered MCP OAuth client verbatim (client_secret,
+    token_endpoint_auth_method, redirect_uris, etc. -- whatever the `mcp` SDK's
+    registration handler assigned) so get_oauth_client can hand it back
+    unchanged for the SDK's own client authentication checks."""
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO oauth_clients (client_id, client_info, created_at) VALUES (?, ?, ?)",
+            (client_id, json.dumps(client_info), _now()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_oauth_client(client_id: str) -> dict | None:
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT client_info FROM oauth_clients WHERE client_id=?", (client_id,)).fetchone()
+        return json.loads(row["client_info"]) if row else None
+    finally:
+        conn.close()
+
+
+def create_mcp_auth_code(
+    code: str, client_id: str, code_challenge: str, redirect_uri: str, scopes: list[str], user_id: str, expires_at: str
+) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT INTO mcp_auth_codes "
+            "(code, client_id, code_challenge, redirect_uri, scopes, user_id, created_at, expires_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (code, client_id, code_challenge, redirect_uri, json.dumps(scopes), user_id, _now(), expires_at),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _mcp_auth_code_row(row: sqlite3.Row) -> dict:
+    entry = dict(row)
+    entry["scopes"] = json.loads(entry["scopes"])
+    return entry
+
+
+def peek_mcp_auth_code(code: str) -> dict | None:
+    """Non-destructive lookup -- the `mcp` SDK validates expiry/redirect_uri/
+    PKCE itself against this before ever calling exchange, so this must not
+    consume the code (see mcp_oauth.py's /codes/{code} and /token split)."""
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT * FROM mcp_auth_codes WHERE code=?", (code,)).fetchone()
+        return _mcp_auth_code_row(row) if row else None
+    finally:
+        conn.close()
+
+
+def consume_mcp_auth_code(code: str, client_id: str) -> dict | None:
+    """Atomically load and consume a not-yet-used, not-expired auth code
+    belonging to `client_id`, guarding against replay."""
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT * FROM mcp_auth_codes WHERE code=? AND client_id=? AND consumed_at IS NULL AND expires_at > ?",
+            (code, client_id, _now()),
+        ).fetchone()
+        if row is None:
+            return None
+        conn.execute("UPDATE mcp_auth_codes SET consumed_at=? WHERE code=?", (_now(), code))
+        conn.commit()
+        return _mcp_auth_code_row(row)
+    finally:
+        conn.close()
+
+
+def list_route_events_for_user(user_id: str, limit: int = 100) -> list[dict]:
+    """Every route_events column for this user -- all privacy-safe by
+    construction (query_hash/query_chars only, never raw prompt text)."""
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM route_events WHERE user_id=? ORDER BY created_at DESC LIMIT ?",
+            (user_id, limit),
+        ).fetchall()
+        events = []
+        for row in rows:
+            event = dict(row)
+            event["warnings"] = json.loads(event["warnings"]) if event.get("warnings") else []
+            events.append(event)
+        return events
     finally:
         conn.close()
 

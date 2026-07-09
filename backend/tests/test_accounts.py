@@ -88,8 +88,8 @@ class AuthModuleTests(unittest.TestCase):
         local_store.DB_PATH = self.old_db_path
 
     def test_state_handshake_round_trips_once(self) -> None:
-        state = auth.create_state("google", 54321)
-        self.assertEqual(auth.pop_state(state), ("google", 54321))
+        state = auth.create_state("google", {"flow": "cli", "port": 54321})
+        self.assertEqual(auth.pop_state(state), {"provider": "google", "flow": "cli", "port": 54321})
         self.assertIsNone(auth.pop_state(state))  # single use
 
     def test_unknown_state_returns_none(self) -> None:
@@ -111,7 +111,7 @@ class AuthModuleTests(unittest.TestCase):
 
     def test_authorize_url_contains_client_id_and_redirect(self) -> None:
         with patch.dict(auth.PROVIDERS["google"], {"client_id": "test-id"}):
-            state = auth.create_state("google", 1234)
+            state = auth.create_state("google", {"flow": "cli", "port": 1234})
             url = auth.build_authorize_url("google", state)
             self.assertIn("client_id=test-id", url)
             self.assertIn("accounts.google.com", url)
