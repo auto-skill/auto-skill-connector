@@ -193,12 +193,18 @@ class ApiContractTests(unittest.TestCase):
         for path in ("/readyz", "/healthz", "/signup", "/account"):
             self.assertNotEqual(self.client.get(path, headers=no_auth).status_code, 401, path)
 
+        # The root is exempt too, but public visitors don't get the internal
+        # admin panel -- they're redirected to the marketing site.
+        root = self.client.get("/", headers=no_auth, follow_redirects=False)
+        self.assertEqual(root.status_code, 307)
+        self.assertEqual(root.headers["location"], "https://autoskill.dev")
+
         for method, path, json_body in (
-            ("get", "/", None),
             ("get", "/status", None),
             ("get", "/find-semantic?q=x", None),
             ("post", "/route", {"task": "x"}),
             ("post", "/route-skip", {"prompt": "x", "reason": "test"}),
+            ("post", "/route-feedback", {"route_id": "route-1", "outcome": "used"}),
             ("get", "/scrape", None),
             ("get", "/rest/v1/skills?select=id", None),
         ):
@@ -217,6 +223,15 @@ class ApiContractTests(unittest.TestCase):
             self.client.post("/route", json={"task": ""}, headers=headers).status_code,
             403,
         )
+        # Outcome feedback comes in from hooks/CLIs on user machines, so it
+        # must clear the read-only guard for account holders (404 here: the
+        # route_id doesn't exist, but the request reached the endpoint).
+        self.assertEqual(
+            self.client.post(
+                "/route-feedback", json={"route_id": "no-such-route", "outcome": "used"}, headers=headers
+            ).status_code,
+            404,
+        )
         probes = [
             ("post", "/scrape", None),
             ("post", "/chat", {"messages": [{"role": "user", "content": "find a spreadsheet skill"}]}),
@@ -228,7 +243,15 @@ class ApiContractTests(unittest.TestCase):
             ("get", "/library", None),
             ("get", "/library/files/example.md", None),
             ("get", "/route-metrics", None),
-            ("post", "/route-feedback", {"route_id": "route-1", "outcome": "used"}),
+            # The MCP OAuth server-to-server endpoints are loopback-only --
+            # the connector reaches them via AUTOSKILL_URL on localhost, and
+            # the backend's /token skips PKCE (the mcp SDK checks it on the
+            # connector side), so none of these may be publicly reachable
+            # even with an account.
+            ("post", "/mcp-oauth/clients", {"client_id": "public-guard-client"}),
+            ("get", "/mcp-oauth/clients/public-guard-client", None),
+            ("get", "/mcp-oauth/codes/public-guard-code", None),
+            ("post", "/mcp-oauth/token", {"code": "public-guard-code", "client_id": "public-guard-client"}),
             ("get", "/rest/v1/skills?select=id", None),
             ("post", "/rest/v1/rpc/search_skills", {"query": "spreadsheet", "max_results": 3}),
             ("post", "/rest/v1/rpc/vector_search_skills", {"query_embedding": [0.0] * 384, "match_count": 3}),
@@ -270,12 +293,9 @@ class ApiContractTests(unittest.TestCase):
             ("GET", "/private-skills"),
             ("POST", "/private-skills"),
             ("DELETE", "/private-skills/{skill_id}"),
-            ("POST", "/mcp-oauth/clients"),
-            ("GET", "/mcp-oauth/clients/{client_id}"),
+            ("POST", "/route-feedback"),
             ("GET", "/mcp-oauth/authorize"),
             ("GET", "/mcp-oauth/choose"),
-            ("GET", "/mcp-oauth/codes/{code}"),
-            ("POST", "/mcp-oauth/token"),
             ("GET", "/signup"),
             ("GET", "/account"),
         }

@@ -15,11 +15,11 @@ Endpoints:
   GET  /runs                                  -> current user's recent route_events (dashboard metrics)
   GET/POST/DELETE /favorites[/{skill_id}]     -> per-user favorited skills
   GET/POST        /installs                   -> per-user install history
-  GET             /runs                       -> per-user route run history
   GET/POST/DELETE /private-skills[/{id}]      -> per-user private skill submissions
   GET  /signup                                -> account-required landing page (see scraper.py's account guard)
   GET  /account                               -> post-login confirmation, links out to the site's dashboard
 """
+import json
 import os
 from urllib.parse import parse_qsl, quote, urlencode, urlparse, urlsplit, urlunparse, urlunsplit
 
@@ -185,73 +185,23 @@ async def auth_callback(request: Request, provider: str, code: str, state: str):
 
 def _signup_page(host: str) -> HTMLResponse:
     """Landing page for anyone scraper.py's account guard turned away --
-    same terminal-card look as mcp_oauth.py's login chooser, so a browser
-    hitting this API directly doesn't get a bare 401 or an unstyled page.
-    Logging in from here lands on /account (this same host) next, not the
-    external site directly -- see _account_page()."""
+    shares mcp_oauth.card_page's chrome so a browser hitting this API
+    directly doesn't get a bare 401 or an unstyled page. Logging in from
+    here lands on /account (this same host) next, not the external site
+    directly -- see _account_page()."""
     return_to = quote(f"https://{host}/account", safe="")
     buttons = "".join(
         f'<a class="button" href="/auth/{provider}/start?flow=web&return_to={return_to}">'
         f"Continue with {label}</a>"
         for provider, label in (("google", "Google"), ("github", "GitHub"))
     )
-    html = f"""<!doctype html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Sign in to Auto-Skill</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;600;700&display=swap" rel="stylesheet">
-<style>
-  :root {{
-    --paper: #f7f7f2; --panel: #fffefa; --ink: #111111; --muted: #666666;
-    --line: #d9d9d1; --line-dark: #222222; --blue: #1f6fff;
-    --button: #111111; --button-rail: #1f6fff;
-  }}
-  * {{ box-sizing: border-box; }}
-  body {{
-    margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
-    background: var(--paper); color: var(--ink); font-family: "Geist", Arial, sans-serif;
-  }}
-  a {{ color: inherit; text-decoration: none; }}
-  .card {{
-    width: min(400px, calc(100% - 40px)); border: 1px solid var(--line-dark);
-    background: var(--panel); box-shadow: 0 18px 60px rgba(0, 0, 0, 0.08); padding: 32px 28px;
-  }}
-  .brand {{ display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 650; margin-bottom: 20px; }}
-  .mark {{
-    width: 26px; height: 26px; display: grid; place-items: center; border: 1px solid var(--ink);
-    color: var(--blue); font-family: "Geist Mono", Consolas, monospace; font-size: 13px; font-weight: 700;
-  }}
-  h1 {{ margin: 0 0 8px; font-size: 20px; line-height: 1.25; }}
-  p {{ margin: 0 0 22px; color: var(--muted); font-size: 14px; line-height: 1.5; }}
-  .providers {{ display: flex; flex-direction: column; gap: 10px; }}
-  .button {{
-    min-height: 40px; display: flex; align-items: center; justify-content: center;
-    padding: 0 40px 0 16px; border: 0; position: relative;
-    background: linear-gradient(90deg, var(--button) 0, var(--button) calc(100% - 28px), var(--button-rail) calc(100% - 28px), var(--button-rail) 100%);
-    color: #ffffff; font-size: 14px; font-weight: 500;
-    box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.14);
-  }}
-  .button::after {{
-    content: ">"; position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
-    font-family: "Geist Mono", Consolas, monospace; font-size: 13px;
-  }}
-  .button:hover {{ filter: brightness(1.06); }}
-</style>
-</head>
-<body>
-  <div class="card">
-    <div class="brand"><span class="mark" aria-hidden="true">&gt;_</span><span>Auto-Skill</span></div>
-    <h1>An account is required</h1>
-    <p>Auto-Skill's API is account-only. Sign in with Google or GitHub -- if you don't have an account yet, this creates one automatically.</p>
-    <div class="providers">{buttons}</div>
-  </div>
-</body>
-</html>"""
-    return HTMLResponse(html)
+    body = (
+        "<h1>An account is required</h1>"
+        "<p>Auto-Skill's API is account-only. Sign in with Google or GitHub -- "
+        "if you don't have an account yet, this creates one automatically.</p>"
+        f'<div class="providers">{buttons}</div>'
+    )
+    return mcp_oauth.card_page(body)
 
 
 @router.get("/signup")
@@ -264,62 +214,12 @@ def _account_page() -> HTMLResponse:
     round-trip. Reads the #token fragment client-side (like the site's own
     dashboard.html) since a plain server-side redirect can't see a URL
     fragment -- browsers never send it. Deliberately doesn't duplicate the
-    full dashboard UX; just confirms login and links out to it."""
-    html = f"""<!doctype html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Signed in to Auto-Skill</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;600;700&display=swap" rel="stylesheet">
-<style>
-  :root {{
-    --paper: #f7f7f2; --panel: #fffefa; --ink: #111111; --muted: #666666;
-    --line: #d9d9d1; --line-dark: #222222; --blue: #1f6fff;
-    --button: #111111; --button-rail: #1f6fff;
-  }}
-  * {{ box-sizing: border-box; }}
-  body {{
-    margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
-    background: var(--paper); color: var(--ink); font-family: "Geist", Arial, sans-serif;
-  }}
-  a {{ color: inherit; text-decoration: none; }}
-  .card {{
-    width: min(400px, calc(100% - 40px)); border: 1px solid var(--line-dark);
-    background: var(--panel); box-shadow: 0 18px 60px rgba(0, 0, 0, 0.08); padding: 32px 28px;
-  }}
-  .brand {{ display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 650; margin-bottom: 20px; }}
-  .mark {{
-    width: 26px; height: 26px; display: grid; place-items: center; border: 1px solid var(--ink);
-    color: var(--blue); font-family: "Geist Mono", Consolas, monospace; font-size: 13px; font-weight: 700;
-  }}
-  h1 {{ margin: 0 0 8px; font-size: 20px; line-height: 1.25; }}
-  p {{ margin: 0 0 22px; color: var(--muted); font-size: 14px; line-height: 1.5; }}
-  .email {{ color: var(--ink); font-weight: 600; }}
-  .button {{
-    min-height: 40px; display: flex; align-items: center; justify-content: center;
-    padding: 0 40px 0 16px; border: 0; position: relative;
-    background: linear-gradient(90deg, var(--button) 0, var(--button) calc(100% - 28px), var(--button-rail) calc(100% - 28px), var(--button-rail) 100%);
-    color: #ffffff; font-size: 14px; font-weight: 500;
-    box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.14);
-  }}
-  .button::after {{
-    content: ">"; position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
-    font-family: "Geist Mono", Consolas, monospace; font-size: 13px;
-  }}
-  .button:hover {{ filter: brightness(1.06); }}
-  .error {{ color: #b3261e; }}
-</style>
-</head>
-<body>
-  <div class="card">
-    <div class="brand"><span class="mark" aria-hidden="true">&gt;_</span><span>Auto-Skill</span></div>
-    <h1 id="heading">Signing you in&hellip;</h1>
+    full dashboard UX; just confirms login and links out to it, carrying the
+    token along in the fragment so the dashboard (a different origin, so no
+    shared localStorage) doesn't ask for a second login."""
+    body = f"""<h1 id="heading">Signing you in&hellip;</h1>
     <p id="detail">One moment.</p>
     <a class="button" id="dashboard-link" href="{SIGNUP_DASHBOARD_URL}" hidden>Go to your dashboard</a>
-  </div>
 <script>
   (function () {{
     var match = /(?:^|#)token=([^&]+)/.exec(location.hash);
@@ -333,6 +233,8 @@ def _account_page() -> HTMLResponse:
       return;
     }}
     var token = decodeURIComponent(match[1]);
+    history.replaceState(null, "", location.pathname + location.search);
+    link.href = {json.dumps(SIGNUP_DASHBOARD_URL)} + "#token=" + encodeURIComponent(token);
     fetch("/auth/whoami", {{ headers: {{ Authorization: "Bearer " + token }} }})
       .then(function (r) {{ return r.ok ? r.json() : Promise.reject(r.status); }})
       .then(function (user) {{
@@ -352,10 +254,8 @@ def _account_page() -> HTMLResponse:
         detail.textContent = "Login didn't complete. Please try signing in again.";
       }});
   }})();
-</script>
-</body>
-</html>"""
-    return HTMLResponse(html)
+</script>"""
+    return mcp_oauth.card_page(body, title="Signed in to Auto-Skill")
 
 
 @router.get("/account")

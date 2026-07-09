@@ -887,11 +887,10 @@ async def route_metrics(hours: int = 24):
 
 @router.post("/route-feedback")
 async def route_feedback(body: RouteFeedbackRequest):
-    """Local-only outcome feedback for route analytics.
-
-    The public read-only guard intentionally blocks this endpoint for forwarded
-    traffic. Keep payloads privacy-safe: route_id plus a small enum-style
-    outcome, never raw prompts.
+    """Outcome feedback for route analytics, reported by the Claude Code hook,
+    the CLI, and the hosted connector. Public callers need an account (see
+    scraper.py's guards). Keep payloads privacy-safe: route_id plus a small
+    enum-style outcome, never raw prompts.
     """
     outcome = (body.outcome or "").strip().lower()
     allowed = {"used", "skipped", "installed", "failed", "dismissed"}

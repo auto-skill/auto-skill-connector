@@ -9,9 +9,9 @@ import uvicorn
 from collections import deque
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from datetime import datetime, timezone, date, timedelta
 import os
@@ -41,8 +41,9 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 # When this app is exposed to the internet through a tunnel (cloudflared runs
 # on this machine and proxies to loopback), tunneled requests carry forwarding
 # headers while genuinely local callers (scraper itself, recommender, hook,
-# mcp_server) do not. Public callers get search/read endpoints, the /auth,
-# /mcp-oauth, and /favorites/installs/private-skills/runs account endpoints
+# mcp_server) do not. Public callers get search/read endpoints, the /auth
+# pages, the two browser-facing /mcp-oauth pages, and the
+# /favorites/installs/private-skills/runs account endpoints
 # (each of those enforces its own bearer-token auth in accounts_api.py -- this
 # guard just decides what reaches FastAPI at all), and /route/route-skip --
 # the local REST surface has no auth of its own, so every /rest/v1 path must
@@ -60,11 +61,19 @@ PUBLIC_GET_PATHS = frozenset(
         "/runs",
         "/signup",
         "/account",
+        # Only the two browser-facing MCP OAuth pages are public. The
+        # server-to-server pieces (/mcp-oauth/clients, /codes/{code}, /token)
+        # stay loopback-only: the connector reaches them via AUTOSKILL_URL on
+        # localhost, and the backend's /token deliberately skips PKCE/client
+        # secret checks (the mcp SDK does those on the connector side), so
+        # exposing it publicly would let a stolen auth code bypass PKCE.
+        "/mcp-oauth/authorize",
+        "/mcp-oauth/choose",
     }
 )
-PUBLIC_GET_PREFIXES = ("/content/", "/auth/", "/mcp-oauth/")
-PUBLIC_POST_PATHS = frozenset({"/route", "/route-skip", "/favorites", "/installs", "/private-skills"})
-PUBLIC_POST_PREFIXES = ("/auth/", "/mcp-oauth/")
+PUBLIC_GET_PREFIXES = ("/content/", "/auth/")
+PUBLIC_POST_PATHS = frozenset({"/route", "/route-skip", "/route-feedback", "/favorites", "/installs", "/private-skills"})
+PUBLIC_POST_PREFIXES = ("/auth/",)
 PUBLIC_DELETE_PREFIXES = ("/favorites/", "/private-skills/")
 
 
@@ -105,7 +114,7 @@ async def public_readonly_guard(request, call_next):
 # checks (monitoring shouldn't need an account either). A browser without a
 # token gets bounced to /signup; anything else (curl, the MCP connector, a
 # tool call) gets a 401 with a signup_url to act on.
-ACCOUNT_EXEMPT_PATHS = frozenset({"/healthz", "/readyz", "/signup", "/account"})
+ACCOUNT_EXEMPT_PATHS = frozenset({"/", "/healthz", "/readyz", "/signup", "/account"})
 ACCOUNT_EXEMPT_PREFIXES = ("/auth/", "/mcp-oauth/")
 
 
@@ -2081,7 +2090,12 @@ async def get_skills(limit: int = 100, offset: int = 0, source: str = "", min_ri
 
 
 @app.get("/")
-async def serve_index():
+async def serve_index(request: Request):
+    # index.html is the internal admin scraper panel -- loopback callers only.
+    # Public visitors who type the bare domain go to the marketing site
+    # instead (its data endpoints are 403 for them anyway).
+    if request.headers.get("cf-connecting-ip") or request.headers.get("x-forwarded-for"):
+        return RedirectResponse("https://autoskill.dev")
     return FileResponse(os.path.join(os.path.dirname(__file__), "index.html"))
 
 

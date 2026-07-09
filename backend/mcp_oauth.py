@@ -113,17 +113,18 @@ async def authorize(
     return RedirectResponse(f"/mcp-oauth/choose?login_state={login_state}")
 
 
-def _choose_page(body: str, status_code: int = 200) -> HTMLResponse:
-    """Shared chrome for the login-chooser page, matching the terminal-card
-    look of auto-skill-site's index.html/dashboard.html (same palette, same
-    Geist/Geist Mono fonts) so this doesn't read as a bare unstyled bounce
-    page in the middle of the connect flow."""
+def card_page(body: str, status_code: int = 200, title: str = "Sign in to Auto-Skill") -> HTMLResponse:
+    """Shared chrome for the small auth pages (this module's login chooser,
+    accounts_api's /signup and /account), matching the terminal-card look of
+    auto-skill-site's index.html/dashboard.html (same palette, same
+    Geist/Geist Mono fonts) so none of them read as bare unstyled bounce
+    pages in the middle of a login flow."""
     html = f"""<!doctype html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Sign in to Auto-Skill</title>
+<title>{title}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;600;700&display=swap" rel="stylesheet">
@@ -163,6 +164,7 @@ def _choose_page(body: str, status_code: int = 200) -> HTMLResponse:
     font-family: "Geist Mono", Consolas, monospace; font-size: 13px;
   }}
   .button:hover {{ filter: brightness(1.06); }}
+  .email {{ color: var(--ink); font-weight: 600; }}
   .error {{ color: #b3261e; font-size: 14px; line-height: 1.5; margin: 0; }}
 </style>
 </head>
@@ -179,7 +181,7 @@ def _choose_page(body: str, status_code: int = 200) -> HTMLResponse:
 @router.get("/choose")
 async def choose(login_state: str):
     if peek_pending(login_state) is None:
-        return _choose_page(
+        return card_page(
             '<p class="error">Login expired or invalid -- please retry connecting in your MCP client.</p>',
             status_code=400,
         )
@@ -193,7 +195,7 @@ async def choose(login_state: str):
         "<p>Claude needs your account to route tasks and track your run history.</p>"
         f'<div class="providers">{buttons}</div>'
     )
-    return _choose_page(body)
+    return card_page(body)
 
 
 @router.get("/codes/{code}")

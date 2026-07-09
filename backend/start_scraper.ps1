@@ -32,15 +32,7 @@ if (-not $env:SEARXNG_URL) {
     $env:SEARXNG_URL = "http://localhost:8888"
 }
 
-# auth.py's own default fallback now points at the *planned* autoskill.dev
-# domain, not what this machine's cloudflared tunnel actually serves (see
-# start_cloudflared.ps1) -- pin it explicitly so a supervisor restart never
-# silently starts building Google/GitHub OAuth redirect URIs for a domain
-# those apps aren't registered against.
-if (-not $env:BACKEND_BASE_URL) {
-    $env:BACKEND_BASE_URL = "https://skills.avalahome.com"
-}
-Write-Log "SEARXNG_URL=$env:SEARXNG_URL; AUTO_START_SCRAPER=$env:AUTO_START_SCRAPER; LOCAL_DB_PATH=$env:LOCAL_DB_PATH; BACKEND_BASE_URL=$env:BACKEND_BASE_URL"
+Write-Log "SEARXNG_URL=$env:SEARXNG_URL; AUTO_START_SCRAPER=$env:AUTO_START_SCRAPER; LOCAL_DB_PATH=$env:LOCAL_DB_PATH"
 
 # Google/GitHub OAuth apps backing account login (auth.py). Set these as
 # persistent user/machine env vars (setx), or drop them in

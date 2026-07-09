@@ -13,22 +13,21 @@ Write-Log "supervisor starting in $PSScriptRoot"
 
 $env:MCP_TRANSPORT = "streamable-http"
 if (-not $env:MCP_PORT) { $env:MCP_PORT = "8765" }
-# Exposed at both https://mcp.avalahome.com/mcp (existing "auto-skill"
-# tunnel) and https://mcp.autoskill.dev/mcp (new "autoskill-dev" tunnel,
-# separate Cloudflare account -- see ~/.cloudflared/autoskill-dev-config.yml)
-# during the migration. Both must be listed here for Host-header
-# DNS-rebinding protection to accept either.
-$env:MCP_ALLOWED_HOSTS = "mcp.avalahome.com,mcp.autoskill.dev,localhost:8765,127.0.0.1:8765"
-# mcp_server.py's own default fallback now points at the *planned*
-# autoskill.dev domain, not this machine's actual tunnel -- pin it
-# explicitly so a supervisor restart never silently starts advertising OAuth
-# metadata for a domain that isn't this deployment.
-if (-not $env:MCP_ISSUER_URL) { $env:MCP_ISSUER_URL = "https://mcp.avalahome.com" }
-if (-not $env:BACKEND_BASE_URL) { $env:BACKEND_BASE_URL = "https://skills.avalahome.com" }
-# Skills server and connector run on the same box; the public
-# skills.avalahome.com hostname doesn't resolve correctly on this machine's
-# own LAN (split-horizon DNS -- see README's LAN self-hosting note), so talk
-# to it directly over loopback instead.
+# Exposed at both https://mcp.autoskill.dev/mcp (canonical, "autoskill-dev"
+# tunnel -- see ~/.cloudflared/autoskill-dev-config.yml) and
+# https://mcp.avalahome.com/mcp (legacy "auto-skill" tunnel, kept only so
+# existing tool calls don't break during the migration). Both must be listed
+# here for Host-header DNS-rebinding protection to accept either.
+$env:MCP_ALLOWED_HOSTS = "mcp.autoskill.dev,mcp.avalahome.com,localhost:8765,127.0.0.1:8765"
+# autoskill.dev is the canonical user-facing domain: OAuth metadata and the
+# login-chooser redirect must never surface avalahome.com to users. Pinned
+# explicitly so a supervisor restart can't silently drift.
+if (-not $env:MCP_ISSUER_URL) { $env:MCP_ISSUER_URL = "https://mcp.autoskill.dev" }
+if (-not $env:BACKEND_BASE_URL) { $env:BACKEND_BASE_URL = "https://skills.autoskill.dev" }
+# Skills server and connector run on the same box; the public backend
+# hostname doesn't necessarily resolve correctly from this machine's own LAN
+# (split-horizon DNS -- see README's LAN self-hosting note), so talk to it
+# directly over loopback instead.
 if (-not $env:AUTOSKILL_URL) { $env:AUTOSKILL_URL = "http://localhost:8000" }
 Write-Log "MCP_TRANSPORT=$env:MCP_TRANSPORT; MCP_PORT=$env:MCP_PORT; AUTOSKILL_URL=$env:AUTOSKILL_URL; MCP_ALLOWED_HOSTS=$env:MCP_ALLOWED_HOSTS; MCP_ISSUER_URL=$env:MCP_ISSUER_URL; BACKEND_BASE_URL=$env:BACKEND_BASE_URL"
 

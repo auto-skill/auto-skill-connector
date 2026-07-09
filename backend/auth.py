@@ -14,8 +14,6 @@ import httpx
 
 import local_store as store
 
-BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "https://skills.autoskill.dev").rstrip("/")
-
 PROVIDERS = {
     "google": {
         "client_id": os.getenv("GOOGLE_CLIENT_ID", ""),
@@ -79,8 +77,6 @@ def _purge_expired_states() -> None:
 def create_state(provider: str, payload: dict | None = None) -> str:
     _purge_expired_states()
     state = secrets.token_urlsafe(24)
-    if isinstance(payload, int):
-        payload = {"flow": "cli", "port": payload}
     _states[state] = {"provider": provider, **(payload or {}), "expires_at": time.time() + _STATE_TTL_SECONDS}
     return state
 
