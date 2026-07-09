@@ -10,8 +10,8 @@ services:
       AUTO_START_EMBEDDER: "0"
       ENABLE_OLLAMA_CHAT: "0"
       STALE_SCRAPE_RUN_SECONDS: ${STALE_SCRAPE_RUN_SECONDS:-7200}
-      BACKEND_BASE_URL: ${BACKEND_BASE_URL:-https://api.auto-skill.com}
-      AUTO_SKILL_DASHBOARD_ORIGINS: ${AUTO_SKILL_DASHBOARD_ORIGINS:-https://auto-skill.com,https://www.auto-skill.com}
+      BACKEND_BASE_URL: ${BACKEND_BASE_URL:-https://api.auto-skill.dev}
+      AUTO_SKILL_DASHBOARD_ORIGINS: ${AUTO_SKILL_DASHBOARD_ORIGINS:-https://auto-skill.dev,https://www.auto-skill.dev}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
@@ -41,9 +41,9 @@ services:
       MCP_HOST: 0.0.0.0
       MCP_PORT: "8765"
       AUTOSKILL_URL: http://api:8000
-      BACKEND_BASE_URL: ${BACKEND_BASE_URL:-https://api.auto-skill.com}
-      MCP_ISSUER_URL: ${MCP_ISSUER_URL:-https://mcp.auto-skill.com}
-      MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-mcp.auto-skill.com,localhost:8765,127.0.0.1:8765}
+      BACKEND_BASE_URL: ${BACKEND_BASE_URL:-https://api.auto-skill.dev}
+      MCP_ISSUER_URL: ${MCP_ISSUER_URL:-https://mcp.auto-skill.dev}
+      MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-mcp.auto-skill.dev,localhost:8765,127.0.0.1:8765}
       AUTO_SKILL_ENABLE_PUBLIC_INSTALL: "0"
     ports:
       - "127.0.0.1:8765:8765"

@@ -20,8 +20,8 @@ from urllib import error, request
 
 ALPHA_BASE_URL = "https://skills.avalahome.com"
 ALPHA_MCP_HEALTH_URL = "https://mcp.avalahome.com/healthz"
-CANONICAL_BASE_URL = "https://api.auto-skill.com"
-CANONICAL_MCP_HEALTH_URL = "https://mcp.auto-skill.com/healthz"
+CANONICAL_BASE_URL = "https://api.auto-skill.dev"
+CANONICAL_MCP_HEALTH_URL = "https://mcp.auto-skill.dev/healthz"
 
 PROFILES = {
     "alpha": (ALPHA_BASE_URL, ALPHA_MCP_HEALTH_URL),

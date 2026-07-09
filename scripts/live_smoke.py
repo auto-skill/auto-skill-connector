@@ -37,7 +37,7 @@ CHECKS = [
 ]
 
 TIER_ORDER = {"none": 0, "hint": 1, "full": 2}
-DEFAULT_MCP_HEALTH_URL = "https://mcp.auto-skill.com/healthz"
+DEFAULT_MCP_HEALTH_URL = "https://mcp.auto-skill.dev/healthz"
 
 
 def get_mcp_health_url() -> str:

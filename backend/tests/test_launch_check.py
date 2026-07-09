@@ -61,7 +61,7 @@ class LaunchCheckEnvTests(unittest.TestCase):
                     "R2_ACCESS_KEY_ID=access",
                     "R2_SECRET_ACCESS_KEY=secret",
                     "GITHUB_TOKEN=ghp_test",
-                    "AUTO_SKILL_DASHBOARD_ORIGINS=https://auto-skill.com,https://www.auto-skill.com",
+                    "AUTO_SKILL_DASHBOARD_ORIGINS=https://auto-skill.dev,https://www.auto-skill.dev",
                     "",
                 ]
             )
@@ -82,7 +82,7 @@ class LaunchCheckEnvTests(unittest.TestCase):
                     "R2_ACCESS_KEY_ID=access",
                     "R2_SECRET_ACCESS_KEY=secret",
                     "GITHUB_TOKEN=ghp_test",
-                    "AUTO_SKILL_DASHBOARD_ORIGINS=https://*.bad.test,https://auto-skill.com/dashboard",
+                    "AUTO_SKILL_DASHBOARD_ORIGINS=https://*.bad.test,https://auto-skill.dev/dashboard",
                     "",
                 ]
             )

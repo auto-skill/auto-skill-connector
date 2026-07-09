@@ -157,7 +157,7 @@ Alternatively, pass the copied zip directly to the recovery path:
 
 The `alpha` launch-status profile checks the current emergency hostnames:
 `skills.avalahome.com` and `mcp.avalahome.com`. The `canonical` profile checks
-the production-facing hostnames: `api.auto-skill.com` and `mcp.auto-skill.com`.
+the production-facing hostnames: `api.auto-skill.dev` and `mcp.auto-skill.dev`.
 Do not call the hosted product production-ready until the canonical profile
 resolves in DNS and passes the same health, readiness, route, and MCP checks as
 the alpha profile.
@@ -324,7 +324,7 @@ docker compose --env-file deploy\.env -f deploy\docker-compose.yml up -d --build
 
 Set `AUTO_SKILL_DASHBOARD_ORIGINS` in `deploy\.env` to the exact production
 dashboard origins that are allowed to receive OAuth token fragments, for
-example `https://auto-skill.com,https://www.auto-skill.com`. Do not include
+example `https://auto-skill.dev,https://www.auto-skill.dev`. Do not include
 wildcards or temporary preview domains on the production host.
 
 Or run the guarded launcher, which runs preflight first, starts compose, waits

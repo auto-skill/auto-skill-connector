@@ -105,7 +105,7 @@ class LaunchStatusTests(unittest.TestCase):
             launch_status.Probe(
                 "api healthz",
                 "GET",
-                "https://api.auto-skill.com/healthz",
+                "https://api.auto-skill.dev/healthz",
                 None,
                 "error",
                 "<urlopen error [Errno 11001] getaddrinfo failed>",
@@ -124,7 +124,7 @@ class LaunchStatusTests(unittest.TestCase):
         )
         self.assertEqual(
             launch_status.PROFILES["canonical"],
-            ("https://api.auto-skill.com", "https://mcp.auto-skill.com/healthz"),
+            ("https://api.auto-skill.dev", "https://mcp.auto-skill.dev/healthz"),
         )
 
 

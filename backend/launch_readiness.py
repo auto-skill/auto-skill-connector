@@ -224,7 +224,7 @@ def recommended_actions(checks: list[ReadinessCheck]) -> list[str]:
 
     if "does not resolve" in details or "getaddrinfo failed" in details:
         actions.append(
-            "In Cloudflare/DNS, create or fix api.auto-skill.com and mcp.auto-skill.com, "
+            "In Cloudflare/DNS, create or fix api.auto-skill.dev and mcp.auto-skill.dev, "
             "then rerun: python launch_status.py --profile canonical"
         )
 

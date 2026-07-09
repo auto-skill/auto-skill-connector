@@ -206,7 +206,7 @@ class LaunchReadinessTests(unittest.TestCase):
 
         self.assertTrue(any("export-seed-packet.ps1" in action for action in actions))
         self.assertTrue(any("recover-host.ps1 -SeedBackupZip" in action for action in actions))
-        self.assertTrue(any("api.auto-skill.com" in action for action in actions))
+        self.assertTrue(any("api.auto-skill.dev" in action for action in actions))
         self.assertTrue(any("commit" in action for action in actions))
 
 

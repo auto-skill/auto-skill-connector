@@ -33,7 +33,7 @@ This repo holds both halves of Auto-Skill:
   package end users `pip install`, which talks to the hosted backend over
   HTTP.
 - **Backend** (`backend/`) -- the FastAPI/SQLite service that powers
-  `api.auto-skill.com` (scraper, embeddings, deterministic router, deploy
+  `api.auto-skill.dev` (scraper, embeddings, deterministic router, deploy
   scripts). It has its own run story (`python backend/scraper.py`) and its own
   CI (`.github/workflows/backend-ci.yml`); it is not part of the pip package.
 
@@ -189,7 +189,7 @@ Install safety defaults:
 **Self-hosting on the same LAN as your Cloudflare Tunnel:** if you run the
 skills server and the connector on the same machine that hosts the tunnel,
 your own router/DNS may resolve the public hostname (e.g.
-`api.auto-skill.com`) to a private LAN address instead of Cloudflare's edge
+`api.auto-skill.dev`) to a private LAN address instead of Cloudflare's edge
 -- a router-level DNS override or split-horizon DNS setup, common on home
 routers, will do this even though the hostname resolves correctly for
 everyone else. If requests to your own public URL fail only from that
@@ -302,7 +302,7 @@ never on an unauthenticated public URL.
 For claude.ai custom connectors, use:
 
 - Name: `Auto-Skill`
-- Remote MCP server URL: `https://mcp.auto-skill.com/mcp`
+- Remote MCP server URL: `https://mcp.auto-skill.dev/mcp`
 
 ## Automatic Suggestions For Claude Code
 
