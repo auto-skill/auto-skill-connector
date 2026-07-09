@@ -37,6 +37,11 @@ if ($env:AUTO_SKILL_CONNECTOR_DIR) {
     $connectorCandidates += $env:AUTO_SKILL_CONNECTOR_DIR
 }
 $connectorCandidates += @(
+    # This script's own repo root -- covers running it directly from
+    # auto-skill-connector\backend (the normal case; mcp_server.py lives one
+    # level up from this file).
+    (Split-Path -Path $PSScriptRoot -Parent),
+    # Legacy sibling-checkout layout, kept only for backward compatibility.
     (Join-Path $PSScriptRoot "..\auto-skill-connector"),
     (Join-Path $PSScriptRoot "..\..\Skills"),
     (Join-Path ([Environment]::GetFolderPath("MyDocuments")) "Skills")

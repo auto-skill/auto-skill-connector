@@ -42,11 +42,25 @@ if (-not $env:BACKEND_BASE_URL) {
 }
 Write-Log "SEARXNG_URL=$env:SEARXNG_URL; AUTO_START_SCRAPER=$env:AUTO_START_SCRAPER; LOCAL_DB_PATH=$env:LOCAL_DB_PATH; BACKEND_BASE_URL=$env:BACKEND_BASE_URL"
 
-# Google/GitHub OAuth apps backing account login (auth.py) -- set these as
-# persistent user/machine env vars (setx) so they survive across restarts of
-# this supervisor. Unset means that provider's /auth/{provider}/start 503s
-# instead of breaking anything else. See deploy/.env.example for the redirect
-# URIs each provider's OAuth app must be registered with.
+# Google/GitHub OAuth apps backing account login (auth.py). Set these as
+# persistent user/machine env vars (setx), or drop them in
+# ~/.autoskill/backend_oauth.env (KEY=value per line, loaded here) -- either
+# way they survive restarts of this supervisor. Unset means that provider's
+# /auth/{provider}/start 503s instead of breaking anything else. See
+# deploy/.env.example for the redirect URIs each provider's OAuth app must be
+# registered with.
+$oauthEnvPath = Join-Path $HOME ".autoskill\backend_oauth.env"
+if (Test-Path -LiteralPath $oauthEnvPath) {
+    foreach ($line in Get-Content -LiteralPath $oauthEnvPath) {
+        $trimmed = $line.Trim()
+        if (-not $trimmed -or $trimmed.StartsWith("#") -or -not $trimmed.Contains("=")) { continue }
+        $key, $value = $trimmed.Split("=", 2)
+        if (-not (Get-Item -Path "Env:$key" -ErrorAction SilentlyContinue)) {
+            Set-Item -Path "Env:$key" -Value $value
+        }
+    }
+    Write-Log "loaded OAuth credentials from $oauthEnvPath"
+}
 if ($env:GOOGLE_CLIENT_ID) {
     Write-Log "Google OAuth login is configured"
 } else {
