@@ -198,6 +198,9 @@ def test_route_task_payload_returns_router_decision(monkeypatch: pytest.MonkeyPa
     assert result["route_id"] == "route-123"
     assert result["route_metrics"]["skill_find_ms"] == 30
     assert result["route_metrics"]["injected_tokens"] == 120
+    assert result["route_summary"]["decision"] == "apply_skill_content"
+    assert result["route_summary"]["selected_name"] == "spreadsheet-router"
+    assert result["route_summary"]["metrics"]["skill_find_ms"] == 30
     assert "Generate the workbook" in result["skill_content"]
     assert "apply it immediately" in result["instructions"]
 
@@ -296,6 +299,8 @@ def test_route_task_payload_returns_hint_without_fetch(monkeypatch: pytest.Monke
     assert result["route_tier"] == "hint"
     assert result["skill_content"] == ""
     assert [c["name"] for c in result["candidates"]] == ["spreadsheet-router", "spreadsheet-cleanup"]
+    assert result["route_summary"]["decision"] == "consider_hint"
+    assert result["route_summary"]["candidate_count"] == 2
     context = core.build_route_context(result)
     assert "Candidate options:" in context
     assert "spreadsheet-cleanup" in context
@@ -369,6 +374,7 @@ def test_route_task_payload_handles_no_route() -> None:
     result = asyncio.run(core.route_task_payload("too obscure", client=NoRouteClient()))
     assert result["routed"] is False
     assert result["route_type"] == "none"
+    assert result["route_summary"]["decision"] == "continue_normally"
 
 
 def test_record_route_feedback_posts_privacy_safe_payload(monkeypatch: pytest.MonkeyPatch) -> None:

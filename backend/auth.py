@@ -14,7 +14,7 @@ import httpx
 
 import local_store as store
 
-BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "https://skills.avalahome.com").rstrip("/")
+BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "https://api.auto-skill.com").rstrip("/")
 
 PROVIDERS = {
     "google": {
@@ -35,21 +35,16 @@ PROVIDERS = {
     },
 }
 
-# In-memory state -> (payload dict, expiry_epoch) for the login handshake.
-# This is a single-process "alpha infra" service (see backend/README.md); a
-# restart mid-login just means the user retries. The payload carries whatever
-# the caller needs after the provider redirect round-trip: the CLI loopback
-# flow stashes {"flow": "cli", "port": ...}, the web dashboard login stashes
-# {"flow": "web", "return_to": ...}, and the MCP OAuth authorize step stashes
-# {"flow": "mcp", "login_state": ...} pointing at the pending authorization
-# request (see mcp_oauth.py).
+# In-memory state for OAuth handshakes. The payload carries whatever the caller
+# needs after the provider redirect round-trip: CLI loopback, web dashboard
+# return URL, or MCP OAuth pending login state.
 _STATE_TTL_SECONDS = 600
-_states: dict[str, tuple[dict, float]] = {}
+_states: dict[str, dict] = {}
 
 
 def _purge_expired_states() -> None:
     now = time.time()
-    expired = [s for s, (_, exp) in _states.items() if exp < now]
+    expired = [s for s, value in _states.items() if float(value.get("expires_at") or 0) < now]
     for s in expired:
         _states.pop(s, None)
 
@@ -57,17 +52,30 @@ def _purge_expired_states() -> None:
 def create_state(provider: str, payload: dict | None = None) -> str:
     _purge_expired_states()
     state = secrets.token_urlsafe(24)
-    _states[state] = ({"provider": provider, **(payload or {})}, time.time() + _STATE_TTL_SECONDS)
+    if isinstance(payload, int):
+        payload = {"flow": "cli", "port": payload}
+    _states[state] = {"provider": provider, **(payload or {}), "expires_at": time.time() + _STATE_TTL_SECONDS}
     return state
 
 
 def pop_state(state: str) -> dict | None:
+    return pop_login_state(state)
+
+
+def create_cli_state(provider: str, port: int) -> str:
+    return create_state(provider, {"flow": "cli", "port": int(port)})
+
+
+def create_web_state(provider: str, return_to: str) -> str:
+    return create_state(provider, {"flow": "web", "return_to": return_to})
+
+
+def pop_login_state(state: str) -> dict | None:
     _purge_expired_states()
     entry = _states.pop(state, None)
     if entry is None:
         return None
-    payload, _ = entry
-    return payload
+    return {key: value for key, value in entry.items() if key != "expires_at"}
 
 
 def redirect_uri_for(provider: str) -> str:

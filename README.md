@@ -33,7 +33,7 @@ This repo holds both halves of Auto-Skill:
   package end users `pip install`, which talks to the hosted backend over
   HTTP.
 - **Backend** (`backend/`) -- the FastAPI/SQLite service that powers
-  `skills.avalahome.com` (scraper, embeddings, deterministic router, deploy
+  `api.auto-skill.com` (scraper, embeddings, deterministic router, deploy
   scripts). It has its own run story (`python backend/scraper.py`) and its own
   CI (`.github/workflows/backend-ci.yml`); it is not part of the pip package.
 
@@ -158,6 +158,7 @@ auto-skill route "<task>"
 auto-skill route "<task>" --json
 auto-skill route-prompt "<raw-user-prompt>"
 auto-skill route-prompt "<raw-user-prompt>" --context-only
+auto-skill metrics --base-url http://127.0.0.1:8000
 auto-skill search "<task>"
 auto-skill preview "<task-or-url>"
 auto-skill install "<task-or-url>" --target claude
@@ -172,6 +173,10 @@ auto-skill disable-hook
 When the backend provides route metrics, `auto-skill route` prints a short
 `metrics:` line with latency, skill-find time, injected tokens, and response
 tokens. Use it during live smoke checks to spot slow routing or token churn.
+Use `auto-skill metrics --base-url http://127.0.0.1:8000` on the host to view
+recent aggregate p95s, budget breaches, tier/outcome counts, and top routed
+skills. It intentionally fails against the public URL because `/route-metrics`
+is local-only.
 
 Install safety defaults:
 
@@ -184,7 +189,7 @@ Install safety defaults:
 **Self-hosting on the same LAN as your Cloudflare Tunnel:** if you run the
 skills server and the connector on the same machine that hosts the tunnel,
 your own router/DNS may resolve the public hostname (e.g.
-`skills.avalahome.com`) to a private LAN address instead of Cloudflare's edge
+`api.auto-skill.com`) to a private LAN address instead of Cloudflare's edge
 -- a router-level DNS override or split-horizon DNS setup, common on home
 routers, will do this even though the hostname resolves correctly for
 everyone else. If requests to your own public URL fail only from that
@@ -202,6 +207,9 @@ instead of round-tripping through DNS and the tunnel.
 - `route_task(task)` is the universal router contract: call it near the start
   of a user task, and it returns one of three results: `route_tier=full` with
   `skill_content`, `route_tier=hint` with candidate options, or no route.
+  Each route also includes a compact `route_summary` with the decision,
+  selected name/URL, candidate count, and route metrics so clients can display
+  or log the choice without reading full `SKILL.md` content.
 - `recommend_skill(task)` is a legacy explicit-preview path: it returns one
   usable skill candidate with full content for inspection. Use `route_task` for
   normal routing because it can return full, hint, or no route.
@@ -294,7 +302,7 @@ never on an unauthenticated public URL.
 For claude.ai custom connectors, use:
 
 - Name: `Auto-Skill`
-- Remote MCP server URL: `https://mcp.avalahome.com/mcp`
+- Remote MCP server URL: `https://mcp.auto-skill.com/mcp`
 
 ## Automatic Suggestions For Claude Code
 

@@ -1600,7 +1600,7 @@ def mark_content_duplicates(skills: list) -> None:
             canonical_by_hash[chash] = skill.get("url") or skill.get("id") or chash
 
 
-async def run_scrape(run_id: str):
+async def run_scrape(run_id: str) -> bool:
     async with httpx.AsyncClient(follow_redirects=True) as client:
         try:
             state = CrawlState.load()
@@ -1653,6 +1653,7 @@ async def run_scrape(run_id: str):
                 "skills_found": len(skills),
                 "new_skills_found": count_after - count_before,
             })
+            return True
         except Exception as e:
             await supabase_patch(client, "scrape_runs", {"id": run_id}, {
                 "finished_at": datetime.now(timezone.utc).isoformat(),
@@ -1660,6 +1661,7 @@ async def run_scrape(run_id: str):
                 "skills_found": 0,
                 "error": str(e)[:500],
             })
+            return False
 
 
 async def start_new_scrape_run() -> str:

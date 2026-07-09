@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+import os
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
 
@@ -95,6 +96,15 @@ class AuthModuleTests(unittest.TestCase):
     def test_unknown_state_returns_none(self) -> None:
         self.assertIsNone(auth.pop_state("not-a-real-state"))
 
+    def test_web_state_handshake_round_trips_once(self) -> None:
+        state = auth.create_web_state("github", "https://example.com/dashboard.html")
+        resolved = auth.pop_login_state(state)
+
+        self.assertEqual(resolved["provider"], "github")
+        self.assertEqual(resolved["flow"], "web")
+        self.assertEqual(resolved["return_to"], "https://example.com/dashboard.html")
+        self.assertIsNone(auth.pop_login_state(state))
+
     def test_issue_and_verify_and_revoke_token(self) -> None:
         user = local_store.get_or_create_user("a@example.com", "A", None)
         token = auth.issue_cli_token(user["id"])
@@ -145,6 +155,58 @@ class AccountsEndpointTests(unittest.TestCase):
         r = self.client.get("/auth/whoami", headers={"Authorization": f"Bearer {token}"})
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.json()["email"], "a@example.com")
+
+    def test_web_login_start_accepts_dashboard_return_url(self) -> None:
+        with (
+            patch.dict(auth.PROVIDERS["google"], {"client_id": "test-id"}),
+            patch.dict(os.environ, {"AUTO_SKILL_DASHBOARD_ORIGINS": "https://site.example"}),
+        ):
+            response = self.client.get(
+                "/auth/google/start",
+                params={"flow": "web", "return_to": "https://site.example/dashboard.html"},
+                follow_redirects=False,
+            )
+
+        self.assertIn(response.status_code, (302, 307))
+        self.assertIn("accounts.google.com", response.headers["location"])
+        self.assertIn("client_id=test-id", response.headers["location"])
+
+    def test_web_login_start_rejects_unsafe_return_url(self) -> None:
+        with patch.dict(auth.PROVIDERS["google"], {"client_id": "test-id"}):
+            response = self.client.get(
+                "/auth/google/start",
+                params={"flow": "web", "return_to": "javascript:alert(1)"},
+                follow_redirects=False,
+            )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_web_login_start_rejects_unconfigured_https_origin(self) -> None:
+        with patch.dict(auth.PROVIDERS["google"], {"client_id": "test-id"}):
+            response = self.client.get(
+                "/auth/google/start",
+                params={"flow": "web", "return_to": "https://not-the-dashboard.example/dashboard.html"},
+                follow_redirects=False,
+            )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_web_callback_redirects_token_to_fragment(self) -> None:
+        user = local_store.get_or_create_user("a@example.com", "A", None)
+        state = auth.create_web_state("google", "https://site.example/dashboard.html?tab=runs#existing=yes")
+
+        with patch("auth.complete_login", AsyncMock(return_value=(user, "token-123"))):
+            response = self.client.get(
+                "/auth/google/callback",
+                params={"code": "code-1", "state": state},
+                follow_redirects=False,
+            )
+
+        self.assertIn(response.status_code, (302, 307))
+        self.assertEqual(
+            response.headers["location"],
+            "https://site.example/dashboard.html?tab=runs#existing=yes&token=token-123",
+        )
 
     def test_logout_revokes_token(self) -> None:
         token = self._login("a@example.com")
@@ -200,6 +262,43 @@ class AccountsEndpointTests(unittest.TestCase):
         installs = self.client.get("/installs", headers=headers).json()["installs"]
         self.assertEqual(len(installs), 1)
         self.assertEqual(installs[0]["target"], "claude")
+
+    def test_runs_are_isolated_per_user(self) -> None:
+        token_a = self._login("a@example.com")
+        token_b = self._login("b@example.com")
+        user_a = local_store.get_or_create_user("a@example.com", "A", None)
+        user_b = local_store.get_or_create_user("b@example.com", "B", None)
+        local_store.insert_route_event(
+            {
+                "id": "route-a",
+                "user_id": user_a["id"],
+                "tier": "full",
+                "skill_name": "spreadsheet-reporter",
+                "latency_ms": 100,
+                "skill_find_ms": 25,
+                "injected_tokens": 500,
+                "response_tokens": 900,
+            }
+        )
+        local_store.insert_route_event(
+            {
+                "id": "route-b",
+                "user_id": user_b["id"],
+                "tier": "hint",
+                "skill_name": "other-skill",
+                "latency_ms": 120,
+                "skill_find_ms": 30,
+                "injected_tokens": 100,
+                "response_tokens": 300,
+            }
+        )
+
+        runs_a = self.client.get("/runs", headers={"Authorization": f"Bearer {token_a}"}).json()["runs"]
+        runs_b = self.client.get("/runs", headers={"Authorization": f"Bearer {token_b}"}).json()["runs"]
+
+        self.assertEqual([run["id"] for run in runs_a], ["route-a"])
+        self.assertEqual(runs_a[0]["skill_name"], "spreadsheet-reporter")
+        self.assertEqual([run["id"] for run in runs_b], ["route-b"])
 
     def test_route_surfaces_only_the_caller_own_private_skill(self) -> None:
         token_a = self._login("a@example.com")
@@ -258,6 +357,7 @@ class PublicGuardAccountsTests(unittest.TestCase):
             ("DELETE", "/favorites/abc"),
             ("GET", "/installs"),
             ("POST", "/installs"),
+            ("GET", "/runs"),
             ("GET", "/private-skills"),
             ("POST", "/private-skills"),
             ("DELETE", "/private-skills/abc"),
