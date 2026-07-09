@@ -190,7 +190,7 @@ class ApiContractTests(unittest.TestCase):
         login/OAuth machinery, regardless of what that path would otherwise
         do."""
         no_auth = {"x-forwarded-for": "203.0.113.10"}
-        for path in ("/readyz", "/healthz", "/signup"):
+        for path in ("/readyz", "/healthz", "/signup", "/account"):
             self.assertNotEqual(self.client.get(path, headers=no_auth).status_code, 401, path)
 
         for method, path, json_body in (
@@ -277,6 +277,7 @@ class ApiContractTests(unittest.TestCase):
             ("GET", "/mcp-oauth/codes/{code}"),
             ("POST", "/mcp-oauth/token"),
             ("GET", "/signup"),
+            ("GET", "/account"),
         }
         discovered_public_routes = set()
         headers = self._auth_headers()

@@ -18,6 +18,7 @@ Endpoints:
   GET             /runs                       -> per-user route run history
   GET/POST/DELETE /private-skills[/{id}]      -> per-user private skill submissions
   GET  /signup                                -> account-required landing page (see scraper.py's account guard)
+  GET  /account                               -> post-login confirmation, links out to the site's dashboard
 """
 import os
 from urllib.parse import parse_qsl, quote, urlencode, urlparse, urlsplit, urlunparse, urlunsplit
@@ -32,10 +33,12 @@ import mcp_oauth
 
 router = APIRouter()
 
-# Where /signup sends people once they've logged in -- the site's own
-# dashboard already has the full account UX (runs, connector URL).
-# autoskill.dev's root domain now actually serves the site (confirmed live),
-# so this is the user-facing domain -- never the .vercel.app fallback.
+# Where the site's own full account UX (runs, connector URL) lives --
+# autoskill.dev's root domain now actually serves the site (confirmed live).
+# /signup's login lands on /account (this same backend domain) first, not
+# here directly -- skills.autoskill.dev's own "/" is an internal admin
+# scraper panel, not a page to show regular signed-up users, so /account
+# exists as a small in-between confirmation before linking out to this.
 SIGNUP_DASHBOARD_URL = os.getenv("SIGNUP_DASHBOARD_URL", "https://autoskill.dev/dashboard.html")
 
 _DEFAULT_WEB_RETURN_ORIGINS = {
@@ -43,6 +46,8 @@ _DEFAULT_WEB_RETURN_ORIGINS = {
     "https://www.autoskill.dev",
     "https://auto-skill-site.pages.dev",
     "https://auto-skill-site.vercel.app",
+    "https://skills.autoskill.dev",
+    "https://skills.avalahome.com",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "http://localhost:8000",
@@ -178,11 +183,13 @@ async def auth_callback(request: Request, provider: str, code: str, state: str):
     return RedirectResponse(f"http://127.0.0.1:{int(resolved['port'])}/callback?token={cli_token}")
 
 
-def _signup_page() -> HTMLResponse:
+def _signup_page(host: str) -> HTMLResponse:
     """Landing page for anyone scraper.py's account guard turned away --
     same terminal-card look as mcp_oauth.py's login chooser, so a browser
-    hitting this API directly doesn't get a bare 401 or an unstyled page."""
-    return_to = quote(SIGNUP_DASHBOARD_URL, safe="")
+    hitting this API directly doesn't get a bare 401 or an unstyled page.
+    Logging in from here lands on /account (this same host) next, not the
+    external site directly -- see _account_page()."""
+    return_to = quote(f"https://{host}/account", safe="")
     buttons = "".join(
         f'<a class="button" href="/auth/{provider}/start?flow=web&return_to={return_to}">'
         f"Continue with {label}</a>"
@@ -248,8 +255,112 @@ def _signup_page() -> HTMLResponse:
 
 
 @router.get("/signup")
-async def signup():
-    return _signup_page()
+async def signup(request: Request):
+    return _signup_page(_login_host(request))
+
+
+def _account_page() -> HTMLResponse:
+    """Small "you're logged in" confirmation, reached after /signup's login
+    round-trip. Reads the #token fragment client-side (like the site's own
+    dashboard.html) since a plain server-side redirect can't see a URL
+    fragment -- browsers never send it. Deliberately doesn't duplicate the
+    full dashboard UX; just confirms login and links out to it."""
+    html = f"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Signed in to Auto-Skill</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {{
+    --paper: #f7f7f2; --panel: #fffefa; --ink: #111111; --muted: #666666;
+    --line: #d9d9d1; --line-dark: #222222; --blue: #1f6fff;
+    --button: #111111; --button-rail: #1f6fff;
+  }}
+  * {{ box-sizing: border-box; }}
+  body {{
+    margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    background: var(--paper); color: var(--ink); font-family: "Geist", Arial, sans-serif;
+  }}
+  a {{ color: inherit; text-decoration: none; }}
+  .card {{
+    width: min(400px, calc(100% - 40px)); border: 1px solid var(--line-dark);
+    background: var(--panel); box-shadow: 0 18px 60px rgba(0, 0, 0, 0.08); padding: 32px 28px;
+  }}
+  .brand {{ display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 650; margin-bottom: 20px; }}
+  .mark {{
+    width: 26px; height: 26px; display: grid; place-items: center; border: 1px solid var(--ink);
+    color: var(--blue); font-family: "Geist Mono", Consolas, monospace; font-size: 13px; font-weight: 700;
+  }}
+  h1 {{ margin: 0 0 8px; font-size: 20px; line-height: 1.25; }}
+  p {{ margin: 0 0 22px; color: var(--muted); font-size: 14px; line-height: 1.5; }}
+  .email {{ color: var(--ink); font-weight: 600; }}
+  .button {{
+    min-height: 40px; display: flex; align-items: center; justify-content: center;
+    padding: 0 40px 0 16px; border: 0; position: relative;
+    background: linear-gradient(90deg, var(--button) 0, var(--button) calc(100% - 28px), var(--button-rail) calc(100% - 28px), var(--button-rail) 100%);
+    color: #ffffff; font-size: 14px; font-weight: 500;
+    box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.14);
+  }}
+  .button::after {{
+    content: ">"; position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+    font-family: "Geist Mono", Consolas, monospace; font-size: 13px;
+  }}
+  .button:hover {{ filter: brightness(1.06); }}
+  .error {{ color: #b3261e; }}
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="brand"><span class="mark" aria-hidden="true">&gt;_</span><span>Auto-Skill</span></div>
+    <h1 id="heading">Signing you in&hellip;</h1>
+    <p id="detail">One moment.</p>
+    <a class="button" id="dashboard-link" href="{SIGNUP_DASHBOARD_URL}" hidden>Go to your dashboard</a>
+  </div>
+<script>
+  (function () {{
+    var match = /(?:^|#)token=([^&]+)/.exec(location.hash);
+    var heading = document.getElementById("heading");
+    var detail = document.getElementById("detail");
+    var link = document.getElementById("dashboard-link");
+    if (!match) {{
+      heading.textContent = "Something went wrong";
+      heading.className = "error";
+      detail.textContent = "No login token was found. Please try signing in again.";
+      return;
+    }}
+    var token = decodeURIComponent(match[1]);
+    fetch("/auth/whoami", {{ headers: {{ Authorization: "Bearer " + token }} }})
+      .then(function (r) {{ return r.ok ? r.json() : Promise.reject(r.status); }})
+      .then(function (user) {{
+        heading.textContent = "You're signed in";
+        var emailSpan = document.createElement("span");
+        emailSpan.className = "email";
+        emailSpan.textContent = user.email;
+        detail.textContent = "";
+        detail.appendChild(document.createTextNode("Signed in as "));
+        detail.appendChild(emailSpan);
+        detail.appendChild(document.createTextNode("."));
+        link.hidden = false;
+      }})
+      .catch(function () {{
+        heading.textContent = "Something went wrong";
+        heading.className = "error";
+        detail.textContent = "Login didn't complete. Please try signing in again.";
+      }});
+  }})();
+</script>
+</body>
+</html>"""
+    return HTMLResponse(html)
+
+
+@router.get("/account")
+async def account():
+    return _account_page()
 
 
 @router.get("/auth/whoami")

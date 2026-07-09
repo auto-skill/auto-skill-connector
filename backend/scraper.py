@@ -59,6 +59,7 @@ PUBLIC_GET_PATHS = frozenset(
         "/private-skills",
         "/runs",
         "/signup",
+        "/account",
     }
 )
 PUBLIC_GET_PREFIXES = ("/content/", "/auth/", "/mcp-oauth/")
@@ -104,7 +105,7 @@ async def public_readonly_guard(request, call_next):
 # checks (monitoring shouldn't need an account either). A browser without a
 # token gets bounced to /signup; anything else (curl, the MCP connector, a
 # tool call) gets a 401 with a signup_url to act on.
-ACCOUNT_EXEMPT_PATHS = frozenset({"/healthz", "/readyz", "/signup"})
+ACCOUNT_EXEMPT_PATHS = frozenset({"/healthz", "/readyz", "/signup", "/account"})
 ACCOUNT_EXEMPT_PREFIXES = ("/auth/", "/mcp-oauth/")
 
 
