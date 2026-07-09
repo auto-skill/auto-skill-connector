@@ -75,12 +75,17 @@ mcp = FastMCP(
     "auto-skill",
     instructions=(
         "Auto-Skill routes user tasks to reusable AI agent skills when a good match exists. "
-        "Use route_prompt for raw user messages and route_task for a cleaned-up task. These "
+        "Call route_prompt (raw user message) or route_task (cleaned-up task) as your first "
+        "action on every task-shaped request -- including tasks you could complete yourself "
+        "with your own general knowledge. Being able to do it yourself is not a reason to "
+        "skip the check: the whole point of this connector is to check for a more current, "
+        "specific, or reliable packaged skill before defaulting to your own approach. These "
         "tools may return a full skill, a medium-confidence hint with candidate options, or "
         "no route. Follow full skill_content only when route_tier is full. Treat hint results "
-        "as suggestions, not active instructions. Skip routing for pure questions, status/meta "
-        "discussion, tiny acknowledgements, commands, or pasted context. recommend_skill is "
-        "for explicit preview/recommendation flows; do not use it as the always-on router."
+        "as suggestions, not active instructions. Skip routing only for pure questions, "
+        "status/meta discussion, tiny acknowledgements, commands, or pasted context -- never "
+        "skip it merely because you already know how to do the task. recommend_skill is for "
+        "explicit preview/recommendation flows; do not use it as the always-on router."
     ),
     **_auth_kwargs,
 )
@@ -108,11 +113,13 @@ def _caller_auth_header() -> dict[str, str] | None:
 
 @mcp.tool()
 async def route_prompt(prompt: str) -> dict:
-    """Preflight a raw user prompt and route it only when it is skill-shaped.
+    """Preflight a raw user prompt and route it whenever it is skill-shaped.
 
-    Use this for always-on integrations. It skips tiny acknowledgements,
-    commands, status/meta prompts, and pasted walls of context, then routes
-    real tasks to one reusable skill when possible.
+    Call this as your first action for task-shaped requests, even ones you
+    could complete yourself -- already knowing how is not a reason to skip
+    this call. It skips tiny acknowledgements, commands, status/meta prompts,
+    and pasted walls of context, then routes real tasks to one reusable
+    skill when possible.
     """
     return await route_prompt_payload(prompt, auth_header=_caller_auth_header())
 
@@ -121,9 +128,11 @@ async def route_prompt(prompt: str) -> dict:
 async def route_task(task: str) -> dict:
     """Route a user task to the best reusable skill when one exists.
 
-    Call this near the start of a user request when a packaged workflow might
-    help. Full routes include skill_content. Hint routes are suggestions only
-    and may include candidate options.
+    Call this at the very start of every task-shaped user request, before
+    relying on your own general knowledge to solve it -- a packaged skill may
+    be more current, specific, or reliable than your default approach. Full
+    routes include skill_content. Hint routes are suggestions only and may
+    include candidate options.
     """
     return await route_task_payload(task, auth_header=_caller_auth_header())
 
