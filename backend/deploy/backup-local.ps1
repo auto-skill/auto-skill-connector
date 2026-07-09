@@ -107,12 +107,15 @@ function Remove-ExpiredBackups {
 function Get-BackupRelativePath {
     param([string]$FullName)
 
-    $marker = "$stamp\"
-    $index = $FullName.LastIndexOf($marker, [System.StringComparison]::OrdinalIgnoreCase)
-    if ($index -lt 0) {
+    # $backupDir is already fully resolved (line 50), using whatever
+    # separator this OS/PowerShell build uses -- comparing against it
+    # directly (rather than a hardcoded "\"-joined marker) works the same
+    # on Windows PowerShell 5.1 and Linux pwsh (CI runs on ubuntu).
+    $base = $backupDir.TrimEnd('\', '/')
+    if (-not $FullName.StartsWith($base, [System.StringComparison]::OrdinalIgnoreCase)) {
         throw "Could not derive backup-relative path for $FullName"
     }
-    return $FullName.Substring($index + $marker.Length).Replace("\", "/")
+    return $FullName.Substring($base.Length).TrimStart('\', '/').Replace("\", "/")
 }
 
 if (-not (Test-Path -LiteralPath $DbPath)) {
