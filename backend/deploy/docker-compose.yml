@@ -87,6 +87,7 @@ services:
   litestream:
     image: litestream/litestream:latest
     restart: always
+    user: "0:0"
     depends_on:
       api:
         condition: service_healthy
@@ -101,7 +102,7 @@ services:
     command: replicate -config /etc/litestream.yml
 
   library-backup:
-    image: amazon/aws-cli:2
+    image: alpine:3.20
     restart: always
     entrypoint: ["/bin/sh", "/scripts/backup-library.sh"]
     environment:

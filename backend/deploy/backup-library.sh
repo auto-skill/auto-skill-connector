@@ -1,6 +1,10 @@
 #!/bin/sh
 set -eu
 
+if ! command -v aws >/dev/null 2>&1; then
+  apk add --no-cache aws-cli tar gzip >/dev/null
+fi
+
 interval="${LIBRARY_BACKUP_INTERVAL_SECONDS:-86400}"
 prefix="${R2_LIBRARY_PREFIX:-skills-library}"
 
