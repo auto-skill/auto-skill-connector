@@ -122,7 +122,7 @@ class AuthModuleTests(unittest.TestCase):
     def test_authorize_url_contains_client_id_and_redirect(self) -> None:
         with patch.dict(auth.PROVIDERS["google"], {"client_id": "test-id"}):
             state = auth.create_state("google", {"flow": "cli", "port": 1234})
-            url = auth.build_authorize_url("google", state)
+            url = auth.build_authorize_url("google", state, next(iter(auth.ALLOWED_LOGIN_HOSTS)))
             self.assertIn("client_id=test-id", url)
             self.assertIn("accounts.google.com", url)
 
@@ -156,6 +156,9 @@ class AccountsEndpointTests(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.json()["email"], "a@example.com")
 
+    def _login_host(self) -> str:
+        return next(iter(auth.ALLOWED_LOGIN_HOSTS))
+
     def test_web_login_start_accepts_dashboard_return_url(self) -> None:
         with (
             patch.dict(auth.PROVIDERS["google"], {"client_id": "test-id"}),
@@ -164,6 +167,7 @@ class AccountsEndpointTests(unittest.TestCase):
             response = self.client.get(
                 "/auth/google/start",
                 params={"flow": "web", "return_to": "https://site.example/dashboard.html"},
+                headers={"Host": self._login_host()},
                 follow_redirects=False,
             )
 
@@ -176,6 +180,7 @@ class AccountsEndpointTests(unittest.TestCase):
             response = self.client.get(
                 "/auth/google/start",
                 params={"flow": "web", "return_to": "javascript:alert(1)"},
+                headers={"Host": self._login_host()},
                 follow_redirects=False,
             )
 
@@ -186,6 +191,18 @@ class AccountsEndpointTests(unittest.TestCase):
             response = self.client.get(
                 "/auth/google/start",
                 params={"flow": "web", "return_to": "https://not-the-dashboard.example/dashboard.html"},
+                headers={"Host": self._login_host()},
+                follow_redirects=False,
+            )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_login_start_rejects_unknown_host(self) -> None:
+        with patch.dict(auth.PROVIDERS["google"], {"client_id": "test-id"}):
+            response = self.client.get(
+                "/auth/google/start",
+                params={"flow": "web", "return_to": "https://site.example/dashboard.html"},
+                headers={"Host": "not-a-real-host.example"},
                 follow_redirects=False,
             )
 
@@ -199,6 +216,7 @@ class AccountsEndpointTests(unittest.TestCase):
             response = self.client.get(
                 "/auth/google/callback",
                 params={"code": "code-1", "state": state},
+                headers={"Host": self._login_host()},
                 follow_redirects=False,
             )
 

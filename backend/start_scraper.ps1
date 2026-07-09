@@ -53,9 +53,17 @@ if ($env:GOOGLE_CLIENT_ID) {
     Write-Log "GOOGLE_CLIENT_ID is not set; Google login will 503"
 }
 if ($env:GITHUB_CLIENT_ID) {
-    Write-Log "GitHub OAuth login is configured"
+    Write-Log "GitHub OAuth login is configured for avalahome.com"
 } else {
-    Write-Log "GITHUB_CLIENT_ID is not set; GitHub login will 503"
+    Write-Log "GITHUB_CLIENT_ID is not set; GitHub login will 503 on avalahome.com"
+}
+# GitHub OAuth Apps only support one callback URL each, so serving login on
+# both avalahome.com and autoskill.dev needs a second GitHub OAuth App --
+# see auth.py's GITHUB_CREDENTIALS_BY_HOST and deploy/.env.example.
+if ($env:GITHUB_CLIENT_ID_AUTOSKILL) {
+    Write-Log "GitHub OAuth login is configured for autoskill.dev"
+} else {
+    Write-Log "GITHUB_CLIENT_ID_AUTOSKILL is not set; GitHub login will 503 on autoskill.dev"
 }
 
 while ($true) {

@@ -13,10 +13,12 @@ Write-Log "supervisor starting in $PSScriptRoot"
 
 $env:MCP_TRANSPORT = "streamable-http"
 if (-not $env:MCP_PORT) { $env:MCP_PORT = "8765" }
-# Exposed permanently at https://mcp.avalahome.com/mcp via the existing
-# cloudflared "auto-skill" tunnel (see ~/.cloudflared/config.yml). Stable
-# hostname, so Host-header DNS-rebinding protection is re-enabled here.
-$env:MCP_ALLOWED_HOSTS = "mcp.avalahome.com,localhost:8765,127.0.0.1:8765"
+# Exposed at both https://mcp.avalahome.com/mcp (existing "auto-skill"
+# tunnel) and https://mcp.autoskill.dev/mcp (new "autoskill-dev" tunnel,
+# separate Cloudflare account -- see ~/.cloudflared/autoskill-dev-config.yml)
+# during the migration. Both must be listed here for Host-header
+# DNS-rebinding protection to accept either.
+$env:MCP_ALLOWED_HOSTS = "mcp.avalahome.com,mcp.autoskill.dev,localhost:8765,127.0.0.1:8765"
 # mcp_server.py's own default fallback now points at the *planned*
 # autoskill.dev domain, not this machine's actual tunnel -- pin it
 # explicitly so a supervisor restart never silently starts advertising OAuth

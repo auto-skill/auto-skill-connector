@@ -21,7 +21,7 @@ Endpoints:
 import os
 from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunparse, urlunsplit
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import PlainTextResponse, RedirectResponse
 from pydantic import BaseModel
 
@@ -89,8 +89,20 @@ def _with_token_fragment(return_to: str, token: str) -> str:
     return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, parsed.query, urlencode(params)))
 
 
+def _login_host(request: Request) -> str:
+    """The hostname the caller actually used, validated against
+    auth.ALLOWED_LOGIN_HOSTS -- this picks which OAuth client id/secret (for
+    GitHub, a whole separate app) and which redirect_uri get used, so it must
+    never come from an unvalidated header."""
+    host = (request.headers.get("host") or "").split(":")[0].lower()
+    if host not in auth.ALLOWED_LOGIN_HOSTS:
+        raise HTTPException(status_code=400, detail=f"login is not served on host {host!r}")
+    return host
+
+
 @router.get("/auth/{provider}/start")
 async def auth_start(
+    request: Request,
     provider: str,
     port: int | None = None,
     flow: str = "cli",
@@ -104,7 +116,9 @@ async def auth_start(
     `login_state`, see mcp_oauth.py). See auth_callback for the payoff."""
     if provider not in auth.PROVIDERS:
         raise HTTPException(status_code=404, detail="unknown provider")
-    if not auth.PROVIDERS[provider]["client_id"]:
+    host = _login_host(request)
+    client_id = auth.PROVIDERS[provider]["client_id"] if provider == "google" else auth.github_credentials_for_host(host)["client_id"]
+    if not client_id:
         raise HTTPException(status_code=503, detail=f"{provider} login is not configured on this server")
     flow = (flow or "cli").strip().lower()
     if flow == "cli" and port is None:
@@ -120,18 +134,19 @@ async def auth_start(
     if flow == "web":
         return_to = _safe_return_to(str(return_to or ""))
     state = auth.create_state(
-        provider, {"flow": flow, "port": port, "login_state": login_state, "return_to": return_to}
+        provider, {"flow": flow, "port": port, "login_state": login_state, "return_to": return_to, "host": host}
     )
-    return RedirectResponse(auth.build_authorize_url(provider, state))
+    return RedirectResponse(auth.build_authorize_url(provider, state, host))
 
 
 @router.get("/auth/{provider}/callback")
-async def auth_callback(provider: str, code: str, state: str):
+async def auth_callback(request: Request, provider: str, code: str, state: str):
     resolved = auth.pop_state(state)
     if resolved is None or resolved.get("provider") != provider:
         return PlainTextResponse("Login expired or invalid -- please retry `auto-skill login`.", status_code=400)
+    host = resolved.get("host") or _login_host(request)
     try:
-        user, cli_token = await auth.complete_login(provider, code)
+        user, cli_token = await auth.complete_login(provider, code, host)
     except Exception:
         import traceback
 
