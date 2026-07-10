@@ -214,6 +214,36 @@ class AccountsEndpointTests(unittest.TestCase):
         self.assertEqual(search["total"], 1)
         self.assertEqual(search["skills"][0]["name"], "catalog-skill-0")
 
+    def test_skills_catalog_defaults_to_popular_and_hides_inactive(self) -> None:
+        conn = local_store.get_conn()
+        try:
+            conn.execute(
+                "INSERT INTO skills (id, name, description, source, url, raw, discovered_at, quality_status)"
+                " VALUES ('low', 'low-stars', 'd', 'test', 'https://example.com/low', '{\"stars\": 5}',"
+                " '2026-07-01T00:00:00+00:00', 'active')"
+            )
+            conn.execute(
+                "INSERT INTO skills (id, name, description, source, url, raw, discovered_at, quality_status)"
+                " VALUES ('high', 'high-stars', 'd', 'test', 'https://example.com/high', '{\"stars\": 500}',"
+                " '2026-06-01T00:00:00+00:00', 'active')"
+            )
+            conn.execute(
+                "INSERT INTO skills (id, name, description, source, url, raw, discovered_at, quality_status)"
+                " VALUES ('rejected', 'rejected-skill', 'd', 'test', 'https://example.com/rejected',"
+                " '{\"stars\": 999999}', '2026-06-01T00:00:00+00:00', 'rejected')"
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        headers = {"Authorization": f"Bearer {self._login('a@example.com')}"}
+        body = self.client.get("/skills-catalog", headers=headers).json()
+        self.assertEqual(body["total"], 2)  # rejected row excluded
+        self.assertEqual([s["name"] for s in body["skills"]], ["high-stars", "low-stars"])
+
+        recent = self.client.get("/skills-catalog?sort=recent", headers=headers).json()
+        self.assertEqual([s["name"] for s in recent["skills"]], ["low-stars", "high-stars"])
+
     def test_web_login_start_accepts_dashboard_return_url(self) -> None:
         with (
             patch.dict(auth.PROVIDERS["google"], {"client_id": "test-id"}),

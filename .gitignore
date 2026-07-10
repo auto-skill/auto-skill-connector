@@ -20,3 +20,6 @@ migrate_state.json
 # real secrets for the compose deploy (OAuth/GitHub/Cloudflare tunnel tokens)
 backend/deploy/.env
 backend/data/
+
+# generated run_bench.py output, not source (see backend/bench/ for the harness)
+backend/eval-results/

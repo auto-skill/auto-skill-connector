@@ -293,7 +293,7 @@ work.
 Security note: `install_skill` writes files on whichever machine is running
 the server, so it is **not** registered as a tool over streamable-http by
 default -- a caller with your tunnel URL gets read-only routing and preview
-tools only. Set `AUTOSKILL_ALLOW_REMOTE_INSTALL=1` to re-enable it
+tools only. Set `AUTO_SKILL_ENABLE_PUBLIC_INSTALL=1` to re-enable it
 remotely, but only if you've added your own auth in front of the tunnel;
 never on an unauthenticated public URL.
 

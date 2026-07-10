@@ -228,10 +228,12 @@ def main() -> None:
     complete the MCP OAuth login (see mcp_oauth_provider.py), but that only
     establishes who is calling -- it still doesn't imply they should be able
     to write files on whoever is hosting the tunnel. Set
-    AUTOSKILL_ALLOW_REMOTE_INSTALL=1 to override, e.g. behind your own access
-    control -- never set it on an unauthenticated public tunnel.
+    AUTO_SKILL_ENABLE_PUBLIC_INSTALL=1 to override, e.g. behind your own access
+    control -- never set it on an unauthenticated public tunnel. This is the
+    same env var _public_install_enabled() checks at call time, so tool
+    registration and the runtime gate can't drift out of sync with each other.
     """
-    if _TRANSPORT != "streamable-http" or os.getenv("AUTOSKILL_ALLOW_REMOTE_INSTALL") == "1":
+    if _TRANSPORT != "streamable-http" or _public_install_enabled():
         mcp.tool(name="install_skill")(_install_skill_impl)
 
     if _TRANSPORT == "streamable-http":

@@ -15,18 +15,6 @@ from pathlib import Path
 import httpx
 from mcp.server.fastmcp import FastMCP
 
-SUPABASE_URL = "https://kgkuoxdizynkcrbasamu.supabase.co"
-SUPABASE_ANON_KEY = (
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
-    "eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtna3VveGRpenlua2NyYmFzYW11Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4NzE4NzUsImV4cCI6MjA5ODQ0Nzg3NX0."
-    "6rqfcqdVShb9fo3x5z9E6mf6f-0iUbJn9Q7hUFqZ-jw"
-)
-HEADERS = {
-    "apikey": SUPABASE_ANON_KEY,
-    "Authorization": f"Bearer {SUPABASE_ANON_KEY}",
-    "Content-Type": "application/json",
-}
-
 LOCAL_DB_URL = os.getenv("AUTOSKILL_LOCAL_DB_URL", "http://127.0.0.1:8000").rstrip("/")
 SKILLS_HOME = Path.home() / ".claude" / "skills"
 LIBRARY_DIR = Path(__file__).parent / "skills_library"
@@ -102,18 +90,6 @@ async def _search(client: httpx.AsyncClient, task: str) -> dict:
             if payload.get("tier") == "none" or not results:
                 return {"type": "none", "message": payload.get("message", "No matching skill found.")}
             return {"type": "recommend", "skill": results[0], "tier": payload.get("tier", "hint")}
-    except Exception:
-        pass
-
-    try:
-        response = await client.post(
-            f"{SUPABASE_URL}/functions/v1/recommend-skill",
-            json={"messages": [{"role": "user", "content": task}]},
-            headers=HEADERS,
-            timeout=20,
-        )
-        if response.status_code == 200:
-            return response.json()
     except Exception:
         pass
 

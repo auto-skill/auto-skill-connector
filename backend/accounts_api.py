@@ -278,14 +278,14 @@ async def get_runs(limit: int = 50, authorization: str | None = Header(None)):
 
 @router.get("/skills-catalog")
 async def skills_catalog(
-    q: str = "", limit: int = 50, offset: int = 0, authorization: str | None = Header(None)
+    q: str = "", limit: int = 50, offset: int = 0, sort: str = "popular", authorization: str | None = Header(None)
 ):
     """Browse the full skill corpus (site's skills.html). Account-only: the
     require_account_guard already turns away anonymous public callers, but
     require a bearer here too so the endpoint stays gated even for loopback
     or misconfigured-proxy traffic."""
     _require_user(authorization)
-    return store.list_skills_catalog(q=q, limit=limit, offset=offset)
+    return store.list_skills_catalog(q=q, limit=limit, offset=offset, sort=sort if sort == "recent" else "popular")
 
 
 @router.post("/auth/logout")
