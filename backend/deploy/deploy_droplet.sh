@@ -48,25 +48,47 @@ REMOTE
 echo "==> Ensuring bind-mounted data dirs are owned by the container's non-root user (uid 10001)"
 $SSH "mkdir -p ${REMOTE_DIR}/backend/data ${REMOTE_DIR}/backend/skills_library && chown -R 10001:10001 ${REMOTE_DIR}/backend/data ${REMOTE_DIR}/backend/skills_library"
 
+# Tag whatever is currently running as :previous before rebuilding, so a
+# failed smoke check can restore it. `|| true` covers the very first deploy,
+# when no :latest image exists yet to tag.
+echo "==> Tagging current images as :previous for rollback"
+$SSH "for img in deploy-api deploy-mcp deploy-worker; do docker tag \$img:latest \$img:previous 2>/dev/null || true; done"
+
+rollback() {
+  echo "==> Rolling back to the previous images" >&2
+  $SSH "cd ${REMOTE_DIR} && for img in deploy-api deploy-mcp deploy-worker; do docker tag \$img:previous \$img:latest 2>/dev/null || true; done && docker compose -f backend/deploy/docker-compose.yml up -d --force-recreate api mcp worker"
+}
+
 echo "==> Rebuilding containers"
-$SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml up -d --build api mcp worker"
+if ! $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml up -d --build api mcp worker"; then
+  echo "FAILED: container rebuild/recreate failed" >&2
+  rollback
+  exit 1
+fi
 
 echo "==> Smoke-checking the public API"
+smoke_failed=0
 for path in /healthz /skills-catalog; do
   url="https://skills.autoskill.dev${path}"
   status=$(curl -s -o /dev/null -w "%{http_code}" "$url" --max-time 15)
-  if [ "$status" != "200" ] && [ "$path" != "/skills-catalog" ]; then
-    echo "FAILED: $url returned $status" >&2
-    exit 1
-  fi
-  if [ "$path" = "/skills-catalog" ] && [ "$status" != "401" ] && [ "$status" != "200" ]; then
+  if [ "$path" = "/skills-catalog" ]; then
     # /skills-catalog requires a bearer token (401 without one is expected and
     # still proves the route exists and the guard is evaluating it correctly;
     # a 403 "read-only public API" would mean the route regressed again).
+    if [ "$status" != "401" ] && [ "$status" != "200" ]; then
+      echo "FAILED: $url returned $status" >&2
+      smoke_failed=1
+    fi
+  elif [ "$status" != "200" ]; then
     echo "FAILED: $url returned $status" >&2
-    exit 1
+    smoke_failed=1
   fi
-  echo "OK: $url -> $status"
+  echo "checked: $url -> $status"
 done
+
+if [ "$smoke_failed" -ne 0 ]; then
+  rollback
+  exit 1
+fi
 
 echo "==> Deploy complete"
