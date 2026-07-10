@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from datetime import datetime, timezone, date, timedelta
 import os
-from quality import content_hash as quality_content_hash, evaluate_quality
+from quality import content_hash as quality_content_hash, evaluate_quality, pick_canonical
 
 # Storage moved local 2026-07-05 (Supabase free-tier space ran out) -- new
 # skills now go into local_skills.db via local_api.py's router, mounted below
@@ -1712,22 +1712,30 @@ def dedup_skills(skills: list) -> list:
 
 
 def mark_content_duplicates(skills: list) -> None:
-    """Mark same-run duplicate content by normalized content hash."""
-    canonical_by_hash: dict[str, str] = {}
+    """Mark same-run duplicate content by normalized content hash. Uses the
+    same quality_score/stars/recency tie-break as backfill_quality.py
+    (quality.pick_canonical) instead of first-seen-in-batch, so a low-quality
+    fork scraped before a better one in the same run doesn't win by accident."""
+    by_hash: dict[str, list[dict]] = {}
     for skill in skills:
         chash = skill.get("content_hash")
-        if not chash or skill.get("quality_status") != "active":
+        if chash and skill.get("quality_status") == "active":
+            by_hash.setdefault(chash, []).append(skill)
+
+    for group in by_hash.values():
+        if len(group) < 2:
             continue
-        canonical = canonical_by_hash.get(chash)
-        if canonical:
+        canonical = pick_canonical(group)
+        canonical_ref = canonical.get("url") or canonical.get("id") or canonical.get("content_hash")
+        for skill in group:
+            if skill is canonical:
+                continue
             reasons = set(skill.get("quality_reasons") or [])
             reasons.add("duplicate-content")
             skill["quality_status"] = "duplicate"
             skill["quality_reasons"] = sorted(reasons)
-            skill["canonical_id"] = canonical
+            skill["canonical_id"] = canonical_ref
             skill["embedding"] = None
-        else:
-            canonical_by_hash[chash] = skill.get("url") or skill.get("id") or chash
 
 
 async def run_scrape(run_id: str) -> bool:

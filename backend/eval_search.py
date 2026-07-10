@@ -258,6 +258,19 @@ def _evaluate_route_case(case: dict, status_code: int, body: dict) -> dict:
     if response_tokens > ROUTE_RESPONSE_TOKEN_BUDGET:
         failures.append(f"response_tokens={response_tokens} exceeded {ROUTE_RESPONSE_TOKEN_BUDGET}")
 
+    # Structural check, not corpus-specific: a hint response should never
+    # offer two near-identical forks of the same content as if they were
+    # distinct options -- that's the dedup contract
+    # quality.dedupe_by_content_hash exists to guarantee, and stays valid
+    # regardless of which specific skill occupies a duplicate cluster's
+    # canonical slot as the corpus changes over time. candidates[0] is the
+    # same row as `skill` by design (recommender.py's _hint_candidates
+    # includes the top pick as its first option), so that expected overlap
+    # is not itself a violation -- only a repeat *within* candidates is.
+    candidate_hashes = [c.get("content_hash") for c in candidates if c.get("content_hash")]
+    if len(candidate_hashes) != len(set(candidate_hashes)):
+        failures.append("duplicate content_hash surfaced within one route response's candidates")
+
     return {
         "id": case["id"],
         "label": case["label"],

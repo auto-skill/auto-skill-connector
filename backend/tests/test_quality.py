@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from quality import evaluate_quality, rerank_candidates, tier_for_prompt
+from quality import dedupe_by_content_hash, evaluate_quality, pick_canonical, rerank_candidates, tier_for_prompt
 
 
 VALID_SKILL = """---
@@ -101,3 +101,39 @@ def test_platform_explicit_prompt_allows_platform_skill() -> None:
 
     assert ranked[0]["name"] == "sales-landingi"
     assert ranked[0]["platform_mismatch"] is False
+
+
+def test_pick_canonical_prefers_quality_then_stars_then_recency() -> None:
+    low_quality = {"id": "a", "quality_score": 40, "stars": 100, "scanned_at": "2026-07-01"}
+    high_quality = {"id": "b", "quality_score": 90, "stars": 1, "scanned_at": "2026-01-01"}
+    tie_quality_more_stars = {"id": "c", "quality_score": 90, "stars": 5, "scanned_at": "2026-01-01"}
+
+    assert pick_canonical([low_quality, high_quality])["id"] == "b"
+    assert pick_canonical([high_quality, tie_quality_more_stars])["id"] == "c"
+
+
+def test_dedupe_by_content_hash_keeps_one_canonical_per_hash() -> None:
+    rows = [
+        {"id": "a", "content_hash": "h1", "quality_score": 40, "stars": 3},
+        {"id": "b", "content_hash": "h1", "quality_score": 90, "stars": 1},
+        {"id": "c", "content_hash": None, "quality_score": 10},
+        {"id": "d", "content_hash": "h2", "quality_score": 30},
+    ]
+
+    result = dedupe_by_content_hash(rows)
+
+    assert [row["id"] for row in result] == ["b", "c", "d"]
+
+
+def test_feedback_score_neutral_by_default_and_bounded_when_positive() -> None:
+    base = {"name": "x", "description": "", "rank": 1.0, "quality_score": 50}
+
+    missing = rerank_candidates("x", [dict(base, feedback_score=None)])[0]["route_score"]
+    neutral = rerank_candidates("x", [dict(base, feedback_score=0.5)])[0]["route_score"]
+    positive = rerank_candidates("x", [dict(base, feedback_score=0.9)])[0]["route_score"]
+    negative = rerank_candidates("x", [dict(base, feedback_score=0.1)])[0]["route_score"]
+
+    assert missing == neutral
+    assert positive > neutral > negative
+    # small, bounded uplift -- feedback must not be able to override lexical/quality signal
+    assert positive - neutral < 0.01

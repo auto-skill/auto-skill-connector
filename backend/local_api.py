@@ -125,6 +125,18 @@ async def rpc_hybrid_search_skills(request: Request):
     return Response(content=_dumps(rows), media_type="application/json")
 
 
+@router.post("/rest/v1/rpc/recompute_feedback_scores")
+async def rpc_recompute_feedback_scores(request: Request):
+    body = await request.json() if await request.body() else {}
+    updated = await asyncio.to_thread(
+        store.recompute_feedback_scores,
+        body.get("min_samples", 8),
+        body.get("prior_strength", 8.0),
+        body.get("prior_mean", 0.5),
+    )
+    return Response(content=_dumps({"updated": updated}), media_type="application/json")
+
+
 def _parse_embedding(val, *, required: bool = False):
     if val is None:
         if required:

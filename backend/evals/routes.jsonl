@@ -13,3 +13,4 @@
 {"id":"direct-slack-001","prompt":"send slack messages from my agent","expected_tier":"full|hint","allowed_skills":["slack"],"forbidden_skills":[],"tags":["direct-hit","platform-explicit"]}
 {"id":"direct-spreadsheet-001","prompt":"create an excel spreadsheet report with formulas and charts","expected_tier":"full|hint","allowed_skills":["excel","spreadsheet","xlsx"],"forbidden_skills":[],"tags":["direct-hit","spreadsheet"]}
 {"id":"direct-browser-qa-001","prompt":"take screenshots of a webpage and inspect the layout","expected_tier":"full|hint","allowed_skills":["browser","screenshot","playwright","puppeteer"],"forbidden_skills":[],"tags":["direct-hit","browser-qa"]}
+{"id":"dedup-skill-creator-001","prompt":"help me create a new Claude Code skill from scratch","expected_tier":"full|hint|none","allowed_skills":[],"forbidden_skills":[],"tags":["dedup"]}

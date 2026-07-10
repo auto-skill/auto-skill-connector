@@ -20,6 +20,8 @@ from pathlib import Path
 
 import numpy as np
 
+import quality
+
 DB_PATH = Path(os.getenv("LOCAL_DB_PATH", str(Path(__file__).parent / "local_skills.db")))
 
 _SCHEMA = """
@@ -210,6 +212,7 @@ SKILL_COLUMN_DEFAULTS = {
     "quality_score": "INTEGER DEFAULT 0",
     "platforms": "TEXT DEFAULT '[]'",
     "category": "TEXT",
+    "feedback_score": "REAL",
 }
 
 ROUTE_EVENT_COLUMN_DEFAULTS = {
@@ -930,19 +933,74 @@ def hybrid_search_skills(
             by_id[row["id"]] = row
         scores[row["id"]] = scores.get(row["id"], 0.0) + vec_weight / (rrf_k + ix)
 
-    ranked = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)[:match_count]
-    out = []
-    for skill_id, score in ranked:
+    # Dedup near-identical forks (same content_hash) before truncating to
+    # match_count -- otherwise a duplicated cluster can crowd out distinct
+    # results. Sort by fusion score first so pick_canonical only decides
+    # which duplicate SURVIVES; existing RRF/star/quality ordering still
+    # decides position via each survivor's own fusion score.
+    fused_rows = []
+    for skill_id, score in scores.items():
         row = dict(by_id[skill_id])
+        row["_fuse_score"] = score
+        fused_rows.append(row)
+    fused_rows.sort(key=lambda r: r["_fuse_score"], reverse=True)
+    fused_rows = quality.dedupe_by_content_hash(fused_rows)
+
+    out = []
+    for row in fused_rows[:match_count]:
+        score = row.pop("_fuse_score")
         stars = row.get("stars") or 0
         risk = row.get("risk_score") or 0
-        quality = max(0, min(int(row.get("quality_score") or 50), 100)) / 100
+        qual = max(0, min(int(row.get("quality_score") or 50), 100)) / 100
         star_bonus = 0.003 * min(np.log1p(max(stars, 0)), 6) / 6
         risk_penalty = 0.01 * min(risk, 2)
-        row["rank"] = float(score + star_bonus + (0.004 * quality) - risk_penalty)
+        row["rank"] = float(score + star_bonus + (0.004 * qual) - risk_penalty)
         out.append(row)
     out.sort(key=lambda r: r["rank"], reverse=True)
     return out
+
+
+def recompute_feedback_scores(min_samples: int = 8, prior_strength: float = 8.0, prior_mean: float = 0.5) -> int:
+    """Aggregate route_events outcomes per content_hash, apply Bayesian
+    shrinkage toward a neutral prior, and write feedback_score onto every
+    skills row sharing that content_hash (so ranking reads it with no join).
+    Positive: used/installed. Negative: failed/dismissed. skipped/NULL are
+    ignored (no signal either way). Hashes with fewer than min_samples
+    total events are pinned to prior_mean outright -- with route_events
+    still sparse in practice, this keeps cold-start skills mathematically
+    neutral instead of trusting noise from one or two events."""
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            """
+            SELECT s.content_hash AS content_hash,
+                   SUM(CASE WHEN re.outcome IN ('used','installed') THEN 1 ELSE 0 END) AS positive,
+                   SUM(CASE WHEN re.outcome IN ('failed','dismissed') THEN 1 ELSE 0 END) AS negative
+            FROM route_events re
+            JOIN skills s ON s.id = re.skill_id
+            WHERE s.content_hash IS NOT NULL AND s.content_hash != ''
+            GROUP BY s.content_hash
+            """
+        ).fetchall()
+        updated = 0
+        for row in rows:
+            chash = row["content_hash"]
+            positive = int(row["positive"] or 0)
+            negative = int(row["negative"] or 0)
+            total = positive + negative
+            if total < min_samples:
+                score = prior_mean
+            else:
+                score = (positive + prior_strength * prior_mean) / (total + prior_strength)
+            cur = conn.execute(
+                "UPDATE skills SET feedback_score=? WHERE content_hash=?",
+                (score, chash),
+            )
+            updated += cur.rowcount
+        conn.commit()
+        return updated
+    finally:
+        conn.close()
 
 
 # --- Accounts: users, OAuth identities, CLI tokens, and per-user data ------

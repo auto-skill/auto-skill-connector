@@ -7,6 +7,7 @@ future CLI tools can share the same launch-critical rules.
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from typing import Any
 
@@ -316,7 +317,9 @@ def rerank_candidates(prompt: str, candidates: list[dict[str, Any]]) -> list[dic
         overlap = lexical_overlap(prompt, row)
         penalty = _platform_specific_penalty(prompt, row)
         quality = float(row.get("quality_score") or 50) / 100.0
-        route_score = base_rank + (0.02 * overlap) + (0.01 * quality) - penalty
+        feedback = row.get("feedback_score")
+        feedback = float(feedback) if feedback is not None else 0.5
+        route_score = base_rank + (0.02 * overlap) + (0.01 * quality) + (0.01 * (feedback - 0.5)) - penalty
 
         row["lexical_overlap"] = overlap
         row["platform_mismatch"] = penalty > 0
@@ -326,6 +329,70 @@ def rerank_candidates(prompt: str, candidates: list[dict[str, Any]]) -> list[dic
         reranked.append(row)
     reranked.sort(key=lambda item: item.get("route_score", item.get("rank", 0)), reverse=True)
     return reranked
+
+
+def _row_stars(row: dict[str, Any]) -> int:
+    stars = row.get("stars")
+    if stars is not None:
+        try:
+            return int(stars)
+        except (TypeError, ValueError):
+            return 0
+    raw = row.get("raw")
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except Exception:
+            raw = {}
+    if isinstance(raw, dict):
+        try:
+            return int(raw.get("stars") or 0)
+        except (TypeError, ValueError):
+            return 0
+    return 0
+
+
+def pick_canonical(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Given candidates that share the same content_hash, return the one that
+    should survive as canonical: highest quality_score, then highest stars,
+    then most recently scanned/discovered, then a stable id/url tiebreak."""
+
+    def sort_key(row: dict[str, Any]):
+        recency = str(row.get("scanned_at") or row.get("discovered_at") or "")
+        return (
+            int(row.get("quality_score") or 0),
+            _row_stars(row),
+            recency,
+            str(row.get("id") or row.get("url") or ""),
+        )
+
+    return max(rows, key=sort_key)
+
+
+def dedupe_by_content_hash(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Group rows sharing a non-empty content_hash, keep only pick_canonical()
+    per group (in original relative order); rows with no hash pass through
+    unchanged. Only hashes that actually recur are grouped/decided -- a
+    unique-hash row is never replaced by itself through pick_canonical."""
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        chash = row.get("content_hash")
+        if chash:
+            groups.setdefault(chash, []).append(row)
+    winners = {chash: pick_canonical(group) for chash, group in groups.items() if len(group) > 1}
+
+    result: list[dict[str, Any]] = []
+    emitted: set[str] = set()
+    for row in rows:
+        chash = row.get("content_hash")
+        if not chash or chash not in winners:
+            result.append(row)
+            continue
+        if chash in emitted:
+            continue
+        emitted.add(chash)
+        result.append(winners[chash])
+    return result
 
 
 def tier_for_prompt(prompt: str, candidates: list[dict[str, Any]], recommend_gap: float = 1.6) -> str:

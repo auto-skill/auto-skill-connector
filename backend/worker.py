@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 
 import httpx
 
-from recommender import embed_missing_skills
+from recommender import SUPABASE_URL, embed_missing_skills
 from scraper import SCRAPE_INTERVAL_SECONDS, run_scrape, start_new_scrape_run
 
 
@@ -29,8 +29,16 @@ async def run_once() -> None:
         return
     async with httpx.AsyncClient() as client:
         embedded = await embed_missing_skills(client)
+        feedback_updated = 0
+        try:
+            r = await client.post(f"{SUPABASE_URL}/rest/v1/rpc/recompute_feedback_scores", json={}, timeout=30)
+            r.raise_for_status()
+            feedback_updated = r.json().get("updated", 0)
+        except Exception as exc:
+            print(f"{datetime.now(timezone.utc).isoformat()} worker feedback recompute failed: {exc}", flush=True)
     print(
-        f"{datetime.now(timezone.utc).isoformat()} worker scrape {run_id} complete; embedded={embedded}",
+        f"{datetime.now(timezone.utc).isoformat()} worker scrape {run_id} complete; "
+        f"embedded={embedded}; feedback_updated={feedback_updated}",
         flush=True,
     )
 

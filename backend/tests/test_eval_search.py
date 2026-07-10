@@ -130,6 +130,64 @@ class EvalSearchRouteCaseTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertTrue(any("forbidden skill surfaced" in failure for failure in result["failures"]))
 
+    def test_evaluate_route_case_rejects_duplicate_content_hash_in_response(self) -> None:
+        case = {
+            "id": "dedup",
+            "label": "dedup",
+            "query": "help me create a new claude code skill",
+            "expected_tiers": {"hint", "full", "none"},
+            "allowed_skills": [],
+            "forbidden_skills": [],
+            "min_hint_candidates": 0,
+            "tags": ["dedup"],
+        }
+        body = {
+            "route_id": "route-1",
+            "tier": "hint",
+            "skill": {"name": "skill-creator", "content_hash": "same-hash"},
+            "candidates": [
+                # candidates[0] intentionally mirrors `skill` -- recommender.py's
+                # _hint_candidates includes the top pick as its own first option,
+                # so that overlap alone must NOT trigger this check.
+                {"name": "skill-creator", "content_hash": "same-hash"},
+                {"name": "skill-creator-fork", "content_hash": "same-hash"},
+                {"name": "another-skill", "content_hash": "different-hash"},
+            ],
+            "score_debug": {"metrics": {"latency_ms": 10, "skill_find_ms": 8}},
+        }
+
+        result = _evaluate_route_case(case, 200, body)
+
+        self.assertFalse(result["ok"])
+        self.assertTrue(any("duplicate content_hash" in failure for failure in result["failures"]))
+
+    def test_evaluate_route_case_allows_skill_repeated_as_first_candidate(self) -> None:
+        case = {
+            "id": "dedup-ok",
+            "label": "dedup-ok",
+            "query": "help me create a new claude code skill",
+            "expected_tiers": {"hint"},
+            "allowed_skills": [],
+            "forbidden_skills": [],
+            "min_hint_candidates": 0,
+            "tags": ["dedup"],
+        }
+        body = {
+            "route_id": "route-1",
+            "tier": "hint",
+            "skill": {"name": "skill-creator", "content_hash": "same-hash"},
+            "candidates": [
+                {"name": "skill-creator", "content_hash": "same-hash"},
+                {"name": "another-skill", "content_hash": "different-hash"},
+            ],
+            "score_debug": {"metrics": {"latency_ms": 10, "skill_find_ms": 8}},
+        }
+
+        result = _evaluate_route_case(case, 200, body)
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["failures"], [])
+
 
 if __name__ == "__main__":
     unittest.main()
