@@ -29,6 +29,16 @@ echo "==> Shipping archive to ${DEPLOY_HOST}"
 $SCP "$WORKDIR/deploy.tar.gz" "${DEPLOY_USER}@${DEPLOY_HOST}:/tmp/deploy.tar.gz"
 
 echo "==> Extracting and syncing into ${REMOTE_DIR}"
+# cloudflared has nothing in-repo to redeploy (it's the official image, auth'd
+# purely by CLOUDFLARED_TOKEN in .env) -- litestream.yml and
+# backup-library.sh, though, are repo files bind-mounted into their
+# containers, which docker compose won't notice changed on its own (it only
+# tracks its own service definitions, not bind-mounted file contents). This
+# hashes both before and after the sync so the caller can force-recreate
+# those two specific containers only when the files actually changed, instead
+# of restarting a live tunnel/backup on every single deploy.
+CONFIG_HASH_BEFORE=$($SSH "sha256sum ${REMOTE_DIR}/backend/deploy/litestream.yml ${REMOTE_DIR}/backend/deploy/backup-library.sh 2>/dev/null | sha256sum" || echo "none")
+
 $SSH bash -s <<'REMOTE'
 set -euo pipefail
 rm -rf /tmp/deploy-extract
@@ -44,6 +54,8 @@ rsync -a --delete \
   /tmp/deploy-extract/ /opt/auto-skill-connector/
 rm -rf /tmp/deploy-extract /tmp/deploy.tar.gz
 REMOTE
+
+CONFIG_HASH_AFTER=$($SSH "sha256sum ${REMOTE_DIR}/backend/deploy/litestream.yml ${REMOTE_DIR}/backend/deploy/backup-library.sh 2>/dev/null | sha256sum" || echo "none")
 
 echo "==> Ensuring bind-mounted data dirs are owned by the container's non-root user (uid 10001)"
 $SSH "mkdir -p ${REMOTE_DIR}/backend/data ${REMOTE_DIR}/backend/skills_library && chown -R 10001:10001 ${REMOTE_DIR}/backend/data ${REMOTE_DIR}/backend/skills_library"
@@ -64,6 +76,11 @@ if ! $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.y
   echo "FAILED: container rebuild/recreate failed" >&2
   rollback
   exit 1
+fi
+
+if [ "$CONFIG_HASH_BEFORE" != "$CONFIG_HASH_AFTER" ]; then
+  echo "==> litestream.yml or backup-library.sh changed -- restarting those containers to pick it up"
+  $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml up -d --force-recreate litestream library-backup"
 fi
 
 echo "==> Smoke-checking the public API"
