@@ -909,7 +909,8 @@ def vector_index_stats() -> dict:
         cache_at = float(_emb_cache.get("at") or 0.0)
         cache_vectors = len(_emb_cache.get("ids") or []) if cache_matches_db else 0
         generation = int(_emb_cache.get("generation") or 0)
-        built_generation = int(_emb_cache.get("built_generation") or -1)
+        built_raw = _emb_cache.get("built_generation")
+        built_generation = -1 if built_raw is None else int(built_raw)
     cache_ready = mat is not None and cache_matches_db
     age_ms = int((time.monotonic() - cache_at) * 1000) if cache_ready and cache_at else None
     return {

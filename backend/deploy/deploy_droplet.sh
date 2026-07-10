@@ -34,10 +34,11 @@ echo "==> Extracting and syncing into ${REMOTE_DIR}"
 # backup-library.sh, though, are repo files bind-mounted into their
 # containers, which docker compose won't notice changed on its own (it only
 # tracks its own service definitions, not bind-mounted file contents). This
-# hashes both before and after the sync so the caller can force-recreate
-# those two specific containers only when the files actually changed, instead
-# of restarting a live tunnel/backup on every single deploy.
-CONFIG_HASH_BEFORE=$($SSH "sha256sum ${REMOTE_DIR}/backend/deploy/litestream.yml ${REMOTE_DIR}/backend/deploy/backup-library.sh 2>/dev/null | sha256sum" || echo "none")
+# hashes each before and after the sync so only the service whose bind-mounted
+# config changed is recreated. In particular, a normal API deploy must not
+# force a multi-hundred-MiB library backup upload onto the tiny VPS.
+LITESTREAM_HASH_BEFORE=$($SSH "sha256sum ${REMOTE_DIR}/backend/deploy/litestream.yml 2>/dev/null" || true)
+LIBRARY_BACKUP_HASH_BEFORE=$($SSH "sha256sum ${REMOTE_DIR}/backend/deploy/backup-library.sh 2>/dev/null" || true)
 
 $SSH bash -s <<'REMOTE'
 set -euo pipefail
@@ -55,7 +56,8 @@ rsync -a --delete \
 rm -rf /tmp/deploy-extract /tmp/deploy.tar.gz
 REMOTE
 
-CONFIG_HASH_AFTER=$($SSH "sha256sum ${REMOTE_DIR}/backend/deploy/litestream.yml ${REMOTE_DIR}/backend/deploy/backup-library.sh 2>/dev/null | sha256sum" || echo "none")
+LITESTREAM_HASH_AFTER=$($SSH "sha256sum ${REMOTE_DIR}/backend/deploy/litestream.yml 2>/dev/null" || true)
+LIBRARY_BACKUP_HASH_AFTER=$($SSH "sha256sum ${REMOTE_DIR}/backend/deploy/backup-library.sh 2>/dev/null" || true)
 
 echo "==> Ensuring bind-mounted data dirs are owned by the container's non-root user (uid 10001)"
 $SSH "mkdir -p ${REMOTE_DIR}/backend/data ${REMOTE_DIR}/backend/skills_library && chown -R 10001:10001 ${REMOTE_DIR}/backend/data ${REMOTE_DIR}/backend/skills_library"
@@ -124,9 +126,14 @@ if ! $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.y
   exit 1
 fi
 
-if [ "$CONFIG_HASH_BEFORE" != "$CONFIG_HASH_AFTER" ]; then
-  echo "==> litestream.yml or backup-library.sh changed -- restarting those containers to pick it up"
-  $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml up -d --force-recreate litestream library-backup"
+if [ "$LITESTREAM_HASH_BEFORE" != "$LITESTREAM_HASH_AFTER" ]; then
+  echo "==> litestream.yml changed -- restarting Litestream"
+  $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml up -d --force-recreate litestream"
+fi
+
+if [ "$LIBRARY_BACKUP_HASH_BEFORE" != "$LIBRARY_BACKUP_HASH_AFTER" ]; then
+  echo "==> backup-library.sh changed -- restarting the delayed backup sidecar"
+  $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml up -d --force-recreate library-backup"
 fi
 
 echo "==> Smoke-checking the public API"

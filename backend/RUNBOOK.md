@@ -435,6 +435,10 @@ Litestream covers `/data/local_skills.db` in the compose setup. The
 `library-backup` service also uploads a daily tarball of `skills_library/` to
 Cloudflare R2 through the S3-compatible API.
 
+It waits five minutes after a service recreation and runs at low CPU priority,
+so a backup upload cannot compete with live skill routing immediately after a
+deploy. Override the delay only for a deliberate recovery run.
+
 Keep both. SQLite has the searchable metadata and vectors; `skills_library/`
 currently has the SKILL.md content used for full routes and `/content/{hash}`.
 

@@ -157,6 +157,7 @@ class RecomputeFeedbackScoresTests(unittest.TestCase):
         stats = local_store.warm_vector_index()
 
         self.assertTrue(stats["cache_ready"])
+        self.assertTrue(stats["cache_current"])
         self.assertEqual(stats["cache_vectors"], 1)
 
     def test_invalidation_keeps_last_complete_matrix_until_background_warm(self) -> None:
