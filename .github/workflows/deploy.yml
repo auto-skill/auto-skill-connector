@@ -1,0 +1,31 @@
+name: Deploy
+
+on:
+  push:
+    branches: [master]
+
+jobs:
+  test:
+    uses: ./.github/workflows/test.yml
+
+  backend-ci:
+    uses: ./.github/workflows/backend-ci.yml
+
+  deploy:
+    needs: [test, backend-ci]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install deploy key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+      - name: Deploy to droplet
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY_PATH: /home/runner/.ssh/deploy_key
+        run: bash backend/deploy/deploy_droplet.sh
