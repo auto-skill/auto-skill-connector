@@ -19,10 +19,10 @@ def _insert_skill(conn: sqlite3.Connection, skill_id: str, content_hash: str) ->
     )
 
 
-def _insert_route_event(conn: sqlite3.Connection, skill_id: str, outcome: str) -> None:
+def _insert_route_event(conn: sqlite3.Connection, skill_id: str, outcome: str, source: str = "") -> None:
     conn.execute(
-        "INSERT INTO route_events (id, created_at, skill_id, outcome) VALUES (?, ?, ?, ?)",
-        (str(uuid.uuid4()), local_store._now(), skill_id, outcome),
+        "INSERT INTO route_events (id, created_at, skill_id, outcome, feedback_source) VALUES (?, ?, ?, ?, ?)",
+        (str(uuid.uuid4()), local_store._now(), skill_id, outcome, source),
     )
 
 
@@ -104,6 +104,102 @@ class RecomputeFeedbackScoresTests(unittest.TestCase):
         scores = {row["id"]: row["feedback_score"] for row in rows}
         self.assertGreater(scores["fork-a"], 0.5)
         self.assertEqual(scores["fork-a"], scores["fork-b"])
+
+    def test_automatic_hook_outcomes_do_not_train_ranking(self) -> None:
+        conn = local_store.get_conn()
+        try:
+            _insert_skill(conn, "automatic-only", "hash-automatic")
+            for _ in range(10):
+                _insert_route_event(conn, "automatic-only", "used", "auto-skill-hook")
+            conn.commit()
+        finally:
+            conn.close()
+
+        local_store.recompute_feedback_scores(min_samples=8)
+
+        conn = local_store.get_conn()
+        try:
+            row = conn.execute("SELECT feedback_score FROM skills WHERE id=?", ("automatic-only",)).fetchone()
+        finally:
+            conn.close()
+        self.assertIsNone(row["feedback_score"])
+
+    def test_fts_uses_meaningful_terms_and_deduplicates_content(self) -> None:
+        conn = local_store.get_conn()
+        try:
+            _insert_skill(conn, "spreadsheet-a", "hash-spreadsheet")
+            _insert_skill(conn, "spreadsheet-b", "hash-spreadsheet")
+            conn.execute(
+                "UPDATE skills SET description=? WHERE id IN ('spreadsheet-a', 'spreadsheet-b')",
+                ("Spreadsheet report formulas and chart validation",),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        results = local_store.search_skills_fts("please create a spreadsheet report with formulas", max_results=5)
+
+        self.assertEqual(len(results), 1)
+        self.assertIn(results[0]["id"], {"spreadsheet-a", "spreadsheet-b"})
+
+    def test_warm_vector_index_builds_a_cache_for_active_vectors(self) -> None:
+        conn = local_store.get_conn()
+        try:
+            _insert_skill(conn, "vector-ready", "hash-vector-ready")
+            conn.execute(
+                "UPDATE skills SET embedding=? WHERE id='vector-ready'",
+                (local_store.pack_embedding([1.0] + [0.0] * 383),),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        stats = local_store.warm_vector_index()
+
+        self.assertTrue(stats["cache_ready"])
+        self.assertTrue(stats["cache_current"])
+        self.assertEqual(stats["cache_vectors"], 1)
+
+    def test_invalidation_keeps_last_complete_matrix_until_background_warm(self) -> None:
+        conn = local_store.get_conn()
+        try:
+            _insert_skill(conn, "first-vector", "hash-first-vector")
+            conn.execute(
+                "UPDATE skills SET embedding=? WHERE id='first-vector'",
+                (local_store.pack_embedding([1.0] + [0.0] * 383),),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        local_store.warm_vector_index()
+
+        conn = local_store.get_conn()
+        try:
+            _insert_skill(conn, "second-vector", "hash-second-vector")
+            conn.execute(
+                "UPDATE skills SET embedding=? WHERE id='second-vector'",
+                (local_store.pack_embedding([0.0, 1.0] + [0.0] * 382),),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        local_store.invalidate_vector_cache()
+
+        stale = local_store.vector_index_stats()
+        old_results = local_store.vector_search_skills([1.0] + [0.0] * 383, match_count=2)
+
+        self.assertTrue(stale["cache_ready"])
+        self.assertFalse(stale["cache_current"])
+        self.assertEqual(stale["cache_vectors"], 1)
+        self.assertEqual([row["id"] for row in old_results], ["first-vector"])
+
+        refreshed = local_store.warm_vector_index()
+        new_results = local_store.vector_search_skills([0.0, 1.0] + [0.0] * 382, match_count=2)
+
+        self.assertTrue(refreshed["cache_current"])
+        self.assertEqual(refreshed["cache_vectors"], 2)
+        self.assertEqual(new_results[0]["id"], "second-vector")
 
 
 if __name__ == "__main__":

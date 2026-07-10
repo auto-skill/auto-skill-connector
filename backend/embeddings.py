@@ -9,6 +9,7 @@ L2-normalized, matching session.run(text, {mean_pool: true, normalize: true}).
 import hashlib
 import json
 import re
+import threading
 from pathlib import Path
 
 import numpy as np
@@ -28,17 +29,46 @@ MAX_CONTENT_CHARS = 1500
 
 _session = None
 _tokenizer = None
+_load_lock = threading.RLock()
+_load_error = ""
 
 
 def _load():
-    global _session, _tokenizer
+    global _session, _tokenizer, _load_error
     if _session is None:
-        model_path = hf_hub_download(MODEL_REPO, MODEL_FILE)
-        tokenizer_path = hf_hub_download(MODEL_REPO, "tokenizer.json")
-        _session = onnxruntime.InferenceSession(model_path, providers=["CPUExecutionProvider"])
-        _tokenizer = Tokenizer.from_file(tokenizer_path)
-        _tokenizer.enable_truncation(max_length=MAX_TOKENS)
+        with _load_lock:
+            if _session is None:
+                try:
+                    model_path = hf_hub_download(MODEL_REPO, MODEL_FILE)
+                    tokenizer_path = hf_hub_download(MODEL_REPO, "tokenizer.json")
+                    _session = onnxruntime.InferenceSession(model_path, providers=["CPUExecutionProvider"])
+                    _tokenizer = Tokenizer.from_file(tokenizer_path)
+                    _tokenizer.enable_truncation(max_length=MAX_TOKENS)
+                    _load_error = ""
+                except Exception as exc:
+                    _session = None
+                    _tokenizer = None
+                    _load_error = f"{type(exc).__name__}: {exc}"[:300]
+                    raise
     return _session, _tokenizer
+
+
+def embedding_model_status(*, warm: bool = False) -> dict[str, object]:
+    """Report whether the local ONNX runtime can serve semantic queries.
+
+    ``warm=True`` is used by readiness checks. Docker preloads the model files,
+    so this validates the actual tokenizer/session instead of treating a cache
+    directory as proof that vector search will work.
+    """
+    if warm and _session is None:
+        try:
+            _load()
+        except Exception:
+            pass
+    return {
+        "ready": _session is not None and _tokenizer is not None,
+        "error": _load_error or None,
+    }
 
 
 def embed_texts(texts: list[str], batch_size: int = 32) -> list[list[float]]:

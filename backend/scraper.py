@@ -15,6 +15,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from datetime import datetime, timezone, date, timedelta
 import os
+from embeddings import embedding_model_status
 from quality import content_hash as quality_content_hash, evaluate_quality, pick_canonical
 
 # Storage moved local 2026-07-05 (Supabase free-tier space ran out) -- new
@@ -256,31 +257,27 @@ async def healthz():
 @app.get("/readyz")
 async def readyz():
     def _probe():
-        conn = store.get_conn()
-        try:
-            total = conn.execute("SELECT COUNT(*) FROM skills").fetchone()[0]
-            active = conn.execute(
-                "SELECT COUNT(*) FROM skills WHERE COALESCE(quality_status, 'active') = 'active'"
-            ).fetchone()[0]
-            embedded = conn.execute("SELECT COUNT(*) FROM skills WHERE embedding IS NOT NULL").fetchone()[0]
-            vector_index = store.vector_index_stats()
-            scraper_summary = store.scrape_run_summary(STALE_SCRAPE_RUN_SECONDS)
-            return {
-                "total_skills": total,
-                "active_skills": active,
-                "embedded_skills": embedded,
-                "vector_index": vector_index,
-                "scraper": scraper_summary,
-            }
-        finally:
-            conn.close()
+        counts = store.readiness_stats()
+        if counts["vector_index"]["valid_vectors"] and not counts["vector_index"]["cache_ready"]:
+            counts["vector_index"] = store.warm_vector_index()
+        counts["scraper"] = store.scrape_run_summary(STALE_SCRAPE_RUN_SECONDS)
+        # A populated SQLite file is not sufficient when the embedder cannot
+        # load. This intentionally validates the cached ONNX model/session.
+        counts["embedding_runtime"] = embedding_model_status(warm=True)
+        return counts
 
     try:
         counts = await asyncio.to_thread(_probe)
     except Exception as exc:
         return JSONResponse({"ok": False, "error": str(exc)[:200]}, status_code=503)
 
-    ready = counts["total_skills"] > 0 and counts["active_skills"] > 0 and counts["embedded_skills"] > 0
+    ready = (
+        counts["total_skills"] > 0
+        and counts["active_skills"] > 0
+        and counts["vector_index"]["valid_vectors"] > 0
+        and bool(counts["vector_index"]["cache_ready"])
+        and bool(counts["embedding_runtime"]["ready"])
+    )
     status_code = 200 if ready else 503
     return JSONResponse({"ok": status_code == 200, **counts}, status_code=status_code)
 
@@ -319,9 +316,9 @@ github_core_limiter = RateLimiter(60, 60)
 if not GITHUB_TOKEN:
     print(
         "[scraper] WARNING: GITHUB_TOKEN is not set. GitHub code search returns 401 "
-        "unauthenticated and the core-API budget drops from 5000/hr to 60/hr, so "
-        "most skill discovery will be skipped. Run via start_scraper.ps1 (which "
-        "injects `gh auth token`) or set GITHUB_TOKEN."
+        "unauthenticated and the core-API budget drops from 5000/hr to 60/hr. "
+        "Running a bounded incremental crawl only; set GITHUB_TOKEN for full "
+        "discovery coverage."
     )
 
 
@@ -461,16 +458,26 @@ class CrawlState:
 
 class RunBudget:
     """Per-run API call caps. The RateLimiters pace requests; these caps bound how
-    much of the hourly GitHub quota one run may consume (loop is gap-based, so
-    worst case ~4 runs/hr: 4x700 core + search stays under the 5000/30-per-min limits)."""
+    much of the hourly GitHub quota one run may consume.
 
-    CAPS = {"core": 700, "search": 185, "code_search": 100}
+    The no-token mode is intentionally a small incremental crawl. GitHub's
+    anonymous core quota is only 60 requests/hour, while the scheduled worker
+    runs roughly four times an hour. Treating it like an authenticated 5,000/hr
+    source caused long, stuck runs and stale leases.
+    """
 
-    def __init__(self):
-        self.used = {k: 0 for k in self.CAPS}
+    AUTHENTICATED_CAPS = {"core": 700, "search": 185, "code_search": 100}
+    UNAUTHENTICATED_CAPS = {"core": 12, "search": 8, "code_search": 0}
+    CAPS = AUTHENTICATED_CAPS
+
+    def __init__(self, authenticated: bool | None = None):
+        if authenticated is None:
+            authenticated = bool(GITHUB_TOKEN)
+        self.caps = dict(self.AUTHENTICATED_CAPS if authenticated else self.UNAUTHENTICATED_CAPS)
+        self.used = {k: 0 for k in self.caps}
 
     def take(self, kind: str) -> bool:
-        if self.used[kind] >= self.CAPS[kind]:
+        if self.used[kind] >= self.caps[kind]:
             return False
         self.used[kind] += 1
         return True
@@ -493,6 +500,9 @@ SKILL_COLUMNS = (
     "quality_score",
     "platforms",
     "category",
+    "embedding",
+    "embedding_text_hash",
+    "embedded_at",
 )
 
 
@@ -768,8 +778,15 @@ async def scrape_github(client: httpx.AsyncClient, skills: list, state: "CrawlSt
     if GITHUB_TOKEN:
         gh_headers["Authorization"] = f"Bearer {GITHUB_TOKEN}"
 
-    await expand_topic_queries(client, gh_headers, state)
-    repo_queries = GITHUB_REPO_QUERIES + [q for q in state.extra_topic_queries if q not in GITHUB_REPO_QUERIES]
+    if GITHUB_TOKEN:
+        await expand_topic_queries(client, gh_headers, state)
+        repo_queries = GITHUB_REPO_QUERIES + [q for q in state.extra_topic_queries if q not in GITHUB_REPO_QUERIES]
+        incremental_pages = (1, 2, 3)
+    else:
+        # Spread a few anonymous searches across distinct intents instead of
+        # spending the whole cap on the first two query pages.
+        repo_queries = GITHUB_REPO_QUERIES
+        incremental_pages = (1,)
 
     seen = set()
 
@@ -787,7 +804,7 @@ async def scrape_github(client: httpx.AsyncClient, skills: list, state: "CrawlSt
 
     # Cheap incremental pass every run: recently-updated results of every query.
     for q in repo_queries:
-        for page in (1, 2, 3):
+        for page in incremental_pages:
             if not budget.take("search"):
                 break
             try:
@@ -808,18 +825,16 @@ async def scrape_github(client: httpx.AsyncClient, skills: list, state: "CrawlSt
             except Exception:
                 break
 
-    # Deep sweeps: a rotating few queries per run get a full, ceiling-breaking
-    # sweep, so every query is exhaustively covered every ~day of uptime.
-    last_sweep = state.deep_sweep.setdefault("last_sweep_at", {})
-    for q in _pick_deep_sweep_queries(repo_queries, "repo_query_cursor", state, DEEP_SWEEP_QUERIES_PER_RUN):
-        try:
-            if await sliced_repo_search(client, q, gh_headers, budget, emit_repo):
-                last_sweep[q] = datetime.now(timezone.utc).isoformat()
-        except Exception:
-            pass
-
-    # Code search (auth required): rotate through queries under the code budget.
     if GITHUB_TOKEN:
+        # Deep sweeps and code search are productive only with an authenticated
+        # quota. The anonymous path above remains a bounded discovery trickle.
+        last_sweep = state.deep_sweep.setdefault("last_sweep_at", {})
+        for q in _pick_deep_sweep_queries(repo_queries, "repo_query_cursor", state, DEEP_SWEEP_QUERIES_PER_RUN):
+            try:
+                if await sliced_repo_search(client, q, gh_headers, budget, emit_repo):
+                    last_sweep[q] = datetime.now(timezone.utc).isoformat()
+            except Exception:
+                pass
         for q in _pick_deep_sweep_queries(GITHUB_CODE_QUERIES, "code_query_cursor", state, len(GITHUB_CODE_QUERIES)):
             try:
                 if await sliced_code_search(client, q, gh_headers, budget, emit_code):
@@ -1292,6 +1307,9 @@ async def scrape_awesome_lists(client: httpx.AsyncClient, skills: list, budget: 
     for list_url in AWESOME_LIST_URLS:
         await _scrape_one_awesome_list(client, list_url, seen, skills)
 
+    if not GITHUB_TOKEN:
+        return
+
     # Dynamic discovery: any reasonably-starred awesome-* list about claude/mcp
     # gets fed through the same extractor, so new community lists are picked up
     # without hardcoding them.
@@ -1641,12 +1659,24 @@ async def scan_skill(client: httpx.AsyncClient, skill: dict):
         except Exception:
             content = ""
 
+        previous_content_hash = skill.get("content_hash")
         blob = f"{skill.get('name', '')} {skill.get('description', '')} {content}"
         score, flags = heuristic_scan(blob)
         skill["risk_score"] = score
         skill["risk_flags"] = flags
         skill["scanned_at"] = datetime.now(timezone.utc).isoformat()
         skill.update(evaluate_quality(skill, content))
+
+        # The embedding text includes saved content. A re-scan that changes a
+        # body (or makes it ineligible) must force the worker to re-embed it;
+        # otherwise the old vector can rank a completely different document.
+        if (
+            skill.get("quality_status") != "active"
+            or (content and skill.get("content_hash") != previous_content_hash)
+        ):
+            skill["embedding"] = None
+            skill["embedding_text_hash"] = None
+            skill["embedded_at"] = None
 
         if content:
             skill["_library_content"] = content
@@ -1767,7 +1797,7 @@ async def run_scrape(run_id: str) -> bool:
             await asyncio.gather(*(
                 save_to_library(s, s.pop("_library_content"))
                 for s in skills
-                if s.get("_library_content") and s.get("quality_status") not in {"rejected", "duplicate"}
+                if s.get("_library_content") and s.get("quality_status") == "active"
             ))
             await flush_library_index()
             state.save()
@@ -1782,23 +1812,29 @@ async def run_scrape(run_id: str) -> bool:
             chunk_size = 50
             for rows in rows_by_shape.values():
                 for i in range(0, len(rows), chunk_size):
-                    await supabase_post(client, "skills", rows[i:i+chunk_size], on_conflict="url")
+                    write = await supabase_post(client, "skills", rows[i:i+chunk_size], on_conflict="url")
+                    write.raise_for_status()
             count_after = await count_skills(client)
 
-            await supabase_patch(client, "scrape_runs", {"id": run_id}, {
+            finished = await supabase_patch(client, "scrape_runs", {"id": run_id}, {
                 "finished_at": datetime.now(timezone.utc).isoformat(),
                 "status": "done",
                 "skills_found": len(skills),
                 "new_skills_found": count_after - count_before,
             })
+            finished.raise_for_status()
             return True
         except Exception as e:
-            await supabase_patch(client, "scrape_runs", {"id": run_id}, {
-                "finished_at": datetime.now(timezone.utc).isoformat(),
-                "status": "error",
-                "skills_found": 0,
-                "error": str(e)[:500],
-            })
+            try:
+                failed = await supabase_patch(client, "scrape_runs", {"id": run_id}, {
+                    "finished_at": datetime.now(timezone.utc).isoformat(),
+                    "status": "error",
+                    "skills_found": 0,
+                    "error": str(e)[:500],
+                })
+                failed.raise_for_status()
+            except Exception as status_exc:
+                print(f"[scraper] failed to record scrape error for {run_id}: {status_exc}")
             return False
 
 
@@ -1806,7 +1842,7 @@ async def start_new_scrape_run() -> str:
     async with httpx.AsyncClient() as client:
         now = datetime.now(timezone.utc)
         cutoff = (now - timedelta(seconds=STALE_SCRAPE_RUN_SECONDS)).isoformat()
-        await client.patch(
+        stale = await client.patch(
             f"{SUPABASE_URL}/rest/v1/scrape_runs",
             params={"status": "eq.running", "started_at": f"lt.{cutoff}"},
             json={
@@ -1816,6 +1852,7 @@ async def start_new_scrape_run() -> str:
             },
             headers=HEADERS,
         )
+        stale.raise_for_status()
         active = await supabase_get(
             client,
             "scrape_runs",
@@ -1879,37 +1916,53 @@ async def run_rescan():
     upstream content may have changed since the last scan."""
     global rescan_progress
     rescan_progress = {"scanned": 0, "running": True}
-    async with httpx.AsyncClient(follow_redirects=True) as client:
-        offset = 0
-        page_size = 200
-        while True:
-            try:
+    try:
+        async with httpx.AsyncClient(follow_redirects=True) as client:
+            offset = 0
+            page_size = 200
+            while True:
                 r = await client.get(
                     f"{SUPABASE_URL}/rest/v1/skills",
-                    params={"select": "id,url,name,description,source"},
+                    params={"select": "id,url,name,description,source,tags,raw,content_hash"},
                     headers={**HEADERS, "Range": f"{offset}-{offset + page_size - 1}"},
                     timeout=15,
                 )
+                r.raise_for_status()
                 rows = r.json()
-            except Exception:
-                break
-            if not isinstance(rows, list) or not rows:
-                break
-            await asyncio.gather(*(scan_skill(client, row) for row in rows))
-            await asyncio.gather(*(
-                supabase_patch(client, "skills", {"id": row["id"]}, {
-                    "risk_score": row.get("risk_score", 0),
-                    "risk_flags": row.get("risk_flags", []),
-                    "scanned_at": row.get("scanned_at"),
-                })
-                for row in rows
-            ))
-            rescan_progress["scanned"] += len(rows)
-            if len(rows) < page_size:
-                break
-            offset += page_size
-    await flush_library_index()
-    rescan_progress["running"] = False
+                if not isinstance(rows, list) or not rows:
+                    break
+                await asyncio.gather(*(scan_skill(client, row) for row in rows))
+                await asyncio.gather(*(
+                    save_to_library(row, row.pop("_library_content"))
+                    for row in rows
+                    if row.get("_library_content") and row.get("quality_status") == "active"
+                ))
+                async def patch_row(row: dict) -> None:
+                    data = {
+                        "risk_score": row.get("risk_score", 0),
+                        "risk_flags": row.get("risk_flags", []),
+                        "scanned_at": row.get("scanned_at"),
+                        "content_hash": row.get("content_hash"),
+                        "quality_status": row.get("quality_status"),
+                        "quality_reasons": row.get("quality_reasons", []),
+                        "quality_score": row.get("quality_score", 0),
+                        "platforms": row.get("platforms", []),
+                        "category": row.get("category"),
+                    }
+                    for field in ("embedding", "embedding_text_hash", "embedded_at"):
+                        if field in row:
+                            data[field] = row[field]
+                    updated = await supabase_patch(client, "skills", {"id": row["id"]}, data)
+                    updated.raise_for_status()
+
+                await asyncio.gather(*(patch_row(row) for row in rows))
+                rescan_progress["scanned"] += len(rows)
+                if len(rows) < page_size:
+                    break
+                offset += page_size
+        await flush_library_index()
+    finally:
+        rescan_progress["running"] = False
 
 
 normalize_task = None

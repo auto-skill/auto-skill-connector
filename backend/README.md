@@ -54,16 +54,20 @@ before becoming searchable.
 
 Fresh ingest writes deterministic quality metadata:
 
-- `quality_status`: `active`, `metadata_only`, `rejected`, or `duplicate`.
+- `quality_status`: `pending`, `active`, `metadata_only`, `rejected`, or `duplicate`.
 - `quality_reasons`: machine-readable gate reasons.
 - `quality_score`: 0-100.
 - `content_hash`: normalized SHA-256 for dedupe.
 - `platforms` and `category`: cheap tags used by routing.
 
-Only `active` rows are eligible for vector embedding and full routes.
-`metadata_only` rows can still appear as hints.
+Only `active` rows with valid `SKILL.md` frontmatter (`name` and
+`description`) are eligible for vector embedding and full routes.
+`metadata_only` rows can still appear as hints; unscanned rows stay `pending`
+instead of becoming routable through a schema default.
 
-Backfill existing rows before using public routing:
+Backfill existing rows before using public routing. Stop API/worker writes (or
+run it during the VPS maintenance sequence in `RUNBOOK.md`) because the script
+reclassifies the corpus and invalidates vectors for changed/quarantined content:
 
 ```powershell
 python backfill_quality.py

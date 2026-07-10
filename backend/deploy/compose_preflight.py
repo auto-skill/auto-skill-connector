@@ -14,12 +14,18 @@ from urllib.parse import urlsplit
 
 
 REQUIRED_ENV = {
-    "GITHUB_TOKEN": "required so the scraper does not run on the 60/hr unauthenticated GitHub budget",
     "CLOUDFLARED_TOKEN": "required for the public Cloudflare Tunnel service",
     "R2_ENDPOINT": "required for Litestream and skills_library backups",
     "R2_BUCKET": "required for Litestream and skills_library backups",
     "R2_ACCESS_KEY_ID": "required for Litestream and skills_library backups",
     "R2_SECRET_ACCESS_KEY": "required for Litestream and skills_library backups",
+}
+
+OPTIONAL_ENV_WARNINGS = {
+    "GITHUB_TOKEN": (
+        "unset; worker will use its bounded anonymous crawl and skip code search/deep sweeps. "
+        "Set it for full discovery coverage."
+    ),
 }
 
 POSITIVE_INT_ENV = {
@@ -96,6 +102,13 @@ def check_env(env_file: Path, checks: list[Check]) -> dict[str, str]:
         value = env.get(key, os.environ.get(key, ""))
         if is_placeholder(value):
             add(checks, "FAIL", f"env {key}", reason)
+        else:
+            add(checks, "PASS", f"env {key}", "set")
+
+    for key, warning in OPTIONAL_ENV_WARNINGS.items():
+        value = env.get(key, os.environ.get(key, ""))
+        if is_placeholder(value):
+            add(checks, "WARN", f"env {key}", warning)
         else:
             add(checks, "PASS", f"env {key}", "set")
 

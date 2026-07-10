@@ -447,6 +447,23 @@ class AccountsEndpointTests(unittest.TestCase):
             names = [r.get("name") for r in authed.json()["results"]]
             self.assertIn("deploy-to-fly", names)
 
+    def test_private_skill_does_not_match_on_one_generic_name_word(self) -> None:
+        token = self._login("a@example.com")
+        user = local_store.get_or_create_user("a@example.com", "A", None)
+        local_store.add_private_skill(user["id"], "performance-review", "Review performance.", "PRIVATE INSTRUCTIONS")
+
+        async def fake_retrieve(client, query, limit):
+            return []
+
+        with patch("recommender.retrieve_skills", fake_retrieve):
+            response = self.client.post(
+                "/route",
+                json={"task": "improve performance of this API"},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        self.assertEqual(response.json()["tier"], "none")
+
 
 class PublicGuardAccountsTests(unittest.TestCase):
     def test_auth_and_account_paths_are_public(self) -> None:

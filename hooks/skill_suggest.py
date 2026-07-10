@@ -351,7 +351,7 @@ def main() -> None:
         # whichever happened to rank first among near-ties.
         _print_hint("multiple candidates plausible")
         _log_routing_decision(prompt, "hint", skill, reason="multiple candidates plausible")
-        _report_outcome(route, "dismissed", "multiple candidates plausible; shown as hint, not auto-applied")
+        _report_outcome(route, "shown", "multiple candidates plausible; shown as hint, not auto-applied")
         return
 
     content = ""
@@ -372,7 +372,7 @@ def main() -> None:
         # it as a hint and let a human/Claude decide with eyes open.
         _print_hint("looks like it takes an action without asking for confirmation")
         _log_routing_decision(prompt, "hint", skill, reason="unconfirmed-action content downgrade")
-        _report_outcome(route, "dismissed", "unconfirmed-action content downgrade; shown as hint only")
+        _report_outcome(route, "shown", "unconfirmed-action content downgrade; shown as hint only")
         return
     if len(content) > MAX_CONTENT_CHARS:
         content = f"{content[:MAX_CONTENT_CHARS]}\n\n[auto-skill: truncated]"
@@ -386,7 +386,7 @@ def main() -> None:
         "</auto_skill_content>"
     )
     _log_routing_decision(prompt, "full", skill)
-    _report_outcome(route, "used", "injected as active task instructions")
+    _report_outcome(route, "injected", "injected as active task instructions")
 
 
 if __name__ == "__main__":

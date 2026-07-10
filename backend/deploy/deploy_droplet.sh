@@ -34,10 +34,11 @@ echo "==> Extracting and syncing into ${REMOTE_DIR}"
 # backup-library.sh, though, are repo files bind-mounted into their
 # containers, which docker compose won't notice changed on its own (it only
 # tracks its own service definitions, not bind-mounted file contents). This
-# hashes both before and after the sync so the caller can force-recreate
-# those two specific containers only when the files actually changed, instead
-# of restarting a live tunnel/backup on every single deploy.
-CONFIG_HASH_BEFORE=$($SSH "sha256sum ${REMOTE_DIR}/backend/deploy/litestream.yml ${REMOTE_DIR}/backend/deploy/backup-library.sh 2>/dev/null | sha256sum" || echo "none")
+# hashes each before and after the sync so only the service whose bind-mounted
+# config changed is recreated. In particular, a normal API deploy must not
+# force a multi-hundred-MiB library backup upload onto the tiny VPS.
+LITESTREAM_HASH_BEFORE=$($SSH "sha256sum ${REMOTE_DIR}/backend/deploy/litestream.yml 2>/dev/null" || true)
+LIBRARY_BACKUP_HASH_BEFORE=$($SSH "sha256sum ${REMOTE_DIR}/backend/deploy/backup-library.sh 2>/dev/null" || true)
 
 $SSH bash -s <<'REMOTE'
 set -euo pipefail
@@ -55,7 +56,8 @@ rsync -a --delete \
 rm -rf /tmp/deploy-extract /tmp/deploy.tar.gz
 REMOTE
 
-CONFIG_HASH_AFTER=$($SSH "sha256sum ${REMOTE_DIR}/backend/deploy/litestream.yml ${REMOTE_DIR}/backend/deploy/backup-library.sh 2>/dev/null | sha256sum" || echo "none")
+LITESTREAM_HASH_AFTER=$($SSH "sha256sum ${REMOTE_DIR}/backend/deploy/litestream.yml 2>/dev/null" || true)
+LIBRARY_BACKUP_HASH_AFTER=$($SSH "sha256sum ${REMOTE_DIR}/backend/deploy/backup-library.sh 2>/dev/null" || true)
 
 echo "==> Ensuring bind-mounted data dirs are owned by the container's non-root user (uid 10001)"
 $SSH "mkdir -p ${REMOTE_DIR}/backend/data ${REMOTE_DIR}/backend/skills_library && chown -R 10001:10001 ${REMOTE_DIR}/backend/data ${REMOTE_DIR}/backend/skills_library"
@@ -68,24 +70,75 @@ $SSH "for img in deploy-api deploy-mcp deploy-worker; do docker tag \$img:latest
 
 rollback() {
   echo "==> Rolling back to the previous images" >&2
-  $SSH "cd ${REMOTE_DIR} && for img in deploy-api deploy-mcp deploy-worker; do docker tag \$img:previous \$img:latest 2>/dev/null || true; done && docker compose -f backend/deploy/docker-compose.yml up -d --force-recreate api mcp worker"
+  $SSH "cd ${REMOTE_DIR} && for img in deploy-api deploy-mcp deploy-worker; do docker tag \$img:previous \$img:latest 2>/dev/null || true; done && docker compose -f backend/deploy/docker-compose.yml rm -sf api mcp worker && docker compose -f backend/deploy/docker-compose.yml up -d --no-build api mcp worker"
 }
 
-echo "==> Rebuilding containers"
-if ! $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml up -d --build api mcp worker"; then
-  echo "FAILED: container rebuild/recreate failed" >&2
+echo "==> Building replacement images before touching live services"
+if ! $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml build api mcp worker"; then
+  echo "FAILED: image build failed" >&2
   rollback
   exit 1
 fi
 
-if [ "$CONFIG_HASH_BEFORE" != "$CONFIG_HASH_AFTER" ]; then
-  echo "==> litestream.yml or backup-library.sh changed -- restarting those containers to pick it up"
-  $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml up -d --force-recreate litestream library-backup"
+# A worker can be cancelled mid-scrape by Docker recreation. Remove it first,
+# mark its single SQLite lease stale through the still-running local API, then
+# start a fresh worker only after the replacement API has passed readiness.
+echo "==> Draining worker scrape lease"
+if ! $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml rm -sf worker && curl -fsS -X PATCH 'http://127.0.0.1:8000/rest/v1/scrape_runs?status=eq.running' -H 'Content-Type: application/json' --data '{\"status\":\"stale\",\"error\":\"Marked stale during deploy before worker restart.\"}' -o /dev/null"; then
+  echo "FAILED: could not drain the worker lease" >&2
+  rollback
+  exit 1
+fi
+
+echo "==> Recreating API"
+if ! $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml rm -sf api mcp && docker compose -f backend/deploy/docker-compose.yml up -d --no-build api"; then
+  echo "FAILED: API recreate failed" >&2
+  rollback
+  exit 1
+fi
+
+echo "==> Waiting for local semantic readiness"
+ready=0
+for attempt in $(seq 1 40); do
+  if $SSH "curl -fsS --max-time 10 http://127.0.0.1:8000/readyz -o /dev/null"; then
+    ready=1
+    break
+  fi
+  sleep 3
+done
+if [ "$ready" -ne 1 ]; then
+  echo "FAILED: local /readyz did not pass after API replacement" >&2
+  rollback
+  exit 1
+fi
+
+echo "==> Starting MCP after API readiness"
+if ! $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml up -d --no-build mcp"; then
+  echo "FAILED: MCP recreate failed" >&2
+  rollback
+  exit 1
+fi
+
+echo "==> Starting worker after API/MCP readiness"
+if ! $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml up -d --no-build worker"; then
+  echo "FAILED: worker recreate failed" >&2
+  rollback
+  exit 1
+fi
+
+if [ "$LITESTREAM_HASH_BEFORE" != "$LITESTREAM_HASH_AFTER" ]; then
+  echo "==> litestream.yml changed -- restarting Litestream"
+  $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml up -d --force-recreate litestream"
+fi
+
+if [ "$LIBRARY_BACKUP_HASH_BEFORE" != "$LIBRARY_BACKUP_HASH_AFTER" ]; then
+  echo "==> backup-library.sh changed -- restarting the delayed backup sidecar"
+  $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml up -d --force-recreate library-backup"
 fi
 
 echo "==> Smoke-checking the public API"
 smoke_failed=0
-for path in /healthz /skills-catalog; do
+for path in /healthz /readyz /skills-catalog; do
   url="https://skills.autoskill.dev${path}"
   status=$(curl -s -o /dev/null -w "%{http_code}" "$url" --max-time 15)
   if [ "$path" = "/skills-catalog" ]; then

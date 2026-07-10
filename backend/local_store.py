@@ -13,6 +13,7 @@ import os
 import re
 import sqlite3
 import struct
+import threading
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -39,14 +40,15 @@ CREATE TABLE IF NOT EXISTS skills (
     scanned_at TEXT,
     content_hash TEXT,
     canonical_id TEXT,
-    quality_status TEXT DEFAULT 'active',
+    quality_status TEXT DEFAULT 'pending',
     quality_reasons TEXT DEFAULT '[]',
     quality_score INTEGER DEFAULT 0,
     platforms TEXT DEFAULT '[]',
     category TEXT,
     embedding BLOB,
     embedding_text_hash TEXT,
-    embedded_at TEXT
+    embedded_at TEXT,
+    feedback_score REAL
 );
 
 CREATE VIRTUAL TABLE IF NOT EXISTS skills_fts USING fts5(
@@ -69,6 +71,13 @@ CREATE TRIGGER IF NOT EXISTS skills_au AFTER UPDATE ON skills BEGIN
     INSERT INTO skills_fts(rowid, name, description, tags)
     VALUES (new.rowid, new.name, new.description, new.tags);
 END;
+
+-- These are deliberately partial indexes: readiness and semantic retrieval
+-- need small metadata indexes, not a second copy of every embedding BLOB.
+CREATE INDEX IF NOT EXISTS skills_active_idx ON skills(id) WHERE quality_status = 'active';
+CREATE INDEX IF NOT EXISTS skills_embedded_idx ON skills(id) WHERE embedding IS NOT NULL;
+CREATE INDEX IF NOT EXISTS skills_active_embedded_idx ON skills(id)
+    WHERE quality_status = 'active' AND embedding IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS scrape_runs (
     id TEXT PRIMARY KEY,
@@ -207,7 +216,7 @@ TABLES = {
 SKILL_COLUMN_DEFAULTS = {
     "content_hash": "TEXT",
     "canonical_id": "TEXT",
-    "quality_status": "TEXT DEFAULT 'active'",
+    "quality_status": "TEXT DEFAULT 'pending'",
     "quality_reasons": "TEXT DEFAULT '[]'",
     "quality_score": "INTEGER DEFAULT 0",
     "platforms": "TEXT DEFAULT '[]'",
@@ -279,6 +288,9 @@ def init_db() -> None:
         for col, spec in CLI_TOKEN_COLUMN_DEFAULTS.items():
             if col not in cli_token_existing:
                 conn.execute(f"ALTER TABLE cli_tokens ADD COLUMN {col} {spec}")
+        # A missing status must never become silently routable because an old
+        # SQLite table still has the historical DEFAULT 'active'.
+        conn.execute("UPDATE skills SET quality_status='pending' WHERE quality_status IS NULL")
         _stale_duplicate_running_scrapes(conn)
         conn.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS scrape_runs_one_running_idx "
@@ -327,6 +339,14 @@ def upsert_rows(table: str, rows: list[dict], on_conflict: str | None) -> list[d
                 row["id"] = str(uuid.uuid4())
             if table == "skills" and "discovered_at" not in row:
                 row["discovered_at"] = _now()
+            if table == "skills" and "quality_status" not in row:
+                # Routine discovery upserts old, already-scanned URLs without
+                # their quality fields. Preserve those rows, but make a truly
+                # new unscanned URL pending rather than accidentally active.
+                url = row.get("url")
+                existing = cur.execute("SELECT 1 FROM skills WHERE url=?", (url,)).fetchone() if url else None
+                if existing is None:
+                    row["quality_status"] = "pending"
             if table == "scrape_runs" and "started_at" not in row:
                 row["started_at"] = _now()
             for col in TABLES[table]["json_cols"]:
@@ -507,6 +527,7 @@ def _percentile(values: list[int], percentile: float) -> int:
 def route_event_summary(
     hours: int = 24,
     *,
+    config_version: str | None = None,
     max_latency_ms: int = 1500,
     max_skill_find_ms: int = 1200,
     max_injected_tokens: int = 3000,
@@ -517,21 +538,24 @@ def route_event_summary(
     try:
         cutoff = time.time() - (max(1, hours) * 3600)
         cutoff_iso = datetime.fromtimestamp(cutoff, timezone.utc).isoformat()
-        total = conn.execute("SELECT COUNT(*) FROM route_events WHERE created_at >= ?", (cutoff_iso,)).fetchone()[0]
+        where = "created_at >= ?"
+        params: list[str] = [cutoff_iso]
+        if config_version:
+            where += " AND config_version = ?"
+            params.append(config_version)
+        total = conn.execute(f"SELECT COUNT(*) FROM route_events WHERE {where}", params).fetchone()[0]
         tiers = {
             row["tier"]: row["count"]
             for row in conn.execute(
-                "SELECT tier, COUNT(*) AS count FROM route_events "
-                "WHERE created_at >= ? GROUP BY tier",
-                (cutoff_iso,),
+                f"SELECT tier, COUNT(*) AS count FROM route_events WHERE {where} GROUP BY tier",
+                params,
             ).fetchall()
         }
         outcomes = {
             row["outcome"] or "pending": row["count"]
             for row in conn.execute(
-                "SELECT outcome, COUNT(*) AS count FROM route_events "
-                "WHERE created_at >= ? GROUP BY outcome",
-                (cutoff_iso,),
+                f"SELECT outcome, COUNT(*) AS count FROM route_events WHERE {where} GROUP BY outcome",
+                params,
             ).fetchall()
         }
         row = conn.execute(
@@ -549,9 +573,9 @@ def route_event_summary(
               MAX(injected_tokens) AS max_injected_tokens,
               MAX(response_tokens) AS max_response_tokens
             FROM route_events
-            WHERE created_at >= ?
-            """,
-            (cutoff_iso,),
+            WHERE {where}
+            """.format(where=where),
+            params,
         ).fetchone()
         metric_rows = [
             dict(r)
@@ -559,9 +583,9 @@ def route_event_summary(
                 """
                 SELECT latency_ms, skill_find_ms, injected_tokens, response_tokens
                 FROM route_events
-                WHERE created_at >= ?
-                """,
-                (cutoff_iso,),
+                WHERE {where}
+                """.format(where=where),
+                params,
             ).fetchall()
         ]
         latency_values = [int(r["latency_ms"] or 0) for r in metric_rows]
@@ -590,11 +614,11 @@ def route_event_summary(
                        retrieval_ms, rerank_ms, content_ms, injected_tokens,
                        response_tokens, warnings
                 FROM route_events
-                WHERE created_at >= ?
+                WHERE {where}
                 ORDER BY latency_ms DESC
                 LIMIT 5
-                """,
-                (cutoff_iso,),
+                """.format(where=where),
+                params,
             ).fetchall()
         ]
         for event in slowest:
@@ -619,14 +643,14 @@ def route_event_summary(
                   AVG(injected_tokens) AS avg_injected_tokens,
                   AVG(response_tokens) AS avg_response_tokens
                 FROM route_events
-                WHERE created_at >= ?
+                WHERE {where}
                   AND skill_name IS NOT NULL
                   AND skill_name != ''
                 GROUP BY skill_name, skill_url
                 ORDER BY count DESC, positive_count DESC, skill_name ASC
                 LIMIT 10
-                """,
-                (cutoff_iso,),
+                """.format(where=where),
+                params,
             ).fetchall()
         ]
         for skill in top_skills:
@@ -640,6 +664,7 @@ def route_event_summary(
         top_used_skills.sort(key=lambda s: (-s["positive_count"], -s["count"], s["skill_name"] or ""))
         return {
             "window_hours": hours,
+            "metrics_config_version": config_version or "all",
             "total": total,
             "tiers": tiers,
             "outcomes": outcomes,
@@ -758,12 +783,25 @@ def update_route_event_feedback(route_id: str, outcome: str, source: str = "", n
         conn.close()
 
 
-_WORD_RE = re.compile(r"\w+")
+_WORD_RE = re.compile(r"[A-Za-z0-9]+")
+_FTS_STOPWORDS = frozenset(
+    set(quality.NAME_STOPWORDS)
+    | {
+        "about", "after", "also", "and", "are", "can", "could", "create", "does", "for",
+        "from", "have", "help", "into", "make", "need", "please", "should", "that", "the",
+        "this", "using", "want", "with", "would", "you", "your",
+    }
+)
 
 
 def _fts_query(text: str) -> str:
-    words = _WORD_RE.findall(text)
-    return " ".join(f'"{w}"' for w in words) if words else ""
+    words = [word.lower() for word in _WORD_RE.findall(text) if len(word) >= 3]
+    meaningful = [word for word in words if word not in _FTS_STOPWORDS]
+    selected = meaningful or words
+    # OR is intentionally used here. An all-terms AND query turns ordinary
+    # task phrasing into an empty fallback search; routing still applies the
+    # stricter deterministic quality/similarity gate afterwards.
+    return " OR ".join(f'"{word}"' for word in selected[:12]) if selected else ""
 
 
 def _stars(raw_json: str) -> int:
@@ -774,6 +812,10 @@ def _stars(raw_json: str) -> int:
 
 
 def search_skills_fts(query: str, max_results: int = 10) -> list[dict]:
+    try:
+        limit = max(1, min(int(max_results), 100))
+    except (TypeError, ValueError):
+        limit = 10
     conn = get_conn()
     try:
         fts_q = _fts_query(query)
@@ -786,11 +828,11 @@ def search_skills_fts(query: str, max_results: int = 10) -> list[dict]:
             JOIN skills s ON s.rowid = skills_fts.rowid
             WHERE skills_fts MATCH ?
               AND s.risk_score < 3
-              AND COALESCE(s.quality_status, 'active') IN ('active', 'metadata_only')
+              AND COALESCE(s.quality_status, 'pending') IN ('active', 'metadata_only')
             ORDER BY bm25(skills_fts) ASC
             LIMIT ?
             """,
-            (fts_q, max_results),
+            (fts_q, max(limit * 3, limit)),
         ).fetchall()
         out = []
         for r in rows:
@@ -798,7 +840,7 @@ def search_skills_fts(query: str, max_results: int = 10) -> list[dict]:
             d["stars"] = _stars(dict(r).get("raw", "{}"))
             d["rank"] = -r["bm25"]
             out.append(d)
-        return out
+        return quality.dedupe_by_content_hash(out)[:limit]
     except sqlite3.OperationalError:
         return []
     finally:
@@ -808,72 +850,176 @@ def search_skills_fts(query: str, max_results: int = 10) -> list[dict]:
 # In-memory embedding-matrix cache. Rebuilding the matrix from blobs is
 # O(corpus) per query and dominates latency once the corpus is large; with the
 # cache a search is a single matvec.
-# Short TTL so freshly embedded skills become searchable within a minute.
+#
+# Writes mark this cache stale but retain the last complete matrix. The API
+# rebuilds in the background and atomically swaps the replacement, so a route
+# request never waits behind a multi-second blob scan during a scraper burst.
+# Set a positive TTL only when another process writes SQLite directly.
 EMBEDDING_DIM = 384
 _EMB_DIM = EMBEDDING_DIM
 _EMB_BLOB_LEN = _EMB_DIM * 4
-_EMB_CACHE_TTL_SECONDS = 60.0
-_emb_cache: dict = {"at": 0.0, "ids": [], "mat": None}
+_EMB_CACHE_TTL_SECONDS = float(os.getenv("EMBEDDING_MATRIX_CACHE_TTL_SECONDS", "0"))
+_emb_cache: dict = {
+    "at": 0.0,
+    "ids": [],
+    "mat": None,
+    "db_path": "",
+    "generation": 0,
+    "built_generation": -1,
+}
+_emb_cache_lock = threading.RLock()
+_emb_rebuild_lock = threading.Lock()
 
 
 def invalidate_vector_cache() -> None:
-    """Clear the in-process vector matrix after skills writes."""
-    _emb_cache.update(at=0.0, ids=[], mat=None)
+    """Mark the vector matrix stale after skills writes without dropping it."""
+    with _emb_cache_lock:
+        _emb_cache["generation"] = int(_emb_cache["generation"] or 0) + 1
+
+
+def _index_counts(conn: sqlite3.Connection) -> dict[str, int]:
+    """Use metadata indexes only; never scan all embedding BLOB payloads."""
+    row = conn.execute(
+        """
+        SELECT
+          (SELECT COUNT(*) FROM skills) AS total,
+          (SELECT COUNT(*) FROM skills WHERE quality_status = 'active') AS active,
+          (SELECT COUNT(*) FROM skills WHERE embedding IS NOT NULL) AS embedded,
+          (SELECT COUNT(*) FROM skills
+             WHERE quality_status = 'active' AND embedding IS NOT NULL) AS active_embedded
+        """
+    ).fetchone()
+    return {
+        "total_skills": int(row["total"] or 0),
+        "active_skills": int(row["active"] or 0),
+        "embedded_skills": int(row["active_embedded"] or 0),
+        "all_embedded_skills": int(row["embedded"] or 0),
+        # Embeddings are written only through the 384-dimension local embedder;
+        # checking BLOB lengths here was the expensive readiness regression.
+        "valid_vectors": int(row["active_embedded"] or 0),
+    }
 
 
 def vector_index_stats() -> dict:
     """Return cheap search-index stats for latency/debug dashboards."""
     conn = get_conn()
     try:
-        row = conn.execute(
-            """
-            SELECT
-              COUNT(*) AS total,
-              SUM(CASE WHEN COALESCE(quality_status, 'active') = 'active' THEN 1 ELSE 0 END) AS active,
-              SUM(CASE WHEN embedding IS NOT NULL THEN 1 ELSE 0 END) AS embedded,
-              SUM(CASE WHEN embedding IS NOT NULL AND LENGTH(embedding) = ? THEN 1 ELSE 0 END) AS valid_vectors
-            FROM skills
-            """,
-            (_EMB_BLOB_LEN,),
-        ).fetchone()
+        counts = _index_counts(conn)
     finally:
         conn.close()
 
-    mat = _emb_cache.get("mat")
-    cache_at = float(_emb_cache.get("at") or 0.0)
-    age_ms = int((time.monotonic() - cache_at) * 1000) if mat is not None and cache_at else None
+    with _emb_cache_lock:
+        mat = _emb_cache.get("mat")
+        cache_matches_db = _emb_cache.get("db_path") == str(DB_PATH)
+        cache_at = float(_emb_cache.get("at") or 0.0)
+        cache_vectors = len(_emb_cache.get("ids") or []) if cache_matches_db else 0
+        generation = int(_emb_cache.get("generation") or 0)
+        built_raw = _emb_cache.get("built_generation")
+        built_generation = -1 if built_raw is None else int(built_raw)
+    cache_ready = mat is not None and cache_matches_db
+    age_ms = int((time.monotonic() - cache_at) * 1000) if cache_ready and cache_at else None
     return {
-        "total_skills": int(row["total"] or 0),
-        "active_skills": int(row["active"] or 0),
-        "embedded_skills": int(row["embedded"] or 0),
-        "valid_vectors": int(row["valid_vectors"] or 0),
-        "cache_ready": mat is not None,
-        "cache_vectors": len(_emb_cache.get("ids") or []),
+        **counts,
+        "cache_ready": cache_ready,
+        "cache_current": cache_ready and built_generation == generation,
+        "cache_rebuild_in_progress": _emb_rebuild_lock.locked(),
+        "cache_vectors": cache_vectors,
         "cache_age_ms": age_ms,
         "cache_ttl_seconds": int(_EMB_CACHE_TTL_SECONDS),
-        "matrix_bytes": int(mat.nbytes) if mat is not None else 0,
+        "matrix_bytes": int(mat.nbytes) if cache_ready else 0,
         "vector_dim": _EMB_DIM,
     }
 
 
-def _embedding_matrix(conn: sqlite3.Connection) -> tuple[list[str], np.ndarray]:
-    now = time.monotonic()
-    if _emb_cache["mat"] is not None and now - _emb_cache["at"] < _EMB_CACHE_TTL_SECONDS:
-        return _emb_cache["ids"], _emb_cache["mat"]
-    rows = conn.execute(
-        "SELECT id, embedding FROM skills "
-        "WHERE embedding IS NOT NULL "
-        "AND risk_score < 3 "
-        "AND COALESCE(quality_status, 'active') = 'active'"
-    ).fetchall()
-    ids = [r["id"] for r in rows if len(r["embedding"]) == _EMB_BLOB_LEN]
-    blobs = [bytes(r["embedding"]) for r in rows if len(r["embedding"]) == _EMB_BLOB_LEN]
-    if blobs:
-        mat = np.frombuffer(b"".join(blobs), dtype=np.float32).reshape(len(blobs), _EMB_DIM)
-    else:
-        mat = np.zeros((0, _EMB_DIM), dtype=np.float32)
-    _emb_cache.update(at=now, ids=ids, mat=mat)
-    return ids, mat
+def readiness_stats() -> dict:
+    """Cheap readiness payload used by /readyz on every deploy and monitor."""
+    conn = get_conn()
+    try:
+        counts = _index_counts(conn)
+    finally:
+        conn.close()
+    return {
+        "total_skills": counts["total_skills"],
+        "active_skills": counts["active_skills"],
+        "embedded_skills": counts["embedded_skills"],
+        "vector_index": vector_index_stats(),
+    }
+
+
+def warm_vector_index() -> dict:
+    """Build the in-process matrix ahead of a user-facing route request.
+
+    This is intentionally separate from ``vector_index_stats``: stats stay
+    metadata-only, while readiness and the write-side debouncer can opt into
+    the one-time matrix construction after a restart or invalidation.
+    """
+    conn = get_conn()
+    try:
+        _embedding_matrix(conn, refresh=True)
+    finally:
+        conn.close()
+    return vector_index_stats()
+
+
+def _cached_embedding_matrix(*, refresh: bool) -> tuple[list[str], np.ndarray] | None:
+    """Read a usable matrix without making routing wait on a rebuild."""
+    with _emb_cache_lock:
+        cached = _emb_cache["mat"]
+        if cached is None or _emb_cache.get("db_path") != str(DB_PATH):
+            return None
+        now = time.monotonic()
+        ttl_fresh = _EMB_CACHE_TTL_SECONDS <= 0 or now - _emb_cache["at"] < _EMB_CACHE_TTL_SECONDS
+        cache_current = _emb_cache["built_generation"] == _emb_cache["generation"]
+        if (not refresh and ttl_fresh) or (refresh and cache_current and ttl_fresh):
+            return _emb_cache["ids"], cached
+    return None
+
+
+def _embedding_matrix(conn: sqlite3.Connection, *, refresh: bool = False) -> tuple[list[str], np.ndarray]:
+    cached = _cached_embedding_matrix(refresh=refresh)
+    if cached is not None:
+        return cached
+
+    # Do the costly SQLite scan and BLOB copy outside the cache lock. Existing
+    # routes can keep using the previous matrix while a debounced write-side
+    # refresh is in progress.
+    with _emb_rebuild_lock:
+        while True:
+            cached = _cached_embedding_matrix(refresh=refresh)
+            if cached is not None:
+                return cached
+
+            with _emb_cache_lock:
+                target_generation = int(_emb_cache["generation"] or 0)
+
+            rows = conn.execute(
+                "SELECT id, embedding FROM skills "
+                "WHERE embedding IS NOT NULL "
+                "AND risk_score < 3 "
+                "AND COALESCE(quality_status, 'pending') = 'active'"
+            ).fetchall()
+            ids = [r["id"] for r in rows if len(r["embedding"]) == _EMB_BLOB_LEN]
+            blobs = [bytes(r["embedding"]) for r in rows if len(r["embedding"]) == _EMB_BLOB_LEN]
+            if blobs:
+                mat = np.frombuffer(b"".join(blobs), dtype=np.float32).reshape(len(blobs), _EMB_DIM)
+            else:
+                mat = np.zeros((0, _EMB_DIM), dtype=np.float32)
+            mat.setflags(write=False)
+
+            with _emb_cache_lock:
+                if int(_emb_cache["generation"] or 0) == target_generation:
+                    _emb_cache.update(
+                        at=time.monotonic(),
+                        ids=ids,
+                        mat=mat,
+                        db_path=str(DB_PATH),
+                        built_generation=target_generation,
+                    )
+                    return ids, mat
+
+                # A write arrived while the scan was running. Keep the last
+                # complete matrix serving and rebuild once more against the new
+                # generation before publishing anything.
 
 
 def vector_search_skills(query_embedding: list[float], match_count: int = 10) -> list[dict]:
@@ -974,11 +1120,12 @@ def recompute_feedback_scores(min_samples: int = 8, prior_strength: float = 8.0,
         rows = conn.execute(
             """
             SELECT s.content_hash AS content_hash,
-                   SUM(CASE WHEN re.outcome IN ('used','installed') THEN 1 ELSE 0 END) AS positive,
-                   SUM(CASE WHEN re.outcome IN ('failed','dismissed') THEN 1 ELSE 0 END) AS negative
+                    SUM(CASE WHEN re.outcome IN ('used','installed') THEN 1 ELSE 0 END) AS positive,
+                    SUM(CASE WHEN re.outcome IN ('failed','dismissed') THEN 1 ELSE 0 END) AS negative
             FROM route_events re
             JOIN skills s ON s.id = re.skill_id
             WHERE s.content_hash IS NOT NULL AND s.content_hash != ''
+              AND COALESCE(re.feedback_source, '') != 'auto-skill-hook'
             GROUP BY s.content_hash
             """
         ).fetchall()

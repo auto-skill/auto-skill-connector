@@ -197,9 +197,31 @@ services:
         exit_code, output = self.run_preflight()
 
         self.assertEqual(exit_code, 1, output)
-        self.assertIn("[FAIL] env GITHUB_TOKEN", output)
+        self.assertIn("[WARN] env GITHUB_TOKEN", output)
         self.assertIn("[FAIL] seed db", output)
         self.assertIn("[FAIL] library index", output)
+
+    def test_allows_missing_github_token_with_a_seeded_runtime(self) -> None:
+        self.write_seed_db()
+        self.write_seed_library()
+        self.write_env(
+            "\n".join(
+                [
+                    "GITHUB_TOKEN=",
+                    "CLOUDFLARED_TOKEN=cloudflare-token",
+                    "R2_ENDPOINT=https://abc.r2.cloudflarestorage.com",
+                    "R2_BUCKET=autoskill-backups",
+                    "R2_ACCESS_KEY_ID=access",
+                    "R2_SECRET_ACCESS_KEY=secret",
+                    "",
+                ]
+            )
+        )
+
+        exit_code, output = self.run_preflight()
+
+        self.assertEqual(exit_code, 0, output)
+        self.assertIn("[WARN] env GITHUB_TOKEN", output)
 
     def test_rejects_empty_seed_runtime(self) -> None:
         self.write_seed_db(rows=0, embedded=0)

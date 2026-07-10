@@ -15,6 +15,36 @@ import local_store as store
 router = APIRouter()
 
 _KNOWN_PARAMS = {"select", "order", "limit", "offset", "on_conflict"}
+_vector_warm_task: asyncio.Task | None = None
+_vector_warm_generation = 0
+
+
+def _schedule_vector_warm() -> None:
+    """Debounce matrix rebuilds after batched scraper/embed writes.
+
+    A worker can make dozens of small upserts in one burst. Building a new
+    matrix after each would be worse than the original TTL churn, so wait until
+    writes have been quiet briefly and rebuild once in the background.
+    """
+    global _vector_warm_task, _vector_warm_generation
+    _vector_warm_generation += 1
+    if _vector_warm_task is None or _vector_warm_task.done():
+        _vector_warm_task = asyncio.create_task(_warm_vector_index_when_quiet())
+
+
+async def _warm_vector_index_when_quiet() -> None:
+    while True:
+        generation = _vector_warm_generation
+        await asyncio.sleep(2)
+        if generation != _vector_warm_generation:
+            continue
+        try:
+            stats = await asyncio.to_thread(store.warm_vector_index)
+            print(f"[local_api] warmed vector cache with {stats['cache_vectors']} vectors")
+        except Exception as exc:
+            print(f"[local_api] vector cache warm failed: {exc}")
+        if generation == _vector_warm_generation:
+            return
 
 
 @router.on_event("startup")
@@ -66,6 +96,8 @@ async def rest_post(table: str, request: Request):
         out = await asyncio.to_thread(store.upsert_rows, table, rows, on_conflict)
     except sqlite3.IntegrityError as exc:
         return Response(content=_dumps({"error": str(exc)}), media_type="application/json", status_code=409)
+    if table == "skills" and out:
+        _schedule_vector_warm()
     return Response(content=_dumps(out), media_type="application/json")
 
 
@@ -75,7 +107,9 @@ async def rest_patch(table: str, request: Request):
         return Response(status_code=404)
     filters = _parse_filters(dict(request.query_params))
     data = await request.json()
-    await asyncio.to_thread(store.update_rows, table, filters, data)
+    updated = await asyncio.to_thread(store.update_rows, table, filters, data)
+    if table == "skills" and updated:
+        _schedule_vector_warm()
     return Response(status_code=204)
 
 
@@ -84,7 +118,9 @@ async def rest_delete(table: str, request: Request):
     if table not in store.TABLES:
         return Response(status_code=404)
     filters = _parse_filters(dict(request.query_params))
-    await asyncio.to_thread(store.delete_rows, table, filters)
+    deleted = await asyncio.to_thread(store.delete_rows, table, filters)
+    if table == "skills" and deleted:
+        _schedule_vector_warm()
     return Response(status_code=204)
 
 
