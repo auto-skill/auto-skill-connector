@@ -98,7 +98,47 @@ NAME_STOPWORDS = {
 }
 
 TOKEN_RE = re.compile(r"[a-z0-9]+")
+FRONTMATTER_BLOCK_RE = re.compile(r"\A\ufeff?---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\Z)", re.S)
 FRONTMATTER_NAME_RE = re.compile(r"^name:\s*\S+", re.MULTILINE)
+FRONTMATTER_DESCRIPTION_RE = re.compile(r"^description:\s*(?:\S+|[>|])", re.MULTILINE)
+
+# The connector and Claude hook already avoid these prompts. Keep the backend
+# equally conservative because hosted MCP callers can invoke /route directly.
+ACK_PROMPTS = {
+    "ok",
+    "okay",
+    "yes",
+    "no",
+    "thanks",
+    "thank you",
+    "continue",
+    "go on",
+    "do it",
+    "sounds good",
+    "yes please",
+    "please do",
+    "go ahead",
+    "continue please",
+}
+META_PATTERNS = (
+    "what did you",
+    "what are you",
+    "what is the current state",
+    "current state",
+    "explain this",
+    "summarize",
+    "status",
+    "whats the",
+    "what's the",
+    "why is",
+    "why did",
+    "remember th",
+    "sounds good",
+    "that worked",
+    "looks good",
+    "can you explain",
+    "what you just",
+)
 
 
 def normalize_content(text: str) -> str:
@@ -120,6 +160,39 @@ def strip_frontmatter(text: str) -> str:
         return text
     parts = stripped.split("---", 2)
     return parts[2] if len(parts) == 3 else text
+
+
+def has_valid_skill_frontmatter(text: str) -> bool:
+    """True only for a Claude-style skill document with its core metadata."""
+    match = FRONTMATTER_BLOCK_RE.match(text or "")
+    if not match:
+        return False
+    block = match.group(1)
+    return bool(FRONTMATTER_NAME_RE.search(block) and FRONTMATTER_DESCRIPTION_RE.search(block))
+
+
+def is_non_task_prompt(prompt: str) -> bool:
+    """Cheap backend guard for acknowledgements and conversational meta text."""
+    text = " ".join((prompt or "").split())
+    lowered = text.lower()
+    if not text or text.startswith(("/", "!")) or len(text) > 3000:
+        return True
+    if lowered in ACK_PROMPTS:
+        return True
+    return len(text) < 180 and any(pattern in lowered for pattern in META_PATTERNS)
+
+
+def _contains_alias(text: str, alias: str) -> bool:
+    """Match platform aliases as words, not arbitrary substrings.
+
+    `aws` should not match `laws`, and `notion` should not match `notional`.
+    The `wp-` alias deliberately remains a prefix because WordPress plugins
+    commonly use names such as `wp-cli`.
+    """
+    escaped = re.escape(alias.lower())
+    if alias.endswith("-"):
+        return bool(re.search(rf"(?<![a-z0-9]){escaped}", text))
+    return bool(re.search(rf"(?<![a-z0-9]){escaped}(?![a-z0-9])", text))
 
 
 def _is_path_or_link_line(line: str) -> bool:
@@ -180,7 +253,7 @@ def infer_platforms(skill: dict[str, Any]) -> list[str]:
     ).lower()
     found = []
     for platform, aliases in PLATFORM_ALIASES.items():
-        if any(alias in blob for alias in aliases):
+        if any(_contains_alias(blob, alias) for alias in aliases):
             found.append(platform)
     return sorted(set(found))
 
@@ -189,7 +262,7 @@ def platform_mentions(prompt: str, platforms: list[str]) -> bool:
     text = prompt.lower()
     for platform in platforms:
         aliases = PLATFORM_ALIASES.get(platform, (platform,))
-        if any(alias in text for alias in aliases):
+        if any(_contains_alias(text, alias) for alias in aliases):
             return True
     return False
 
@@ -214,6 +287,7 @@ def evaluate_quality(skill: dict[str, Any], content: str = "") -> dict[str, Any]
     else:
         reasons.append("missing-description")
 
+    valid_frontmatter = has_valid_skill_frontmatter(content) if content else False
     if content:
         chash = content_hash(content)
         content_reasons = skill_content_rejection_reasons(content)
@@ -226,6 +300,10 @@ def evaluate_quality(skill: dict[str, Any], content: str = "") -> dict[str, Any]
             score += 10
         if "##" in content:
             score += 5
+        if not valid_frontmatter:
+            # Structured README files can be useful for discovery, but without
+            # skill metadata they must never be injected as active instructions.
+            reasons.append("missing-skill-frontmatter")
     else:
         chash = ""
         if source in TRUSTED_METADATA_SOURCES and name and len(description) >= 40:
@@ -244,10 +322,10 @@ def evaluate_quality(skill: dict[str, Any], content: str = "") -> dict[str, Any]
     if stars > 0:
         score += min(10, len(str(stars)) * 2)
 
-    if content and any(reason in reasons for reason in ("html-response", "path-or-link-only")):
+    if content and content_reasons:
         status = "rejected"
-    elif source == "github_skill_file" and content and skill_content_rejection_reasons(content):
-        status = "rejected"
+    elif content and not valid_frontmatter:
+        status = "metadata_only"
     elif not content and "missing-content" in reasons:
         status = "rejected"
     elif "metadata-only" in reasons:
@@ -295,7 +373,8 @@ def _platform_specific_penalty(prompt: str, candidate: dict[str, Any]) -> float:
         return 0.0
 
     name_tokens = [token for token in _tokens(str(candidate.get("name") or "")) if token not in NAME_STOPWORDS]
-    if any(token in prompt.lower() for token in name_tokens):
+    prompt_tokens = set(_tokens(prompt))
+    if any(token in prompt_tokens for token in name_tokens):
         return 0.0
     return 0.08
 
@@ -409,11 +488,16 @@ def tier_for_prompt(prompt: str, candidates: list[dict[str, Any]], recommend_gap
         return "hint"
     if int(top.get("quality_score") or 0) < 40:
         return "hint"
-
-    sim_values = [float(r.get("similarity") or 0.0) for r in ranked if r.get("similarity") is not None]
-    if not sim_values:
+    if int(top.get("risk_score") or 0) > 0:
         return "hint"
-    if sim_values and max(sim_values) < 0.87:
+
+    top_similarity = top.get("similarity")
+    if top_similarity is None:
+        return "hint"
+    try:
+        if float(top_similarity) < 0.87:
+            return "none"
+    except (TypeError, ValueError):
         return "none"
 
     if top.get("lexical_overlap", 0) < 2:

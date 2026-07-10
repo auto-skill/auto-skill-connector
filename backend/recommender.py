@@ -33,7 +33,15 @@ from pydantic import BaseModel
 import auth
 from embeddings import LibraryContent, build_embed_text, embed_text_hash, embed_texts
 import local_store as store
-from quality import CONFIG_VERSION, content_hash, rerank_candidates, tier_for_prompt
+from quality import (
+    CONFIG_VERSION,
+    NAME_STOPWORDS,
+    content_hash,
+    has_valid_skill_frontmatter,
+    is_non_task_prompt,
+    rerank_candidates,
+    tier_for_prompt,
+)
 
 # Storage moved local 2026-07-05 -- recommender.py always runs embedded inside
 # scraper.py's process (same app/port), which now serves local_api.py's
@@ -72,8 +80,12 @@ router = APIRouter()
 # --- Embedding backlog drain ---------------------------------------------
 
 async def embed_missing_skills(client: httpx.AsyncClient) -> int:
-    """Embed every skills row with no embedding yet. The is-null filter is the
-    checkpoint, so this is safe to interrupt and re-run."""
+    """Embed every skills row missing a current vector.
+
+    Ingest/rescan explicitly clears vectors when content changes or loses its
+    active quality status, so the ``is.null`` checkpoint is safe to interrupt
+    and resumes both brand-new and invalidated rows.
+    """
     library = LibraryContent()  # fresh each drain to pick up newly saved .md files
     total = 0
     while True:
@@ -195,12 +207,21 @@ MIN_SIMILARITY = float(os.getenv("MIN_SIMILARITY", "0.87"))
 
 
 def _passes_similarity_floor(results: list[dict]) -> bool:
-    """True when the results contain at least one confident vector hit. Fails
-    open when no result carries a similarity (pure-FTS fallback path)."""
-    sims = [r["similarity"] for r in results if r.get("similarity") is not None]
-    if not sims:
+    """Check the selected candidate, never an unrelated lower-ranked row.
+
+    FTS-only fallback has no cosine value and remains hint-only in
+    ``tier_for_prompt``. A low-similarity top candidate must not borrow a
+    high score from another result to become a full route.
+    """
+    if not results:
+        return False
+    similarity = results[0].get("similarity")
+    if similarity is None:
         return True
-    return max(sims) >= MIN_SIMILARITY
+    try:
+        return float(similarity) >= MIN_SIMILARITY
+    except (TypeError, ValueError):
+        return False
 
 
 def injection_tier(query_text: str, results: list[dict]) -> str:
@@ -533,20 +554,39 @@ def _private_skill_as_row(skill: dict) -> dict:
     }
 
 
+def _private_words(text: str) -> set[str]:
+    return {
+        token
+        for token in re.findall(r"[a-z0-9]+", text.lower())
+        if len(token) > 2 and token not in NAME_STOPWORDS
+    }
+
+
 def _best_private_skill_match(query_text: str, private_skills: list[dict]) -> dict | None:
-    """Simple name/word-overlap match against the caller's own private skills
-    (never another user's) -- these never go through the public quality gate
-    or embedding index, so this is deliberately a cheap heuristic, not a
-    ranked search."""
-    query_words = set(re.findall(r"[a-z0-9]+", query_text.lower()))
+    """Conservative relevance match for caller-owned private skills.
+
+    Ownership makes the content trusted, not automatically relevant. Require
+    either the complete skill name in the task, two meaningful name words, or
+    an exact match for a single distinctive name word.
+    """
+    query_words = _private_words(query_text)
     if not query_words:
         return None
-    best, best_overlap = None, 0
+    normalized_query = " ".join(re.findall(r"[a-z0-9]+", query_text.lower()))
+    best, best_score = None, 0
     for skill in private_skills:
-        name_words = set(re.findall(r"[a-z0-9]+", skill["name"].lower()))
+        name_words = _private_words(skill["name"])
+        normalized_name = " ".join(re.findall(r"[a-z0-9]+", skill["name"].lower()))
+        if not name_words or not normalized_name:
+            continue
         overlap = len(query_words & name_words)
-        if overlap > best_overlap:
-            best, best_overlap = skill, overlap
+        exact_phrase = normalized_name in normalized_query
+        distinctive_single_word = len(name_words) == 1 and len(next(iter(name_words))) >= 6 and overlap == 1
+        if not (exact_phrase or overlap >= 2 or distinctive_single_word):
+            continue
+        score = 100 + overlap if exact_phrase else overlap
+        if score > best_score:
+            best, best_score = skill, score
     return best
 
 
@@ -612,6 +652,36 @@ async def _record_route_event(event: dict) -> None:
         print(f"[recommender] route event logging failed: {exc}")
 
 
+def _none_route_payload(reason: str, start: float, route_id: str | None = None) -> dict:
+    metrics = {
+        "latency_ms": int((time.monotonic() - start) * 1000),
+        "skill_find_ms": 0,
+        "retrieval_ms": 0,
+        "rerank_ms": 0,
+        "content_ms": 0,
+        "result_count": 0,
+        "input_tokens": 0,
+        "hint_tokens": 0,
+        "candidate_tokens": 0,
+        "content_tokens": 0,
+        "injected_tokens": 0,
+        "response_tokens": 0,
+        "latency_warn_ms": ROUTE_LATENCY_WARN_MS,
+        "response_token_warn": ROUTE_RESPONSE_TOKEN_WARN,
+    }
+    return {
+        "tier": "none",
+        "skill": None,
+        "candidates": [],
+        "content": None,
+        "content_url": None,
+        "route_id": route_id,
+        "score_debug": {"tier": "none", "reason": reason, "metrics": metrics},
+        "config_version": CONFIG_VERSION,
+        "ttl": ROUTE_TTL_SECONDS,
+    }
+
+
 def _library_content_by_hash(target_hash: str) -> str:
     if not target_hash or not CONTENT_HASH_RE.match(target_hash):
         return ""
@@ -637,32 +707,26 @@ async def route(body: RouteRequest, authorization: str | None = Header(None)):
     user = auth.user_from_authorization_header(authorization)
     query = (body.task or body.prompt or "").strip()
     if not query:
-        elapsed_ms = int((time.monotonic() - start) * 1000)
-        metrics = {
-            "latency_ms": elapsed_ms,
-            "skill_find_ms": 0,
-            "retrieval_ms": 0,
-            "rerank_ms": 0,
-            "content_ms": 0,
-            "result_count": 0,
-            "input_tokens": 0,
-            "hint_tokens": 0,
-            "candidate_tokens": 0,
-            "content_tokens": 0,
-            "injected_tokens": 0,
-            "response_tokens": 0,
-            "latency_warn_ms": ROUTE_LATENCY_WARN_MS,
-            "response_token_warn": ROUTE_RESPONSE_TOKEN_WARN,
-        }
-        return {
-            "tier": "none",
-            "skill": None,
-            "content": None,
-            "content_url": None,
-            "score_debug": {"tier": "none", "reason": "empty-query", "metrics": metrics},
-            "config_version": CONFIG_VERSION,
-            "ttl": ROUTE_TTL_SECONDS,
-        }
+        return _none_route_payload("empty-query", start)
+
+    if is_non_task_prompt(query):
+        route_id = str(uuid.uuid4())
+        payload = _none_route_payload("non-task-prompt", start, route_id)
+        await _record_route_event(
+            {
+                "client": body.client[:80],
+                "client_version": body.client_version[:80],
+                "id": route_id,
+                "user_id": user["id"] if user else None,
+                "query_hash": _query_hash(query),
+                "query_chars": len(query),
+                "prompt_text": query,
+                "tier": "none",
+                "config_version": CONFIG_VERSION,
+                "warnings": [],
+            }
+        )
+        return payload
 
     limit = max(2, min(int(body.limit or 8), 20))
     retrieval_start = time.monotonic()
@@ -688,10 +752,15 @@ async def route(body: RouteRequest, authorization: str | None = Header(None)):
     private_match = _best_private_skill_match(query, private_match) if private_match else None
 
     if private_match:
-        tier = "full"
         skill = _public_skill(_private_skill_as_row(private_match))
-        content = private_match["content"]
-        skill["content_hash"] = content_hash(content)
+        private_content = private_match["content"]
+        skill["content_hash"] = content_hash(private_content)
+        if len(private_content) > MAX_INLINE_CONTENT_CHARS:
+            tier = "hint"
+            warnings.append("Matched private skill exceeds inline size cap; downgraded to hint.")
+        else:
+            tier = "full"
+            content = private_content
     elif tier == "full" and skill:
         content_start = time.monotonic()
         library = LibraryContent()
@@ -700,6 +769,12 @@ async def route(body: RouteRequest, authorization: str | None = Header(None)):
         if not text:
             tier = "hint"
             warnings.append("Matched skill has no locally stored SKILL.md content; downgraded to hint.")
+        elif not has_valid_skill_frontmatter(text):
+            # Backfill is deliberately asynchronous on the large legacy
+            # corpus. Keep the serving path safe even before it has reached
+            # every old row.
+            tier = "hint"
+            warnings.append("Matched content is not a valid SKILL.md document; downgraded to hint.")
         elif len(text) > MAX_INLINE_CONTENT_CHARS:
             tier = "hint"
             chash = skill.get("content_hash") or content_hash(text)
@@ -844,6 +919,17 @@ async def find_semantic(q: str, limit: int = 8, gate: bool = True, authorization
     gate=false for debugging/eval of raw rankings regardless of tier.
     An authenticated caller's own private skills (never another user's) are
     matched by name and, when relevant, prepended to `results`."""
+    if is_non_task_prompt(q):
+        return {
+            "query": q,
+            "results": [],
+            "tier": "none",
+            "gated": bool(gate),
+            "message": "This prompt does not need a reusable skill route.",
+            "score_debug": {"tier": "none", "reason": "non-task-prompt"},
+            "config_version": CONFIG_VERSION,
+        }
+
     async with httpx.AsyncClient() as client:
         results = await retrieve_skills(client, q, limit)
     tier = injection_tier(q, results)
@@ -893,7 +979,7 @@ async def route_feedback(body: RouteFeedbackRequest):
     enum-style outcome, never raw prompts.
     """
     outcome = (body.outcome or "").strip().lower()
-    allowed = {"used", "skipped", "installed", "failed", "dismissed"}
+    allowed = {"used", "skipped", "installed", "failed", "dismissed", "shown", "injected"}
     if outcome not in allowed:
         return Response(status_code=400)
     route_id = (body.route_id or "").strip()

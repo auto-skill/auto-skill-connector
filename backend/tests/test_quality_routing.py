@@ -1,6 +1,6 @@
 import unittest
 
-from quality import PLATFORM_ALIASES, evaluate_quality, rerank_candidates, tier_for_prompt
+from quality import PLATFORM_ALIASES, evaluate_quality, infer_platforms, is_non_task_prompt, rerank_candidates, tier_for_prompt
 
 
 VALID_CONTENT = """---
@@ -63,6 +63,44 @@ class QualityGateTests(unittest.TestCase):
 
         self.assertEqual(result["quality_status"], "metadata_only")
         self.assertIn("slack", result["platforms"])
+
+    def test_structured_readme_is_metadata_only_without_skill_frontmatter(self):
+        readme = """# Spreadsheet helper
+
+## Workflow
+
+Use this repository to create spreadsheet reports. Inspect the input data,
+build formulas, verify the calculations, and create charts for the reader.
+Document assumptions and validate representative cells before shipping.
+Check workbook formats, preserve identifiers with leading zeroes, and keep a
+short audit note of the formulas used for every generated summary sheet.
+Review chart ranges, headers, and totals before returning the deliverable.
+"""
+        result = evaluate_quality(
+            {
+                "name": "spreadsheet-helper",
+                "description": "A repository README about building spreadsheet reports with formulas and charts.",
+                "source": "github_repo",
+            },
+            readme,
+        )
+
+        self.assertEqual(result["quality_status"], "metadata_only")
+        self.assertIn("missing-skill-frontmatter", result["quality_reasons"])
+
+    def test_platform_aliases_require_word_boundaries(self):
+        for name, platform in (
+            ("laws-reviewer", "aws"),
+            ("notional-planning", "notion"),
+            ("liquidity-analysis", "shopify"),
+        ):
+            with self.subTest(name=name):
+                platforms = infer_platforms({"name": name, "description": "Analyze project work.", "tags": []})
+                self.assertNotIn(platform, platforms)
+
+    def test_non_task_guard_keeps_short_real_tasks(self):
+        self.assertFalse(is_non_task_prompt("fix css"))
+        self.assertTrue(is_non_task_prompt("thanks that worked great"))
 
 
 class RoutingTierTests(unittest.TestCase):
@@ -174,6 +212,42 @@ class RoutingTierTests(unittest.TestCase):
         }
 
         self.assertEqual(tier_for_prompt(prompt, [candidate]), "hint")
+
+    def test_selected_candidate_must_own_the_similarity_score(self):
+        prompt = "create an excel spreadsheet report with formulas"
+        lexical_but_no_vector = {
+            "name": "excel-spreadsheet-report-formulas",
+            "description": "Create an Excel spreadsheet report with formulas.",
+            "quality_status": "active",
+            "quality_score": 90,
+            "rank": 1.0,
+        }
+        lower_vector_hit = {
+            "name": "generic-workbook-helper",
+            "description": "A helper for workbooks.",
+            "quality_status": "active",
+            "quality_score": 90,
+            "rank": 0.1,
+            "similarity": 0.96,
+        }
+
+        ranked = rerank_candidates(prompt, [lexical_but_no_vector, lower_vector_hit])
+
+        self.assertEqual(ranked[0]["name"], "excel-spreadsheet-report-formulas")
+        self.assertEqual(tier_for_prompt(prompt, [lexical_but_no_vector, lower_vector_hit]), "hint")
+
+    def test_risk_flagged_skill_never_full_routes(self):
+        candidate = {
+            "name": "spreadsheet-reporter",
+            "description": "Build spreadsheet reports with formulas and charts.",
+            "quality_status": "active",
+            "quality_score": 90,
+            "risk_score": 1,
+            "rank": 1.0,
+            "similarity": 0.95,
+        }
+
+        self.assertEqual(tier_for_prompt("create an excel spreadsheet report with formulas", [candidate]), "hint")
 
 
 if __name__ == "__main__":

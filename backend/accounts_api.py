@@ -26,7 +26,7 @@ from urllib.parse import parse_qsl, quote, urlencode, urlparse, urlsplit, urlunp
 
 from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 import auth
 import local_store as store
@@ -360,9 +360,11 @@ async def post_install(body: InstallRequest, authorization: str | None = Header(
 
 
 class PrivateSkillRequest(BaseModel):
-    name: str
-    description: str | None = None
-    content: str
+    # Private skills are caller-owned, but still flow through a hosted service.
+    # Keep storage and route payloads bounded before they ever reach SQLite.
+    name: str = Field(min_length=2, max_length=120)
+    description: str | None = Field(default=None, max_length=1_000)
+    content: str = Field(min_length=1, max_length=48_000)
 
 
 @router.get("/private-skills")

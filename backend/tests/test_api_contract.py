@@ -72,6 +72,11 @@ class ApiContractTests(unittest.TestCase):
         scraper.store.DB_PATH = self.db_path
         local_store.init_db()
         local_store.invalidate_vector_cache()
+        self.embedding_status = patch(
+            "scraper.embedding_model_status",
+            return_value={"ready": True, "error": None},
+        ).start()
+        self.addCleanup(patch.stopall)
         self.client = TestClient(scraper.app)
 
     def tearDown(self) -> None:
@@ -150,6 +155,16 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(body["vector_index"]["vector_dim"], 384)
         self.assertEqual(body["scraper"]["running_recent"], 0)
         self.assertEqual(body["scraper"]["running_stale"], 0)
+
+    def test_readyz_requires_embedding_runtime(self) -> None:
+        self._insert_skill()
+        self.embedding_status.return_value = {"ready": False, "error": "model unavailable"}
+
+        response = self.client.get("/readyz")
+
+        self.assertEqual(response.status_code, 503)
+        self.assertFalse(response.json()["ok"])
+        self.assertEqual(response.json()["embedding_runtime"]["error"], "model unavailable")
 
     def test_readyz_includes_scraper_bookkeeping(self) -> None:
         self._insert_skill()
@@ -490,6 +505,48 @@ class ApiContractTests(unittest.TestCase):
         self.assertGreaterEqual(event["skill_find_ms"], 0)
         self.assertGreaterEqual(event["injected_tokens"], event["content_tokens"])
         self.assertGreater(event["response_tokens"], 0)
+
+    def test_route_downgrades_malformed_cached_content(self) -> None:
+        candidate = {
+            "id": "skill-1",
+            "name": "spreadsheet-reporter",
+            "description": "Build spreadsheet reports with formulas and charts.",
+            "source": "github_skill_file",
+            "url": "https://example.com/spreadsheet",
+            "risk_score": 0,
+            "quality_status": "active",
+            "quality_score": 90,
+            "rank": 1.0,
+            "similarity": 0.95,
+        }
+
+        async def fake_retrieve(client, query, limit):
+            del client, query, limit
+            return [candidate]
+
+        class FakeLibrary:
+            def get(self, url: str) -> str:
+                del url
+                return "# Repository README\n\nUse this repository to build spreadsheet reports."
+
+        with patch("recommender.retrieve_skills", fake_retrieve), patch("recommender.LibraryContent", FakeLibrary):
+            response = self.client.post("/route", json={"task": "create an excel report with formulas"})
+
+        body = response.json()
+        self.assertEqual(body["tier"], "hint")
+        self.assertIsNone(body["content"])
+        self.assertIn("not a valid SKILL.md", body["score_debug"]["warnings"][0])
+
+    def test_route_skips_non_task_without_retrieval(self) -> None:
+        async def should_not_retrieve(*args, **kwargs):
+            raise AssertionError("non-task prompt should not search")
+
+        with patch("recommender.retrieve_skills", should_not_retrieve):
+            response = self.client.post("/route", json={"task": "thanks that worked great"})
+
+        body = response.json()
+        self.assertEqual(body["tier"], "none")
+        self.assertEqual(body["score_debug"]["reason"], "non-task-prompt")
 
     def test_route_caps_platform_trap_to_hint(self) -> None:
         landingi = {

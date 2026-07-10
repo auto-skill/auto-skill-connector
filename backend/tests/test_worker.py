@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import unittest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import scraper
 import worker
@@ -31,9 +31,11 @@ class WorkerTests(unittest.IsolatedAsyncioTestCase):
 
 class ScraperRunStatusTests(unittest.IsolatedAsyncioTestCase):
     async def test_run_scrape_returns_false_after_marking_run_error(self) -> None:
+        response = Mock()
+        response.raise_for_status = Mock()
         with (
             patch.object(scraper.CrawlState, "load", side_effect=RuntimeError("boom")),
-            patch.object(scraper, "supabase_patch", new=AsyncMock()) as patch_run,
+            patch.object(scraper, "supabase_patch", new=AsyncMock(return_value=response)) as patch_run,
         ):
             ok = await scraper.run_scrape("run-1")
 

@@ -56,7 +56,7 @@ def main() -> None:
         offset = 0
         while True:
             rows = conn.execute(
-                "SELECT id,url,name,source,description,tags,raw,discovered_at,scanned_at "
+                "SELECT id,url,name,source,description,tags,raw,discovered_at,scanned_at,content_hash "
                 "FROM skills ORDER BY id LIMIT ? OFFSET ?",
                 (PAGE_SIZE, offset),
             ).fetchall()
@@ -91,6 +91,13 @@ def main() -> None:
                     "quality_score": quality.get("quality_score") or 0,
                     "platforms": quality.get("platforms") or [],
                     "category": quality.get("category"),
+                    # Embeddings include saved content. Drop vectors for rows
+                    # that are now non-routable or whose source content changed
+                    # so the normal worker can rebuild only the valid corpus.
+                    "clear_embedding": (
+                        quality.get("quality_status") != "active"
+                        or (skill.get("content_hash") or "") != (chash or "")
+                    ),
                 })
 
             offset += PAGE_SIZE
@@ -100,7 +107,7 @@ def main() -> None:
             print(
                 f"quality-backfill: {missing_content_github_skill_file} github_skill_file rows have no "
                 "locally saved content (LibraryContent is local-file-only, no network re-fetch here -- "
-                "these need a scraper.py re-scan to recover a content_hash).",
+                "those rows are quarantined until scraper.py can re-scan and recover valid SKILL.md content).",
                 flush=True,
             )
 
@@ -122,27 +129,46 @@ def main() -> None:
                 reasons.add("duplicate-content")
                 record["quality_reasons"] = sorted(reasons)
                 record["canonical_id"] = canonical["id"]
+                record["clear_embedding"] = True
                 duplicates += 1
 
-        conn.executemany(
+        cleared_embeddings = sum(1 for record in records if record["clear_embedding"])
+        update_sql = (
             "UPDATE skills SET content_hash=?, canonical_id=?, quality_status=?, "
-            "quality_reasons=?, quality_score=?, platforms=?, category=? WHERE id=?",
-            [
-                (
-                    record["content_hash"] or None,
-                    record["canonical_id"],
-                    record["quality_status"],
-                    json.dumps(record["quality_reasons"]),
-                    record["quality_score"],
-                    json.dumps(record["platforms"]),
-                    record["category"],
-                    record["id"],
-                )
-                for record in records
-            ],
+            "quality_reasons=?, quality_score=?, platforms=?, category=?, "
+            "embedding=CASE WHEN ? THEN NULL ELSE embedding END, "
+            "embedding_text_hash=CASE WHEN ? THEN NULL ELSE embedding_text_hash END, "
+            "embedded_at=CASE WHEN ? THEN NULL ELSE embedded_at END WHERE id=?"
         )
-        conn.commit()
-        print(f"quality-backfill: {len(records)} rows, {duplicates} duplicates", flush=True)
+        # Commit in batches so a restart does not leave a multi-gigabyte WAL
+        # transaction open for the whole legacy corpus.
+        for start in range(0, len(records), PAGE_SIZE):
+            batch = records[start:start + PAGE_SIZE]
+            conn.executemany(
+                update_sql,
+                [
+                    (
+                        record["content_hash"] or None,
+                        record["canonical_id"],
+                        record["quality_status"],
+                        json.dumps(record["quality_reasons"]),
+                        record["quality_score"],
+                        json.dumps(record["platforms"]),
+                        record["category"],
+                        int(record["clear_embedding"]),
+                        int(record["clear_embedding"]),
+                        int(record["clear_embedding"]),
+                        record["id"],
+                    )
+                    for record in batch
+                ],
+            )
+            conn.commit()
+        print(
+            f"quality-backfill: {len(records)} rows, {duplicates} duplicates, "
+            f"{cleared_embeddings} embeddings invalidated",
+            flush=True,
+        )
 
         if index_dirty:
             fd, tmp = tempfile.mkstemp(dir=str(index_path.parent), suffix=".tmp")

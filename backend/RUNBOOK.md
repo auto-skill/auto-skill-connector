@@ -16,9 +16,9 @@
    - `GET /healthz` returns `{"ok": true}`.
    - `GET https://mcp.yourdomain.com/healthz` returns `{"ok": true}` after
      the connector HTTP supervisor and Cloudflare tunnel are running.
-   - `GET /readyz` returns `ok=true` with nonzero total, active, and embedded
-     row counts, plus `scraper.running_stale=0` and at most one fresh running
-     scrape.
+    - `GET /readyz` returns `ok=true` with nonzero total, active, and embedded
+      row counts, a ready `embedding_runtime`, plus `scraper.running_stale=0`
+      and at most one fresh running scrape.
    - `POST /route` for `create an excel spreadsheet report with formulas and
      charts` returns `full` or `hint`.
    - `POST /route` for `build a landing page for an AI automation agency` does
@@ -347,6 +347,24 @@ The compose file uses bind mounts instead of opaque Docker volumes:
 Seed a VPS by copying the current DB and library into those paths before the
 first `docker compose up`.
 
+After deploying the quality-gate image to a legacy corpus, run the one-time
+backfill during a short maintenance window. It quarantines non-SKILL.md content
+and clears only vectors that no longer match eligible content. The worker
+rebuilds those vectors after restart:
+
+```bash
+cd /opt/auto-skill-connector
+docker compose -f backend/deploy/docker-compose.yml stop worker mcp api
+docker compose -f backend/deploy/docker-compose.yml run --rm --no-deps api python backfill_quality.py
+docker compose -f backend/deploy/docker-compose.yml up -d api mcp
+curl -fsS http://127.0.0.1:8000/readyz
+docker compose -f backend/deploy/docker-compose.yml up -d worker
+```
+
+Do not run `VACUUM` as part of a normal deploy. Schedule it only after a
+verified R2 backup and sufficient free disk space, because it temporarily needs
+roughly another database-sized amount of local storage.
+
 To seed from loose local artifacts and validate that the result is non-empty
 and embedded:
 
@@ -503,8 +521,9 @@ directory, verify them manually before using the older explicit path form:
 
 - `/healthz` is for uptime checks: process responding.
 - `/readyz` is for serving readiness: DB reachable with at least one total,
-  active, and embedded skill row. It also includes `scraper.running_recent`,
-  `scraper.running_stale`, `scraper.last_success_at`, and recent run rows.
+  active, and embedded skill row plus a loadable local embedding model. It also
+  includes `scraper.running_recent`, `scraper.running_stale`,
+  `scraper.last_success_at`, and recent run rows.
 
 Use `/healthz` for container health checks and `/readyz` for deployment
 promotion checks. Treat `scraper.running_stale > 0` or `running_recent > 1` as
@@ -529,6 +548,11 @@ trusting the run counts.
 SQLite also enforces a single `status='running'` scrape row, so a duplicate
 worker startup should fail fast instead of creating a second active scrape.
 
+Without `GITHUB_TOKEN`, the worker does not attempt code search, topic
+expansion, or deep sweeps. It performs a bounded incremental repository crawl
+that stays below anonymous API limits. Add a token for full discovery coverage;
+do not compensate by raising the anonymous caps.
+
 After stopping the extra process, clean up stale bookkeeping rows:
 
 ```powershell
@@ -544,7 +568,9 @@ python cleanup_scrape_runs.py --apply
 - Existing legacy rows need `backfill_quality.py` before quality metrics are
   trustworthy.
 - The brute-force NumPy vector cache remains. Quality backfill should shrink
-  the active set first. Use `/route-metrics`, `eval_search.py`, and
+  the active set first. The cache is invalidated on writes and held until an
+  explicit invalidation by default, so `/readyz` no longer rebuilds it every
+  minute. Use `/route-metrics`, `eval_search.py`, and
   `launch_check.py` latency budgets before migrating to sqlite-vec, libSQL, or
   a hosted vector service.
 - `skills_library/` should eventually move into SQLite content rows so one

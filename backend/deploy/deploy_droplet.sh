@@ -71,9 +71,48 @@ rollback() {
   $SSH "cd ${REMOTE_DIR} && for img in deploy-api deploy-mcp deploy-worker; do docker tag \$img:previous \$img:latest 2>/dev/null || true; done && docker compose -f backend/deploy/docker-compose.yml up -d --force-recreate api mcp worker"
 }
 
-echo "==> Rebuilding containers"
-if ! $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml up -d --build api mcp worker"; then
-  echo "FAILED: container rebuild/recreate failed" >&2
+echo "==> Building replacement images before touching live services"
+if ! $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml build api mcp worker"; then
+  echo "FAILED: image build failed" >&2
+  rollback
+  exit 1
+fi
+
+# A worker can be cancelled mid-scrape by Docker recreation. Stop it first,
+# mark its single SQLite lease stale through the still-running local API, then
+# start a fresh worker only after the replacement API has passed readiness.
+echo "==> Draining worker scrape lease"
+if ! $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml stop worker && curl -fsS -X PATCH 'http://127.0.0.1:8000/rest/v1/scrape_runs?status=eq.running' -H 'Content-Type: application/json' --data '{\"status\":\"stale\",\"error\":\"Marked stale during deploy before worker restart.\"}' -o /dev/null"; then
+  echo "FAILED: could not drain the worker lease" >&2
+  rollback
+  exit 1
+fi
+
+echo "==> Recreating API and MCP"
+if ! $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml up -d --force-recreate api mcp"; then
+  echo "FAILED: API/MCP recreate failed" >&2
+  rollback
+  exit 1
+fi
+
+echo "==> Waiting for local semantic readiness"
+ready=0
+for attempt in $(seq 1 40); do
+  if $SSH "curl -fsS --max-time 10 http://127.0.0.1:8000/readyz -o /dev/null"; then
+    ready=1
+    break
+  fi
+  sleep 3
+done
+if [ "$ready" -ne 1 ]; then
+  echo "FAILED: local /readyz did not pass after API replacement" >&2
+  rollback
+  exit 1
+fi
+
+echo "==> Starting worker after readiness"
+if ! $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml up -d --force-recreate worker"; then
+  echo "FAILED: worker recreate failed" >&2
   rollback
   exit 1
 fi
@@ -85,7 +124,7 @@ fi
 
 echo "==> Smoke-checking the public API"
 smoke_failed=0
-for path in /healthz /skills-catalog; do
+for path in /healthz /readyz /skills-catalog; do
   url="https://skills.autoskill.dev${path}"
   status=$(curl -s -o /dev/null -w "%{http_code}" "$url" --max-time 15)
   if [ "$path" = "/skills-catalog" ]; then
