@@ -1500,17 +1500,27 @@ def list_route_events_for_user(user_id: str, limit: int = 100) -> list[dict]:
         conn.close()
 
 
-def list_skills_catalog(q: str = "", limit: int = 50, offset: int = 0) -> dict:
+def list_skills_catalog(q: str = "", limit: int = 50, offset: int = 0, sort: str = "popular") -> dict:
     """Paginated public-safe slice of the skills table for the site's
     account-only browse page -- never raw/embedding columns, those stay
-    internal. `q` is a case-insensitive substring match on name/description."""
+    internal. `q` is a case-insensitive substring match on name/description.
+    Only 'active' skills are shown -- rejected/duplicate rows have no place
+    in a browse experience. `sort` is 'popular' (GitHub stars, when known)
+    or 'recent' (discovery order)."""
     limit = max(1, min(int(limit), 200))
     offset = max(0, int(offset))
-    where, params = "", []
+    clauses = ["quality_status = 'active'"]
+    params: list = []
     if q:
-        where = "WHERE name LIKE ? COLLATE NOCASE OR description LIKE ? COLLATE NOCASE"
+        clauses.append("(name LIKE ? COLLATE NOCASE OR description LIKE ? COLLATE NOCASE)")
         needle = f"%{q}%"
-        params = [needle, needle]
+        params.extend([needle, needle])
+    where = "WHERE " + " AND ".join(clauses)
+    order_by = (
+        "COALESCE(json_extract(raw, '$.stars'), 0) DESC, discovered_at DESC, id"
+        if sort == "popular"
+        else "discovered_at DESC, id"
+    )
     conn = get_conn()
     try:
         total = conn.execute(f"SELECT COUNT(*) FROM skills {where}", params).fetchone()[0]
@@ -1518,7 +1528,7 @@ def list_skills_catalog(q: str = "", limit: int = 50, offset: int = 0) -> dict:
             f"""
             SELECT id, name, description, source, url, tags, discovered_at, risk_score
             FROM skills {where}
-            ORDER BY discovered_at DESC, id
+            ORDER BY {order_by}
             LIMIT ? OFFSET ?
             """,
             [*params, limit, offset],

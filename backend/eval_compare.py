@@ -143,6 +143,35 @@ def _metric_rows(before: dict[str, Any], after: dict[str, Any]) -> list[dict[str
             },
         ]
     )
+
+    before_bench = before.get("task_bench") or {}
+    after_bench = after.get("task_bench") or {}
+    if before_bench.get("with_skill") and after_bench.get("with_skill"):
+        rows.extend(
+            [
+                {
+                    "name": "task_bench.baseline_pass_rate",
+                    "before": float((before_bench.get("baseline") or {}).get("pass_rate") or 0.0),
+                    "after": float((after_bench.get("baseline") or {}).get("pass_rate") or 0.0),
+                    "higher_is_better": True,
+                    "kind": "rate",
+                },
+                {
+                    "name": "task_bench.with_skill_pass_rate",
+                    "before": float((before_bench.get("with_skill") or {}).get("pass_rate") or 0.0),
+                    "after": float((after_bench.get("with_skill") or {}).get("pass_rate") or 0.0),
+                    "higher_is_better": True,
+                    "kind": "rate",
+                },
+                {
+                    "name": "task_bench.lift",
+                    "before": float(before_bench.get("lift") or 0.0),
+                    "after": float(after_bench.get("lift") or 0.0),
+                    "higher_is_better": True,
+                    "kind": "rate",
+                },
+            ]
+        )
     return rows
 
 
