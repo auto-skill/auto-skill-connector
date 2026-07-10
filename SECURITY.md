@@ -14,6 +14,16 @@ The optional Claude Code prompt hook sends a truncated copy of each eligible
 prompt to the search backend. Do not enable the hook for conversations that may
 contain secrets, private customer data, credentials, or sensitive source code.
 
+**The backend retains the full raw prompt text of every message it evaluates
+for routing** -- not just a hash or truncated snippet -- regardless of
+whether you're logged in. If you are logged in (`auto-skill login`), that
+retained text is additionally tied to your account so you can review exactly
+what was (or wasn't) routed and why via your account's run history;
+logged-out calls retain the same raw text without a user attached to it.
+This matches what the site's trust section discloses; if you don't want
+prompt text retained server-side at all, self-host your own backend (see
+below) rather than pointing at the hosted one.
+
 To disable self-hosted search entirely, set:
 
 ```bash
