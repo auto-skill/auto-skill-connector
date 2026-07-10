@@ -142,6 +142,23 @@ class RecomputeFeedbackScoresTests(unittest.TestCase):
         self.assertEqual(len(results), 1)
         self.assertIn(results[0]["id"], {"spreadsheet-a", "spreadsheet-b"})
 
+    def test_warm_vector_index_builds_a_cache_for_active_vectors(self) -> None:
+        conn = local_store.get_conn()
+        try:
+            _insert_skill(conn, "vector-ready", "hash-vector-ready")
+            conn.execute(
+                "UPDATE skills SET embedding=? WHERE id='vector-ready'",
+                (local_store.pack_embedding([1.0] + [0.0] * 383),),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        stats = local_store.warm_vector_index()
+
+        self.assertTrue(stats["cache_ready"])
+        self.assertEqual(stats["cache_vectors"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

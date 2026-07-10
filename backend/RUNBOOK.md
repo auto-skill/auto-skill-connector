@@ -354,11 +354,11 @@ rebuilds those vectors after restart:
 
 ```bash
 cd /opt/auto-skill-connector
-docker compose -f backend/deploy/docker-compose.yml stop worker mcp api
+docker compose -f backend/deploy/docker-compose.yml stop worker mcp api litestream
 docker compose -f backend/deploy/docker-compose.yml run --rm --no-deps api python backfill_quality.py
 docker compose -f backend/deploy/docker-compose.yml up -d api mcp
 curl -fsS http://127.0.0.1:8000/readyz
-docker compose -f backend/deploy/docker-compose.yml up -d worker
+docker compose -f backend/deploy/docker-compose.yml up -d litestream worker
 ```
 
 Do not run `VACUUM` as part of a normal deploy. Schedule it only after a

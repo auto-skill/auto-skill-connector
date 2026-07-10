@@ -924,6 +924,21 @@ def readiness_stats() -> dict:
     }
 
 
+def warm_vector_index() -> dict:
+    """Build the in-process matrix ahead of a user-facing route request.
+
+    This is intentionally separate from ``vector_index_stats``: stats stay
+    metadata-only, while readiness and the write-side debouncer can opt into
+    the one-time matrix construction after a restart or invalidation.
+    """
+    conn = get_conn()
+    try:
+        _embedding_matrix(conn)
+    finally:
+        conn.close()
+    return vector_index_stats()
+
+
 def _embedding_matrix(conn: sqlite3.Connection) -> tuple[list[str], np.ndarray]:
     now = time.monotonic()
     with _emb_cache_lock:

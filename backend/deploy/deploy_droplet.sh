@@ -68,7 +68,7 @@ $SSH "for img in deploy-api deploy-mcp deploy-worker; do docker tag \$img:latest
 
 rollback() {
   echo "==> Rolling back to the previous images" >&2
-  $SSH "cd ${REMOTE_DIR} && for img in deploy-api deploy-mcp deploy-worker; do docker tag \$img:previous \$img:latest 2>/dev/null || true; done && docker compose -f backend/deploy/docker-compose.yml rm -sf api mcp worker && docker compose -f backend/deploy/docker-compose.yml up -d api mcp worker"
+  $SSH "cd ${REMOTE_DIR} && for img in deploy-api deploy-mcp deploy-worker; do docker tag \$img:previous \$img:latest 2>/dev/null || true; done && docker compose -f backend/deploy/docker-compose.yml rm -sf api mcp worker && docker compose -f backend/deploy/docker-compose.yml up -d --no-build api mcp worker"
 }
 
 echo "==> Building replacement images before touching live services"
@@ -88,9 +88,9 @@ if ! $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.y
   exit 1
 fi
 
-echo "==> Recreating API and MCP"
-if ! $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml rm -sf api mcp && docker compose -f backend/deploy/docker-compose.yml up -d api mcp"; then
-  echo "FAILED: API/MCP recreate failed" >&2
+echo "==> Recreating API"
+if ! $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml rm -sf api mcp && docker compose -f backend/deploy/docker-compose.yml up -d --no-build api"; then
+  echo "FAILED: API recreate failed" >&2
   rollback
   exit 1
 fi
@@ -110,8 +110,15 @@ if [ "$ready" -ne 1 ]; then
   exit 1
 fi
 
-echo "==> Starting worker after readiness"
-if ! $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml rm -sf worker && docker compose -f backend/deploy/docker-compose.yml up -d worker"; then
+echo "==> Starting MCP after API readiness"
+if ! $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml up -d --no-build mcp"; then
+  echo "FAILED: MCP recreate failed" >&2
+  rollback
+  exit 1
+fi
+
+echo "==> Starting worker after API/MCP readiness"
+if ! $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml rm -sf worker && docker compose -f backend/deploy/docker-compose.yml up -d --no-build worker"; then
   echo "FAILED: worker recreate failed" >&2
   rollback
   exit 1

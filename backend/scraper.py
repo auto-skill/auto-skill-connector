@@ -258,6 +258,8 @@ async def healthz():
 async def readyz():
     def _probe():
         counts = store.readiness_stats()
+        if counts["vector_index"]["valid_vectors"] and not counts["vector_index"]["cache_ready"]:
+            counts["vector_index"] = store.warm_vector_index()
         counts["scraper"] = store.scrape_run_summary(STALE_SCRAPE_RUN_SECONDS)
         # A populated SQLite file is not sufficient when the embedder cannot
         # load. This intentionally validates the cached ONNX model/session.
@@ -273,6 +275,7 @@ async def readyz():
         counts["total_skills"] > 0
         and counts["active_skills"] > 0
         and counts["vector_index"]["valid_vectors"] > 0
+        and bool(counts["vector_index"]["cache_ready"])
         and bool(counts["embedding_runtime"]["ready"])
     )
     status_code = 200 if ready else 503
