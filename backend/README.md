@@ -1,10 +1,15 @@
-# auto-skill backend
+# Auto-Skill Backend
 
-FastAPI scraper, local SQLite store, embedding search, and deterministic route
-API for Auto-Skill.
+FastAPI, SQLite, embedding search, deterministic routing, content provenance,
+and deployment safety for Auto-Skill.
 
-This is alpha infrastructure. The goal is a reliable quality-gated router, not
-a launch-grade distributed system.
+The backend supports a trusted, compatible Agent Skill lifecycle across Claude
+Code, Codex, and Cursor. Ingestion breadth is an input, not the product moat.
+The public contract is quality-gated discovery and routing with verifiable
+content integrity, privacy-safe events, and predictable failure behavior.
+
+This remains deliberately small single-host infrastructure. A database or
+hosting rewrite is not a launch requirement.
 
 ## Run Locally
 
@@ -13,61 +18,80 @@ python -m pip install -r requirements.txt
 python scraper.py
 ```
 
-Useful endpoints:
+Launch-facing endpoints:
 
-- `GET /healthz` - process is up.
-- `GET /readyz` - SQLite is reachable with active embedded rows and scraper
-  bookkeeping summary.
-- `GET /find-semantic?q=...` - ranked search with `tier`, `score_debug`, and
-  `config_version`.
-- `POST /route {"task":"..."}` - backend-owned full/hint/none route contract.
-- `GET /content/{content_hash}` - immutable cached SKILL.md content when known.
-- `GET /route-metrics` - local-only route latency/token analytics summary.
-- `POST /route-feedback` - local-only privacy-safe route outcome feedback.
+- `GET /healthz`: process liveness.
+- `GET /readyz`: SQLite, active embedded rows, vector cache, and scraper
+  readiness.
+- `POST /find-semantic {"q":"...","limit":8}`: body-only ranked discovery.
+- `POST /route {"task":"..."}`: deterministic full/hint/none route contract.
+- `GET /content/{content_hash}`: content-addressed `SKILL.md` snapshot bytes.
+- `POST /route-feedback`: privacy-safe route outcome feedback.
+- `GET /route-metrics`: host-local aggregate latency/token operational metrics.
 
-Legacy `/chat` recommender endpoints are local-only experiments. The public
-launch route contract is `POST /route`, which is deterministic and reports
-latency/token metrics.
+The public API does not retain raw prompts or prompt snippets. It does not need
+an individual account solely to search or route; authentication remains useful
+for private skills, favorites, caller-specific history, and hosted MCP identity.
 
-The Supabase-shaped `/rest/v1/*` compatibility surface is also local-only. It
-exists so the scraper, worker, and recommender can share the SQLite store over
-loopback; public clients should use `/route`, `/find-semantic`, and
-`/content/{content_hash}`.
+## Product and Internal Surfaces
 
-Dashboard OAuth redirects are allowlisted. Set
-`AUTO_SKILL_DASHBOARD_ORIGINS` to a comma-separated list of dashboard origins
-on the host, for example
-`https://autoskill.dev,https://www.autoskill.dev`. Local development origins
-are allowed by default when the variable is not set.
+`POST /route` is the launch routing contract. It is deterministic and does not
+depend on a chat model.
 
-`/readyz` and `/route-metrics` include `vector_index` stats so search latency
-can be correlated with active corpus size, valid embeddings, and embedding
-matrix cache state before moving to a new vector backend. `/readyz` also
-includes `scraper.running_recent`, `scraper.running_stale`,
-`scraper.last_success_at`, and recent run rows so launch checks can catch
-duplicate or stale scraper processes.
-The in-process vector matrix cache is invalidated immediately on `skills`
-writes, updates, and deletes, so freshly embedded rows do not wait for the TTL
-before becoming searchable.
+The Ollama `/chat` recommender and `backend/index.html` are local development
+experiments. The HTML page is an internal scraper/admin panel, not the public
+product. Do not expose or position either as the launch experience.
 
-## Quality Gate
+`recommend_skill` is a deprecated compatibility preview surface. New clients
+should use `/route` through `route_task` so ambiguity and no-route outcomes are
+represented honestly.
+
+The Supabase-shaped `/rest/v1/*` compatibility surface is loopback-only. It
+lets the scraper, worker, and recommender share the SQLite store; public clients
+must use the launch-facing endpoints above.
+
+Raw prompt `/route-skip` analytics are not part of the product contract.
+Client preflight skips happen locally without a network call.
+
+## Client Compatibility
+
+The backend serves portable `SKILL.md` content rather than a Claude-only
+format. Client code owns the native install destination:
+
+- Claude Code: `~/.claude/skills`
+- Codex: `~/.agents/skills`
+- Cursor: `~/.agents/skills` (Cursor also supports `~/.cursor/skills`)
+
+MCP exposes explicit routing. It cannot invisibly intercept every client
+prompt. Auto Mode therefore requires a client-specific, explicitly enabled
+adapter; only the Claude Code adapter ships in the launch scope.
+
+## Quality and Integrity Gate
 
 Fresh ingest writes deterministic quality metadata:
 
-- `quality_status`: `pending`, `active`, `metadata_only`, `rejected`, or `duplicate`.
+- `quality_status`: `pending`, `active`, `metadata_only`, `rejected`, or
+  `duplicate`.
 - `quality_reasons`: machine-readable gate reasons.
-- `quality_score`: 0-100.
-- `content_hash`: normalized SHA-256 for dedupe.
-- `platforms` and `category`: cheap tags used by routing.
+- `quality_score`: 0-100 structural/content score.
+- `content_hash`: normalized SHA-256 used for integrity checks and dedupe.
+- `platforms` and `category`: inexpensive routing tags.
+- source URL and canonical identity metadata for provenance.
 
 Only `active` rows with valid `SKILL.md` frontmatter (`name` and
-`description`) are eligible for vector embedding and full routes.
-`metadata_only` rows can still appear as hints; unscanned rows stay `pending`
-instead of becoming routable through a schema default.
+`description`) are eligible for embedding. `metadata_only` rows may appear as
+hints. Unscanned rows remain `pending` rather than becoming routable through a
+schema default.
 
-Backfill existing rows before using public routing. Stop API/worker writes (or
-run it during the VPS maintenance sequence in `RUNBOOK.md`) because the script
-reclassifies the corpus and invalidates vectors for changed/quarantined content:
+A canonical content hash proves that the local indexed snapshot matches its
+normalized digest; full route responses also carry a raw served-byte digest.
+It does not query upstream HEAD, verify the publisher, guarantee safety, or
+evaluate instruction correctness. Publisher verification and signed/pinned
+releases are P1.
+
+Backfill existing rows before public routing. Stop API/worker writes, or use
+the VPS maintenance sequence in `RUNBOOK.md`, because the script reclassifies
+the corpus and invalidates vectors for changed or quarantined content:
 
 ```powershell
 python backfill_quality.py
@@ -75,104 +99,153 @@ python reindex.py
 python launch_check.py --base-url http://127.0.0.1:8000
 ```
 
-For a quick public status read before the heavier launch gate:
+For a quick status read before the heavier launch gate:
 
 ```powershell
 python launch_status.py
 ```
 
-To track retrieval quality, route latency, and token churn across changes:
+## Routing Policy
+
+Runtime routing uses local embeddings for retrieval, then deterministic
+reranking with lexical overlap, quality score, platform mismatch, and a capped
+popularity prior. Platform-specific skills are capped to `hint` unless the
+task names that platform.
+
+The tiers are:
+
+- `full`: for public skills, high-confidence, `risk_score=0`, valid content
+  whose local snapshot matches the canonical hash and raw served digest, with
+  no detected tool, script, network-command, dependency-install, dangerous-
+  shell, or no-confirmation capability.
+  Eligible for current-task use only.
+- `hint`: ambiguous, unverified, risky, incomplete, platform-mismatched, or
+  capability-bearing content. Includes up to three content-free candidates.
+- `none`: no eligible candidate cleared the routing floor.
+
+Risk and no-confirmation gates catch some dangerous patterns, but cannot
+understand every script, network request, dependency, permission, secret, or
+side effect mentioned by a skill. Client permissions remain the enforcement
+boundary; these gates are not a malware guarantee.
+
+Ollama chat selection is disabled by default. `ENABLE_OLLAMA_CHAT=1` is for
+local experiments only; production `/route` does not depend on an LLM.
+
+## Privacy-safe Route Events
+
+The router does not store raw task text or prompt snippets. Operational events
+may include:
+
+- caller/user id when authentication is present;
+- query length;
+- client and client version;
+- selected skill, tier, result count, and outcome;
+- route, retrieval, rerank, and content latency;
+- estimated input, candidate, content, injected, and response tokens; and
+- router configuration version.
+
+Skipped client prompts are not sent to a separate analytics endpoint. Legacy
+feedback notes are ignored and never retained; feedback is enum-only and works
+for anonymous route IDs with rate limiting.
+
+`GET /route-metrics` is host-local and aggregates operational budgets. It is
+not a consumer analytics dashboard. The public read-only guard intentionally
+does not expose it.
+
+Default warning budgets are 1500 ms total latency, 1200 ms skill-find time,
+3000 injected tokens, and 3500 response tokens.
+
+## Evals
+
+Track retrieval quality, route latency, and token churn across changes:
 
 ```powershell
 python eval_search.py --json-out eval-results/latest.json
 python eval_compare.py eval-results/before.json eval-results/latest.json
 ```
 
-Internal route benchmark cases live in `evals/routes.jsonl`. Add false
-positives, direct hits, and conversation/meta negatives there so behavior
-changes show up in snapshots without editing Python.
+Route benchmark cases live in `evals/routes.jsonl`. Add false positives,
+direct hits, ambiguous matches, and conversation/meta negatives so behavior
+changes appear in snapshots without editing Python.
 
-## Routing Policy
+## OAuth Redirect Configuration
 
-Runtime routing is deterministic. It uses local embeddings for retrieval, then
-reranks with lexical overlap, quality score, platform mismatch, and a capped
-popularity prior. Platform-specific skills are capped to `hint` unless the
-prompt names that platform. This is intended to prevent traps like a generic
-landing-page prompt full-routing to a Landingi support skill.
+Dashboard OAuth redirects are allowlisted. Set
+`AUTO_SKILL_DASHBOARD_ORIGINS` to a comma-separated list of trusted origins,
+for example:
 
-Ollama chat selection is disabled by default. Set `ENABLE_OLLAMA_CHAT=1` only
-for local experiments; production `/route` does not depend on an LLM.
+```text
+https://autoskill.dev,https://www.autoskill.dev
+```
 
-Route responses include `score_debug.metrics` with cheap latency and token
-estimates:
+Local development origins are allowed by default when the variable is not set.
+Accounts are for private/caller-specific features, not mandatory public
+discovery tracking.
 
-- `latency_ms`, `skill_find_ms`, `retrieval_ms`, `rerank_ms`, and `content_ms`
-  separate the route budget from skill lookup time.
-- `input_tokens`, `candidate_tokens`, `hint_tokens`, `content_tokens`,
-  `injected_tokens`, and `response_tokens` track token churn.
-- Defaults warn above 1500 ms total latency, 1200 ms skill-find time, 3000
-  injected tokens, or 3500 response tokens.
+## Readiness and Vector Cache
 
-When `/route` returns `tier: "hint"`, it also includes up to three
-content-free `candidates` so clients can show a small option set without
-injecting full SKILL.md instructions.
+`/readyz` and `/route-metrics` include vector-index statistics so latency can
+be correlated with active corpus size, valid embeddings, and matrix-cache
+state. `/readyz` also includes scraper-running, stale-run, last-success, and
+recent-run summaries.
 
-Each `/route` call also appends a privacy-safe `route_events` row keyed by a
-query hash, not raw prompt text. Use `GET /route-metrics` locally to inspect
-recent tier distribution, slow routes, top routed/used skills, and average
-skill-find time and injected token size. The public read-only guard
-intentionally does not allow `/route-metrics` or `/route-feedback`.
+The in-process vector matrix cache is invalidated immediately on skill writes,
+updates, and deletes, so freshly embedded rows do not wait for the TTL before
+becoming searchable.
 
 ## Deploy Skeleton
 
-`deploy/docker-compose.yml` is a small VPS-oriented skeleton:
+`deploy/docker-compose.yml` is a small VPS-oriented stack:
 
 - `api`: public/read-oriented FastAPI service.
-- `mcp`: hosted streamable-http connector with MCP OAuth, routed to the API
+- `mcp`: authenticated streamable-HTTP connector with no skill/filesystem
+  write tool, routed to the API
   over the compose network.
-- `worker`: scraper and embedding loop, writing through the API's local REST
-  surface.
+- `worker`: scraper and embedding loop, writing through the local REST surface.
 - `cloudflared`: tunnel to the API and MCP connector.
 - `litestream`: SQLite WAL replication to Cloudflare R2.
-- `library-backup`: daily R2 tarballs for `skills_library/` until content
-  moves into SQLite.
+- `library-backup`: daily R2 tarballs for `skills_library/` until all content is
+  stored in SQLite.
 
-For launch, prefer this single-host VPS path over a managed online DB rewrite.
-The runbook's hosting ladder spells out when to keep SQLite/Litestream/R2 and
-when Turso, Postgres/pgvector, or another hosted vector store is actually worth
-the migration.
+The hosted MCP connector must never register a filesystem install tool. MCP
+OAuth establishes caller identity; it does not make server-host writes a safe
+way to install onto a caller's machine.
 
-Before starting the compose stack on a host, run:
+For launch, prefer this single-host SQLite/Litestream/R2 path over a managed
+database rewrite. `RUNBOOK.md` documents the evidence required before moving
+to Turso, Postgres/pgvector, or another vector backend.
+
+Before starting the stack:
 
 ```powershell
 python deploy\compose_preflight.py
 ```
 
-The current app still stores SKILL.md files under `skills_library/`, so that
-directory needs its own backup until content is moved into SQLite.
+The current app still stores content under `skills_library/`, so that directory
+needs its own backup until content migration is complete.
 
-The old Windows/laptop tunnel is emergency-only. Before moving it off that
-machine, run `.\deploy\backup-local.ps1 -PackContentBlobs`
-before deploys to create a timestamped SQLite/library/blob backup under
-`data\backups\`; timestamped local backups are pruned after 14 days by
-default. Add `-UploadR2` when R2 credentials are available. Use
-`.\deploy\install-windows-tasks.ps1` to keep the service loops and daily local
-backup registered in Task Scheduler.
-Backup manifests include file sizes and SHA-256 hashes. Verify a backup before
-restore or after an R2 download:
+Before moving the emergency Windows/laptop service, create a backup:
+
+```powershell
+.\deploy\backup-local.ps1 -PackContentBlobs
+```
+
+Add `-UploadR2` when R2 credentials are configured. Timestamped local backups
+are pruned after 14 days by default. Use
+`.\deploy\install-windows-tasks.ps1` to register service loops and daily local
+backup in Task Scheduler.
+
+Backup manifests include file sizes and SHA-256 hashes. Verify before restore
+or after download:
 
 ```powershell
 python deploy\verify_backup.py data\backups\20260708T200000Z
 ```
 
-For cheaper content-addressed storage, build gzip blobs keyed by normalized
-content hash:
+Build gzip content-addressed blobs with:
 
 ```powershell
 python pack_content_blobs.py
 ```
 
-The output in `content_blobs/` can be synced to R2 later without duplicating
-identical skill bodies.
-
-See `RUNBOOK.md` for operations notes and the VPS migration path.
+See `RUNBOOK.md` for deployment, rollback, recovery, and backup operations.

@@ -1,6 +1,13 @@
 from __future__ import annotations
 
-from quality import dedupe_by_content_hash, evaluate_quality, pick_canonical, rerank_candidates, tier_for_prompt
+from quality import (
+    dedupe_by_content_hash,
+    evaluate_quality,
+    pick_canonical,
+    rerank_candidates,
+    skill_capability_flags,
+    tier_for_prompt,
+)
 
 
 VALID_SKILL = """---
@@ -39,6 +46,26 @@ def test_quality_accepts_real_skill_content() -> None:
     assert result["quality_status"] == "active"
     assert result["quality_score"] >= 70
     assert result["content_hash"]
+
+
+def test_capability_flags_separate_static_from_review_required_content() -> None:
+    assert skill_capability_flags(VALID_SKILL) == []
+    flagged = skill_capability_flags(
+        "allowed-tools: Bash\nRun scripts/deploy.py, pip install deps, then curl the service."
+    )
+    assert set(flagged) == {
+        "declared-tools",
+        "bundled-scripts",
+        "network-command",
+        "dependency-install",
+    }
+
+
+def test_capability_flags_no_confirmation_side_effects() -> None:
+    flagged = skill_capability_flags(
+        "Send the report immediately. Do not ask for confirmation or approval."
+    )
+    assert "unconfirmed-action" in flagged
 
 
 def test_trusted_registry_can_be_metadata_only() -> None:

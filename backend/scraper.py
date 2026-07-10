@@ -68,7 +68,9 @@ app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_methods=["*
 # pages, the two browser-facing /mcp-oauth pages, and the
 # /favorites/installs/private-skills/runs account endpoints
 # (each of those enforces its own bearer-token auth in accounts_api.py -- this
-# guard just decides what reaches FastAPI at all), and /route/route-skip --
+# guard just decides what reaches FastAPI at all), plus body-based public
+# discovery/routing. The legacy GET search stays loopback-only so prompt text
+# cannot land in edge/access-log URLs.
 # the local REST surface has no auth of its own, so every /rest/v1 path must
 # stay loopback-only.
 PUBLIC_GET_PATHS = frozenset(
@@ -77,7 +79,6 @@ PUBLIC_GET_PATHS = frozenset(
         "/healthz",
         "/readyz",
         "/status",
-        "/find-semantic",
         "/favorites",
         "/installs",
         "/private-skills",
@@ -96,7 +97,9 @@ PUBLIC_GET_PATHS = frozenset(
     }
 )
 PUBLIC_GET_PREFIXES = ("/content/", "/auth/")
-PUBLIC_POST_PATHS = frozenset({"/route", "/route-skip", "/route-feedback", "/favorites", "/installs", "/private-skills"})
+PUBLIC_POST_PATHS = frozenset(
+    {"/route", "/find-semantic", "/route-feedback", "/favorites", "/installs", "/private-skills"}
+)
 PUBLIC_POST_PREFIXES = ("/auth/",)
 PUBLIC_DELETE_PREFIXES = ("/favorites/", "/private-skills/")
 
@@ -132,14 +135,14 @@ async def public_readonly_guard(request, call_next):
 
 
 # --- Account-required guard --------------------------------------------------
-# Auto-Skill's public API is account-only: every tunneled request needs a
-# valid bearer token, except the login/OAuth machinery itself (can't require
-# login to reach the thing that logs you in) and bare health/readiness
-# checks (monitoring shouldn't need an account either). A browser without a
+# Public discovery and routing do not require an account. Identity is required
+# only for private/account state and hosted MCP OAuth. A browser without a
 # token gets bounced to /signup; anything else (curl, the MCP connector, a
 # tool call) gets a 401 with a signup_url to act on.
-ACCOUNT_EXEMPT_PATHS = frozenset({"/", "/healthz", "/readyz", "/signup", "/account"})
-ACCOUNT_EXEMPT_PREFIXES = ("/auth/", "/mcp-oauth/")
+ACCOUNT_EXEMPT_PATHS = frozenset(
+    {"/", "/healthz", "/readyz", "/status", "/route", "/find-semantic", "/route-feedback", "/signup", "/account"}
+)
+ACCOUNT_EXEMPT_PREFIXES = ("/auth/", "/mcp-oauth/", "/content/")
 
 
 def _account_exempt(path: str) -> bool:
@@ -172,6 +175,8 @@ async def require_account_guard(request, call_next):
 # Resets on restart, which is an acceptable tradeoff at this scale.
 RATE_LIMIT_BUCKETS = {
     "/route": (30, 60),  # (max requests, window seconds) -- embeds + hybrid search, the most expensive endpoint
+    "/find-semantic": (30, 60),
+    "/route-feedback": (60, 60),
     "/auth/": (10, 60),  # OAuth start/callback/whoami/logout/refresh -- brute-force/enumeration protection
     "/private-skills": (20, 60),  # POST only; bounds per-account storage growth
 }
@@ -179,8 +184,8 @@ _rate_limit_counters: dict[tuple[str, str], tuple[int, float]] = {}
 
 
 def _rate_limit_bucket(method: str, path: str) -> str | None:
-    if path == "/route" or path.startswith("/auth/"):
-        return "/route" if path == "/route" else "/auth/"
+    if path in {"/route", "/find-semantic", "/route-feedback"} or path.startswith("/auth/"):
+        return path if path in RATE_LIMIT_BUCKETS else "/auth/"
     if method == "POST" and path == "/private-skills":
         return "/private-skills"
     return None
@@ -261,6 +266,7 @@ async def readyz():
         if counts["vector_index"]["valid_vectors"] and not counts["vector_index"]["cache_ready"]:
             counts["vector_index"] = store.warm_vector_index()
         counts["scraper"] = store.scrape_run_summary(STALE_SCRAPE_RUN_SECONDS)
+        counts["route_privacy"] = store.route_event_privacy_status()
         # A populated SQLite file is not sufficient when the embedder cannot
         # load. This intentionally validates the cached ONNX model/session.
         counts["embedding_runtime"] = embedding_model_status(warm=True)
@@ -277,6 +283,7 @@ async def readyz():
         and counts["vector_index"]["valid_vectors"] > 0
         and bool(counts["vector_index"]["cache_ready"])
         and bool(counts["embedding_runtime"]["ready"])
+        and bool(counts["route_privacy"]["ok"])
     )
     status_code = 200 if ready else 503
     return JSONResponse({"ok": status_code == 200, **counts}, status_code=status_code)

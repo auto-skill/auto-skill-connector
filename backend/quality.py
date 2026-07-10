@@ -130,9 +130,6 @@ META_PATTERNS = (
     "what are you",
     "what is the current state",
     "current state",
-    "explain this",
-    "summarize",
-    "status",
     "whats the",
     "what's the",
     "why is",
@@ -144,6 +141,7 @@ META_PATTERNS = (
     "can you explain",
     "what you just",
 )
+META_EXACT = {"status", "summarize", "explain this"}
 
 
 def normalize_content(text: str) -> str:
@@ -157,6 +155,13 @@ def content_hash(text: str) -> str:
     if not text:
         return ""
     return hashlib.sha256(normalize_content(text).encode("utf-8")).hexdigest()
+
+
+def content_digest(text: str) -> str:
+    """SHA-256 of served text bytes, separate from the canonical dedupe hash."""
+    if not text:
+        return ""
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def strip_frontmatter(text: str) -> str:
@@ -176,13 +181,39 @@ def has_valid_skill_frontmatter(text: str) -> bool:
     return bool(FRONTMATTER_NAME_RE.search(block) and FRONTMATTER_DESCRIPTION_RE.search(block))
 
 
+_CAPABILITY_PATTERNS = (
+    ("declared-tools", re.compile(r"(?im)^\s*allowed-tools\s*:")),
+    ("bundled-scripts", re.compile(r"(?i)(?:^|[\s`(])scripts[/\\]")),
+    ("declared-dependencies", re.compile(r"(?im)^\s*dependencies\s*:")),
+    ("network-command", re.compile(r"(?i)\b(?:curl|wget|httpx|requests)\b|\bfetch\s*\(")),
+    (
+        "dependency-install",
+        re.compile(r"(?i)\b(?:pip|npm|pnpm|yarn|uv|brew|apt(?:-get)?)\s+(?:install|add)\b"),
+    ),
+    ("elevated-or-destructive", re.compile(r"(?i)\b(?:sudo|rm\s+-rf|chmod\s+777|powershell\s+-enc)\b")),
+    (
+        "unconfirmed-action",
+        re.compile(
+            r"(?is)\b(?:send|post|publish|delete|remove|drop|write|modify|change|create|execute|run|install|deploy|push)\b"
+            r".{0,180}\b(?:do\s+not|don't|never|without)\s+(?:ask|request|seek|require)\b"
+            r".{0,80}\b(?:confirm|approval|permission)\b"
+        ),
+    ),
+)
+
+
+def skill_capability_flags(text: str) -> list[str]:
+    """Static capability signals that require a hint/explicit review."""
+    return [label for label, pattern in _CAPABILITY_PATTERNS if pattern.search(text or "")]
+
+
 def is_non_task_prompt(prompt: str) -> bool:
     """Cheap backend guard for acknowledgements and conversational meta text."""
     text = " ".join((prompt or "").split())
     lowered = text.lower()
     if not text or text.startswith(("/", "!")) or len(text) > 3000:
         return True
-    if lowered in ACK_PROMPTS:
+    if lowered in ACK_PROMPTS or lowered in META_EXACT:
         return True
     return len(text) < 180 and any(pattern in lowered for pattern in META_PATTERNS)
 

@@ -1,40 +1,81 @@
 # Roadmap
 
-The first public milestone is trust and usefulness, not monetization.
+Auto-Skill's durable product is a trusted, compatible Agent Skill lifecycle
+across Claude Code, Codex, and Cursor. Catalog size and prompt interception are
+not the moat.
 
-## Free And Open Source
+## P0: Launch Contract
 
-- Fast task-based skill search.
-- Universal MCP router contract with `route_task`.
-- Skill preview before install.
-- Safe Claude-style skill installs.
-- MCP usage for compatible agents.
-- Honest Codex support through in-turn MCP instructions.
-- Local setup diagnostics with `auto-skill doctor`.
-- Tests, security notes, and clear contribution flow.
+- Portable `SKILL.md` compatibility for Claude Code, Codex, and Cursor.
+- Deterministic task ranking with quality and platform gates.
+- Source provenance, normalized content hashes, and immutable content lookup.
+- Full current-task use only for high-confidence, risk-0 content that matches
+  its indexed hash; ambiguous matches return two or three candidates.
+- Explicit/on-demand CLI and MCP routing by default.
+- An explicitly enabled Claude Code Auto Mode adapter; no claim that MCP alone
+  intercepts prompts.
+- No server or local-log retention of raw prompt text or prompt snippets.
+- Manual, preview-first persistent install with overwrite protection.
+- Hosted MCP kept authenticated and read-only.
+- Backend health/readiness, evals, smoke tests, backup verification, and safe
+  single-host deployment.
 
-## Near-Term Launch Polish
+## P1: Trusted Lifecycle
 
-- Short demo GIF or video in the README.
-- Public examples for common tasks.
-- Better candidate ranking explanations.
-- Client-specific always-on routing hooks for Claude Code, Codex, Cursor, and
-  other MCP-capable agents where possible.
-- Local cache for fetched skill content.
-- More explicit source metadata: license, stars, last updated, and registry.
-- Install/update/uninstall lifecycle for Claude skills.
+### Verification and provenance
 
-## Possible Paid Tier Later
+- Publisher identity and repository ownership verification.
+- Pinned versions, signed release metadata, and visible verification status.
+- Source/license/last-updated metadata and reproducible content scans.
+- Clear separation between content integrity, publisher identity, and security
+  review.
 
-If the open-source project earns real usage, a tiny paid tier could support:
+### Install, update, and rollback
 
-- Faster hosted search.
-- Continuously refreshed index.
-- Verified skill badges.
-- Private skill sync across machines.
-- Team allowlists and blocklists.
-- Security scans for skills and MCP servers.
-- Private/team skill registries.
+- A one-time user-selected trust policy for persistent installation.
+- Automatic install only for pinned, verified, static skills allowed by that
+  policy.
+- Mandatory ask/block behavior for scripts, network access, dependencies,
+  unknown publishers, secrets, dangerous permissions, and irreversible side
+  effects.
+- Complete skill-bundle installation, including reviewed references and assets.
+- Diff-before-update, atomic replacement, uninstall, backup, and rollback.
+- Per-client install manifests without duplicating portable content.
 
-The paid tier should never be required for basic search, preview, or safe local
-install from public skills.
+### Client adapters
+
+- A Codex `UserPromptSubmit` adapter built on the client's trusted hook flow.
+- A Cursor adapter only after its supported hook/plugin contract can safely add
+  task context; until then, explicit routing remains the honest integration.
+- Shared adapter conformance tests for local filtering, privacy, timeouts, and
+  full/hint/none behavior.
+- Clear UI disclosure of which skill was selected and why.
+
+### Teams and governance
+
+- Team registries, allowlists, blocklists, and publisher policy.
+- Admin-controlled trust roots and permission profiles.
+- Review/approval workflows for new or changed skill versions.
+- Privacy-safe audit events and retention controls.
+
+## Explicitly Deprioritized
+
+- Competing on the number of scraped skills.
+- Broad web crawling as the core product moat.
+- The Ollama `/chat` recommender UI.
+- `recommend_skill` as a primary API or MCP tool.
+- Raw prompt or route-skip analytics.
+- Mandatory individual accounts for public search or routing.
+- Consumer analytics and a premature Pro dashboard.
+- Public remote installation.
+- A large hosting or database migration before product trust requires it.
+
+Compatibility code may remain temporarily when removal would create avoidable
+launch risk, but these surfaces should not drive positioning or new work.
+
+## Later, Only With Evidence
+
+Managed hosting, private team registries, enterprise governance, and paid
+features should follow demonstrated usage and a credible verification model.
+Basic public search, preview, explicit routing, and safe manual local install
+should remain available without a paid tier.

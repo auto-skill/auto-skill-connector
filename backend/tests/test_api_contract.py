@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import sqlite3
 import tempfile
 import unittest
@@ -12,6 +13,7 @@ from fastapi.testclient import TestClient
 import auth
 import local_store
 import scraper
+from quality import content_hash
 
 
 VALID_SKILL = """---
@@ -198,12 +200,7 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(scraper_summary["recent_runs"][0]["id"], "run-done")
         self.assertGreater(scraper_summary["recent_runs"][1]["age_seconds"], scraper.STALE_SCRAPE_RUN_SECONDS)
 
-    def test_public_guard_requires_an_account_for_everything_but_login(self) -> None:
-        """Auto-Skill's public API is account-only (see scraper.py's
-        require_account_guard) -- unauthenticated public traffic gets bounced
-        to /signup for every path except health/readiness and the
-        login/OAuth machinery, regardless of what that path would otherwise
-        do."""
+    def test_public_discovery_is_anonymous_but_account_state_is_protected(self) -> None:
         no_auth = {"x-forwarded-for": "203.0.113.10"}
         for path in ("/readyz", "/healthz", "/signup", "/account"):
             self.assertNotEqual(self.client.get(path, headers=no_auth).status_code, 401, path)
@@ -214,13 +211,20 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(root.status_code, 307)
         self.assertEqual(root.headers["location"], "https://autoskill.dev")
 
+        for path in ("/status", "/route", "/find-semantic", "/content/example"):
+            self.assertTrue(scraper._account_exempt(path), path)
+        self.assertEqual(
+            self.client.post("/route", json={"task": "ok"}, headers=no_auth).status_code,
+            200,
+        )
+        anonymous_search = self.client.post("/find-semantic", json={"q": "ok"}, headers=no_auth)
+        self.assertEqual(anonymous_search.status_code, 200)
+        self.assertNotIn("query", anonymous_search.json())
+        self.assertEqual(self.client.get("/content/not-found", headers=no_auth).status_code, 404)
+
         for method, path, json_body in (
-            ("get", "/status", None),
-            ("get", "/find-semantic?q=x", None),
             ("get", "/skills-catalog", None),
-            ("post", "/route", {"task": "x"}),
             ("post", "/route-skip", {"prompt": "x", "reason": "test"}),
-            ("post", "/route-feedback", {"route_id": "route-1", "outcome": "used"}),
             ("get", "/scrape", None),
             ("get", "/rest/v1/skills?select=id", None),
         ):
@@ -291,10 +295,9 @@ class ApiContractTests(unittest.TestCase):
             ("GET", "/healthz"),
             ("GET", "/readyz"),
             ("GET", "/status"),
-            ("GET", "/find-semantic"),
             ("GET", "/content/{hash_value}"),
             ("POST", "/route"),
-            ("POST", "/route-skip"),
+            ("POST", "/find-semantic"),
             ("GET", "/auth/{provider}/start"),
             ("GET", "/auth/{provider}/callback"),
             ("GET", "/auth/whoami"),
@@ -461,6 +464,7 @@ class ApiContractTests(unittest.TestCase):
             "risk_score": 0,
             "quality_status": "active",
             "quality_score": 90,
+            "content_hash": content_hash(VALID_SKILL),
             "rank": 1.0,
             "similarity": 0.95,
         }
@@ -481,6 +485,12 @@ class ApiContractTests(unittest.TestCase):
         body = response.json()
         self.assertEqual(body["tier"], "full")
         self.assertEqual(body["skill"]["name"], "spreadsheet-reporter")
+        self.assertTrue(body["skill"]["verification"]["content_hash_verified"])
+        self.assertTrue(body["skill"]["verification"]["static_instruction_only"])
+        self.assertEqual(
+            body["skill"]["verification"]["content_digest"],
+            hashlib.sha256(VALID_SKILL.encode("utf-8")).hexdigest(),
+        )
         self.assertTrue(body["route_id"])
         self.assertIn("validate sheet names", body["content"])
         self.assertTrue(body["content_url"].startswith("/content/"))
@@ -504,9 +514,43 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(event["id"], body["route_id"])
         self.assertEqual(event["tier"], "full")
         self.assertEqual(event["skill_name"], "spreadsheet-reporter")
+        self.assertEqual(event["query_chars"], len("create an excel report with formulas"))
+        self.assertTrue({"prompt_text", "query_hash", "feedback_note"}.isdisjoint(event.keys()))
         self.assertGreaterEqual(event["skill_find_ms"], 0)
         self.assertGreaterEqual(event["injected_tokens"], event["content_tokens"])
         self.assertGreater(event["response_tokens"], 0)
+
+    def test_route_downgrades_capability_bearing_content_to_hint(self) -> None:
+        capability_skill = VALID_SKILL + "\nRun scripts/deploy.py and pip install the required package.\n"
+        candidate = {
+            "id": "skill-capability",
+            "name": "spreadsheet-reporter",
+            "description": "Build spreadsheet reports with formulas and charts.",
+            "source": "github_skill_file",
+            "url": "https://example.com/spreadsheet-capability",
+            "risk_score": 0,
+            "quality_status": "active",
+            "quality_score": 90,
+            "content_hash": content_hash(capability_skill),
+            "rank": 1.0,
+            "similarity": 0.95,
+        }
+
+        async def fake_retrieve(client, query, limit):
+            del client, query, limit
+            return [candidate]
+
+        class FakeLibrary:
+            def get(self, url: str) -> str:
+                return capability_skill if url == candidate["url"] else ""
+
+        with patch("recommender.retrieve_skills", fake_retrieve), patch("recommender.LibraryContent", FakeLibrary):
+            body = self.client.post("/route", json={"task": "create an excel report with formulas"}).json()
+
+        self.assertEqual(body["tier"], "hint")
+        self.assertIsNone(body["content"])
+        self.assertIn("bundled-scripts", body["skill"]["capability_flags"])
+        self.assertIn("explicit review", body["score_debug"]["warnings"][0])
 
     def test_route_downgrades_malformed_cached_content(self) -> None:
         candidate = {
@@ -518,6 +562,7 @@ class ApiContractTests(unittest.TestCase):
             "risk_score": 0,
             "quality_status": "active",
             "quality_score": 90,
+            "content_hash": content_hash(VALID_SKILL),
             "rank": 1.0,
             "similarity": 0.95,
         }
@@ -549,6 +594,26 @@ class ApiContractTests(unittest.TestCase):
         body = response.json()
         self.assertEqual(body["tier"], "none")
         self.assertEqual(body["score_debug"]["reason"], "non-task-prompt")
+
+    def test_route_skip_is_deprecated_without_writing_an_event(self) -> None:
+        conn = sqlite3.connect(self.db_path)
+        try:
+            before = conn.execute("SELECT COUNT(*) FROM route_events").fetchone()[0]
+        finally:
+            conn.close()
+
+        response = self.client.post(
+            "/route-skip",
+            json={"prompt": "PRIVATE SKIPPED PROMPT", "reason": "too short"},
+        )
+
+        self.assertEqual(response.status_code, 410)
+        conn = sqlite3.connect(self.db_path)
+        try:
+            after = conn.execute("SELECT COUNT(*) FROM route_events").fetchone()[0]
+        finally:
+            conn.close()
+        self.assertEqual(after, before)
 
     def test_route_caps_platform_trap_to_hint(self) -> None:
         landingi = {
@@ -690,6 +755,7 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(metrics["budget_breaches"]["any"], 1)
 
     def test_route_feedback_updates_existing_route_event(self) -> None:
+        private_note = "PRIVATE-FEEDBACK-NOTE-MUST-NOT-PERSIST"
         candidate = {
             "id": "skill-1",
             "name": "spreadsheet-reporter",
@@ -716,7 +782,7 @@ class ApiContractTests(unittest.TestCase):
                 "route_id": route["route_id"],
                 "outcome": "used",
                 "source": "unit-test",
-                "note": "applied",
+                "note": private_note,
             },
         )
         self.assertEqual(feedback.status_code, 200)
@@ -730,6 +796,11 @@ class ApiContractTests(unittest.TestCase):
             conn.close()
         self.assertEqual(event["outcome"], "used")
         self.assertEqual(event["feedback_source"], "unit-test")
+        self.assertNotIn("feedback_note", event.keys())
+        self.assertNotIn(private_note.encode(), self.db_path.read_bytes())
+        wal_path = Path(f"{self.db_path}-wal")
+        if wal_path.exists():
+            self.assertNotIn(private_note.encode(), wal_path.read_bytes())
 
         metrics = self.client.get("/route-metrics").json()
         self.assertEqual(metrics["top_used_skills"][0]["skill_name"], "spreadsheet-reporter")

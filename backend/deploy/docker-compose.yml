@@ -46,7 +46,6 @@ services:
       BACKEND_BASE_URL: ${BACKEND_BASE_URL:-https://skills.autoskill.dev}
       MCP_ISSUER_URL: ${MCP_ISSUER_URL:-https://mcp.autoskill.dev}
       MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-mcp.autoskill.dev,localhost:8765,127.0.0.1:8765}
-      AUTO_SKILL_ENABLE_PUBLIC_INSTALL: "0"
     ports:
       - "127.0.0.1:8765:8765"
     command: auto-skill-mcp
@@ -114,6 +113,8 @@ services:
       R2_ENDPOINT: ${R2_ENDPOINT}
       R2_BUCKET: ${R2_BUCKET}
       R2_LIBRARY_PREFIX: ${R2_LIBRARY_PREFIX:-skills-library}
+      LITESTREAM_REPLICA_PREFIX: ${LITESTREAM_REPLICA_PREFIX:-local_skills.db}
+      R2_DB_BACKUP_PREFIX: ${R2_DB_BACKUP_PREFIX:-alpha-host-backups}
       LIBRARY_BACKUP_INTERVAL_SECONDS: ${LIBRARY_BACKUP_INTERVAL_SECONDS:-86400}
       LIBRARY_BACKUP_START_DELAY_SECONDS: ${LIBRARY_BACKUP_START_DELAY_SECONDS:-300}
       LIBRARY_BACKUP_NICE_LEVEL: ${LIBRARY_BACKUP_NICE_LEVEL:-19}
@@ -121,3 +122,4 @@ services:
       - ../skills_library:/library:ro
       - ../data/backups:/backups
       - ./backup-library.sh:/scripts/backup-library.sh:ro
+      - ./purge-route-db-backups.sh:/scripts/purge-route-db-backups.sh:ro

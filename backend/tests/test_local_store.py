@@ -1,12 +1,18 @@
 from __future__ import annotations
 
+import json
+import shutil
 import sqlite3
 import tempfile
 import unittest
 import uuid
+import zipfile
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
 
 import local_store
+import scrub_route_privacy
 
 
 def _insert_skill(conn: sqlite3.Connection, skill_id: str, content_hash: str) -> None:
@@ -24,6 +30,250 @@ def _insert_route_event(conn: sqlite3.Connection, skill_id: str, outcome: str, s
         "INSERT INTO route_events (id, created_at, skill_id, outcome, feedback_source) VALUES (?, ?, ?, ?, ?)",
         (str(uuid.uuid4()), local_store._now(), skill_id, outcome, source),
     )
+
+
+class RouteEventPrivacyTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.old_db_path = local_store.DB_PATH
+        self.db_path = Path(self.tmp.name) / "local_skills.db"
+        local_store.DB_PATH = self.db_path
+        local_store.init_db()
+
+    def tearDown(self) -> None:
+        local_store.DB_PATH = self.old_db_path
+
+    def _add_legacy_columns(self) -> None:
+        conn = local_store.get_conn()
+        try:
+            existing = {row["name"] for row in conn.execute("PRAGMA table_info(route_events)")}
+            for column in local_store.ROUTE_EVENT_FORBIDDEN_LEGACY_COLUMNS:
+                if column not in existing:
+                    conn.execute(f"ALTER TABLE route_events ADD COLUMN {column} TEXT")
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_new_schema_omits_raw_and_free_form_columns(self) -> None:
+        conn = local_store.get_conn()
+        try:
+            columns = {row["name"] for row in conn.execute("PRAGMA table_info(route_events)")}
+        finally:
+            conn.close()
+
+        self.assertTrue(set(local_store.ROUTE_EVENT_FORBIDDEN_LEGACY_COLUMNS).isdisjoint(columns))
+
+    def test_insert_route_event_drops_forbidden_and_arbitrary_fields(self) -> None:
+        sentinel = f"private-prompt-{uuid.uuid4()}"
+        local_store.insert_route_event(
+            {
+                "id": "privacy-event",
+                "user_id": "user-1",
+                "client": "auto-skill-hook",
+                "client_version": "0.1.0",
+                "query_chars": len(sentinel),
+                "tier": "full",
+                "prompt_text": sentinel,
+                "query_hash": sentinel,
+                "feedback_note": sentinel,
+                "unexpected_raw_field": sentinel,
+                "skip_reason": sentinel,
+                "outcome": "raw prompt was excellent",
+                "warnings": [],
+            }
+        )
+
+        conn = local_store.get_conn()
+        try:
+            row = conn.execute("SELECT * FROM route_events WHERE id='privacy-event'").fetchone()
+        finally:
+            conn.close()
+
+        self.assertEqual(row["query_chars"], len(sentinel))
+        self.assertEqual(row["tier"], "full")
+        self.assertIsNone(row["skip_reason"])
+        self.assertIsNone(row["outcome"])
+        self.assertNotIn(sentinel.encode(), self.db_path.read_bytes())
+
+    def test_init_db_scrubs_legacy_columns_and_unsafe_skip_reason(self) -> None:
+        self._add_legacy_columns()
+        sentinel = f"legacy-private-prompt-{uuid.uuid4()}"
+        conn = local_store.get_conn()
+        try:
+            conn.execute(
+                """
+                INSERT INTO route_events
+                    (id, user_id, tier, prompt_text, query_hash, feedback_note, skip_reason)
+                VALUES ('legacy-unsafe', 'user-1', 'skipped', ?, ?, ?, ?)
+                """,
+                (sentinel, sentinel, sentinel, sentinel),
+            )
+            conn.execute(
+                "INSERT INTO route_events (id, user_id, tier, skip_reason) VALUES (?, ?, ?, ?)",
+                ("legacy-safe", "user-1", "skipped", "too short"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        before = local_store.route_event_privacy_status()
+        local_store.init_db()
+        after = local_store.route_event_privacy_status()
+
+        self.assertFalse(before["ok"])
+        self.assertEqual(before["violations"], 4)
+        self.assertTrue(after["ok"])
+        conn = local_store.get_conn()
+        try:
+            unsafe = conn.execute("SELECT * FROM route_events WHERE id='legacy-unsafe'").fetchone()
+            safe = conn.execute("SELECT skip_reason FROM route_events WHERE id='legacy-safe'").fetchone()
+        finally:
+            conn.close()
+        self.assertIsNone(unsafe["prompt_text"])
+        self.assertIsNone(unsafe["query_hash"])
+        self.assertIsNone(unsafe["feedback_note"])
+        self.assertIsNone(unsafe["skip_reason"])
+        self.assertEqual(safe["skip_reason"], "too short")
+
+    def test_runs_projection_never_returns_legacy_text(self) -> None:
+        self._add_legacy_columns()
+        sentinel = f"runs-private-prompt-{uuid.uuid4()}"
+        conn = local_store.get_conn()
+        try:
+            conn.execute(
+                """
+                INSERT INTO route_events
+                    (id, user_id, tier, prompt_text, query_hash, feedback_note, skip_reason, warnings)
+                VALUES ('legacy-run', 'user-1', 'full', ?, ?, ?, 'too short', '[]')
+                """,
+                (sentinel, sentinel, sentinel),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        runs = local_store.list_route_events_for_user("user-1")
+
+        self.assertEqual([run["id"] for run in runs], ["legacy-run"])
+        self.assertTrue(set(local_store.ROUTE_EVENT_FORBIDDEN_LEGACY_COLUMNS).isdisjoint(runs[0]))
+        self.assertNotIn(sentinel, json.dumps(runs))
+
+    def test_feedback_ignores_free_form_note_and_rejects_unknown_outcome(self) -> None:
+        sentinel = f"feedback-private-prompt-{uuid.uuid4()}"
+        local_store.insert_route_event({"id": "feedback-event", "tier": "hint"})
+
+        self.assertTrue(
+            local_store.update_route_event_feedback(
+                "feedback-event", "used", source="unit-test", note=sentinel
+            )
+        )
+        self.assertFalse(
+            local_store.update_route_event_feedback(
+                "feedback-event", "raw prompt was excellent", source="unit-test", note=sentinel
+            )
+        )
+        conn = local_store.get_conn()
+        try:
+            row = conn.execute(
+                "SELECT outcome, feedback_source FROM route_events WHERE id='feedback-event'"
+            ).fetchone()
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        finally:
+            conn.close()
+        self.assertEqual(row["outcome"], "used")
+        self.assertEqual(row["feedback_source"], "unit-test")
+        self.assertNotIn(sentinel.encode(), self.db_path.read_bytes())
+
+    def test_physical_scrub_removes_sentinel_from_database_and_wal(self) -> None:
+        self._add_legacy_columns()
+        sentinel = (f"PHYSICAL_PRIVATE_SENTINEL_{uuid.uuid4()}_" * 20).encode()
+        text = sentinel.decode()
+        conn = local_store.get_conn()
+        try:
+            conn.execute(
+                """
+                INSERT INTO route_events
+                    (id, tier, prompt_text, query_hash, feedback_note, skip_reason)
+                VALUES ('physical-legacy', 'skipped', ?, ?, ?, ?)
+                """,
+                (text, text, text, text),
+            )
+            conn.commit()
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        finally:
+            conn.close()
+        self.assertIn(sentinel, self.db_path.read_bytes())
+
+        result = scrub_route_privacy.scrub_database(self.db_path, vacuum=True)
+
+        self.assertTrue(result["physical_scrub_complete"])
+        self.assertFalse(result["before"]["ok"])
+        self.assertTrue(result["after"]["ok"])
+        self.assertNotIn(sentinel, self.db_path.read_bytes())
+        wal_path = Path(f"{self.db_path}-wal")
+        if wal_path.exists():
+            self.assertEqual(wal_path.stat().st_size, 0)
+            self.assertNotIn(sentinel, wal_path.read_bytes())
+
+    def test_scrub_cli_audit_prints_counts_never_values(self) -> None:
+        self._add_legacy_columns()
+        sentinel = f"cli-private-prompt-{uuid.uuid4()}"
+        conn = local_store.get_conn()
+        try:
+            conn.execute(
+                "INSERT INTO route_events (id, prompt_text, skip_reason) VALUES ('cli-legacy', ?, ?)",
+                (sentinel, sentinel),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        output = StringIO()
+        with redirect_stdout(output):
+            result = scrub_route_privacy.main(["--db-path", str(self.db_path)])
+
+        self.assertEqual(result, 0)
+        self.assertNotIn(sentinel, output.getvalue())
+        payload = json.loads(output.getvalue())
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["violations"], 2)
+
+    def test_backup_purge_physically_scrubs_then_removes_exact_database_copies(self) -> None:
+        self._add_legacy_columns()
+        sentinel = f"backup-private-prompt-{uuid.uuid4()}"
+        conn = local_store.get_conn()
+        try:
+            conn.execute(
+                "INSERT INTO route_events (id, prompt_text) VALUES ('backup-legacy', ?)",
+                (sentinel,),
+            )
+            conn.commit()
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        finally:
+            conn.close()
+        backup_root = Path(self.tmp.name) / "backups"
+        backup_dir = backup_root / "old"
+        backup_dir.mkdir(parents=True)
+        backup_db = backup_dir / "local_skills.db"
+        shutil.copy2(self.db_path, backup_db)
+
+        removed = scrub_route_privacy.scrub_and_remove_backup_databases([backup_root])
+
+        self.assertEqual(removed, 1)
+        self.assertFalse(backup_db.exists())
+
+    def test_backup_purge_removes_seed_zip_archives(self) -> None:
+        seed_root = Path(self.tmp.name) / "seed-packets"
+        seed_root.mkdir()
+        archive = seed_root / "20260710T000000Z.zip"
+        with zipfile.ZipFile(archive, "w") as packet:
+            packet.writestr("local_skills.db", "legacy database bytes")
+
+        removed = scrub_route_privacy.remove_backup_archives([seed_root])
+
+        self.assertEqual(removed, 1)
+        self.assertFalse(archive.exists())
 
 
 class RecomputeFeedbackScoresTests(unittest.TestCase):

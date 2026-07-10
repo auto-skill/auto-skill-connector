@@ -10,13 +10,12 @@ Endpoints:
               -> {"type":"recommend","skill":{...},"message":...}
                | {"type":"clarify","message":...,"options":[...]}
                | {"type":"none","message":...}
-  GET  /find-semantic?q=...  raw hybrid-ranked list (debugging/eval)
+  POST /find-semantic {"q": ..., "limit": ...}  body-based public search
 
 Also runs a background loop that embeds any skills rows missing embeddings,
 so freshly scraped skills become semantically searchable within minutes.
 """
 import asyncio
-import hashlib
 import json
 import os
 import re
@@ -37,9 +36,11 @@ from quality import (
     CONFIG_VERSION,
     NAME_STOPWORDS,
     content_hash,
+    content_digest,
     has_valid_skill_frontmatter,
     is_non_task_prompt,
     rerank_candidates,
+    skill_capability_flags,
     tier_for_prompt,
 )
 
@@ -384,6 +385,12 @@ class RouteRequest(BaseModel):
     limit: int = 8
 
 
+class SemanticSearchRequest(BaseModel):
+    q: str
+    limit: int = 8
+    gate: bool = True
+
+
 class RouteFeedbackRequest(BaseModel):
     route_id: str
     outcome: str
@@ -544,10 +551,10 @@ def _private_skill_as_row(skill: dict) -> dict:
         "url": None,
         "content_hash": None,
         "quality_status": "private",
-        "quality_score": 100,
+        "quality_score": 0,
         "platforms": [],
         "category": "private",
-        "risk_score": 0,
+        "risk_score": 99,
         "rank": 1.0,
         "route_score": 1.0,
         "similarity": None,
@@ -641,10 +648,6 @@ def _estimate_tokens(value) -> int:
     return max(1, ceil(len(value) / 4))
 
 
-def _query_hash(query: str) -> str:
-    return hashlib.sha256(query.strip().lower().encode("utf-8")).hexdigest()
-
-
 async def _record_route_event(event: dict) -> None:
     try:
         await asyncio.to_thread(store.insert_route_event, event)
@@ -696,7 +699,7 @@ async def get_content(hash_value: str):
     return PlainTextResponse(
         text,
         media_type="text/markdown; charset=utf-8",
-        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+        headers={"Cache-Control": "public, max-age=3600"},
     )
 
 
@@ -718,9 +721,7 @@ async def route(body: RouteRequest, authorization: str | None = Header(None)):
                 "client_version": body.client_version[:80],
                 "id": route_id,
                 "user_id": user["id"] if user else None,
-                "query_hash": _query_hash(query),
                 "query_chars": len(query),
-                "prompt_text": query,
                 "tier": "none",
                 "config_version": CONFIG_VERSION,
                 "warnings": [],
@@ -755,12 +756,11 @@ async def route(body: RouteRequest, authorization: str | None = Header(None)):
         skill = _public_skill(_private_skill_as_row(private_match))
         private_content = private_match["content"]
         skill["content_hash"] = content_hash(private_content)
-        if len(private_content) > MAX_INLINE_CONTENT_CHARS:
-            tier = "hint"
-            warnings.append("Matched private skill exceeds inline size cap; downgraded to hint.")
-        else:
-            tier = "full"
-            content = private_content
+        tier = "hint"
+        capability_flags = skill_capability_flags(private_content)
+        if capability_flags:
+            skill["capability_flags"] = capability_flags
+        warnings.append("Private skills are hint-only until they pass the public verification and capability gates.")
     elif tier == "full" and skill:
         content_start = time.monotonic()
         library = LibraryContent()
@@ -775,6 +775,19 @@ async def route(body: RouteRequest, authorization: str | None = Header(None)):
             # every old row.
             tier = "hint"
             warnings.append("Matched content is not a valid SKILL.md document; downgraded to hint.")
+        elif not skill.get("content_hash"):
+            tier = "hint"
+            warnings.append("Matched skill has no indexed content hash; downgraded to hint.")
+        elif content_hash(text) != skill.get("content_hash"):
+            tier = "hint"
+            warnings.append("Matched skill content no longer matches its indexed hash; downgraded to hint.")
+        elif capability_flags := skill_capability_flags(text):
+            tier = "hint"
+            skill["capability_flags"] = capability_flags
+            warnings.append(
+                "Matched skill declares scripts, tools, network, dependencies, or dangerous commands; "
+                "downgraded to hint for explicit review."
+            )
         elif len(text) > MAX_INLINE_CONTENT_CHARS:
             tier = "hint"
             chash = skill.get("content_hash") or content_hash(text)
@@ -782,10 +795,16 @@ async def route(body: RouteRequest, authorization: str | None = Header(None)):
             warnings.append("Matched skill content exceeds inline size cap; downgraded to hint.")
         else:
             content = text
-            chash = skill.get("content_hash") or content_hash(text)
-            if chash:
-                skill["content_hash"] = chash
-                content_url = f"/content/{chash}"
+            chash = skill["content_hash"]
+            content_url = f"/content/{chash}"
+            skill["verification"] = {
+                "content_hash_verified": True,
+                "static_instruction_only": True,
+                "hash_kind": "canonical_normalized",
+                "content_digest": content_digest(text),
+                "source": "indexed-local-copy",
+                "publisher_verified": False,
+            }
 
     debug = _score_debug(results, tier)
     candidates = _hint_candidates(results) if tier == "hint" else []
@@ -839,9 +858,7 @@ async def route(body: RouteRequest, authorization: str | None = Header(None)):
             "client_version": body.client_version[:80],
             "id": route_id,
             "user_id": user["id"] if user else None,
-            "query_hash": _query_hash(query),
             "query_chars": len(query),
-            "prompt_text": query,
             "tier": tier,
             "skill_id": skill.get("id") if skill else None,
             "skill_name": skill.get("name") if skill else None,
@@ -875,53 +892,23 @@ async def route(body: RouteRequest, authorization: str | None = Header(None)):
     }
 
 
-class RouteSkipRequest(BaseModel):
-    prompt: str
-    reason: str = ""
-    client: str = ""
-    client_version: str = ""
-
-
 @router.post("/route-skip")
-async def route_skip(body: RouteSkipRequest, authorization: str | None = Header(None)):
-    """Log a prompt that auto_skill_core.py's should_route_prompt() decided
-    not to route, before it ever reached /route -- so "why didn't this
-    trigger" has an actual record (prompt text + reason) to answer from,
-    not just silence."""
-    user = auth.user_from_authorization_header(authorization)
-    query = body.prompt.strip()
-    if not query:
-        return {"ok": False}
-    await _record_route_event(
-        {
-            "client": body.client[:80],
-            "client_version": body.client_version[:80],
-            "id": str(uuid.uuid4()),
-            "user_id": user["id"] if user else None,
-            "query_hash": _query_hash(query),
-            "query_chars": len(query),
-            "prompt_text": query,
-            "skip_reason": body.reason[:200],
-            "tier": "skipped",
-            "config_version": CONFIG_VERSION,
-        }
-    )
-    return {"ok": True}
+async def route_skip():
+    """Deprecated metadata endpoint.
+
+    Current clients skip locally and make no request. Keeping a 410 response
+    for loopback callers makes the privacy change explicit without parsing or
+    retaining a legacy raw-prompt body.
+    """
+    return Response(status_code=410)
 
 
-@router.get("/find-semantic")
-async def find_semantic(q: str, limit: int = 8, gate: bool = True, authorization: str | None = Header(None)):
-    """Hybrid-ranked results, plus a `tier` a caller can act on directly:
-      "full" -> inject the top result's whole skill content
-      "hint" -> surface just its name/url, several candidates are plausible
-      "none" -> nothing cleared the bar; do not inject anything
-    With gate=true (default), a "none" tier also empties `results` - pass
-    gate=false for debugging/eval of raw rankings regardless of tier.
-    An authenticated caller's own private skills (never another user's) are
-    matched by name and, when relevant, prepended to `results`."""
+async def _find_semantic(q: str, limit: int = 8, gate: bool = True, authorization: str | None = None):
+    """Body-only discovery; results are never an actionable full route."""
+    q = (q or "").strip()[:3000]
+    limit = max(2, min(int(limit or 8), 20))
     if is_non_task_prompt(q):
         return {
-            "query": q,
             "results": [],
             "tier": "none",
             "gated": bool(gate),
@@ -943,18 +930,31 @@ async def find_semantic(q: str, limit: int = 8, gate: bool = True, authorization
         private_match = _best_private_skill_match(q, store.list_private_skills(user["id"]))
         if private_match:
             private_row = _private_skill_as_row(private_match)
-            tier = "full"
+            tier = "hint"
 
     if gate and tier == "none":
-        return {"query": q, "results": [], "tier": tier, "gated": True,
+        return {"results": [], "tier": tier, "gated": True,
                 "message": f"No result cleared the similarity floor ({MIN_SIMILARITY}).",
                 "score_debug": _score_debug(results, tier),
             "config_version": CONFIG_VERSION}
     if private_row:
         results = [private_row] + results
-    return {"query": q, "results": results, "tier": tier,
+    return {"results": results, "tier": ("hint" if tier == "full" else tier),
             "score_debug": _score_debug(results, tier),
             "config_version": CONFIG_VERSION}
+
+
+@router.post("/find-semantic")
+async def find_semantic_post(
+    body: SemanticSearchRequest,
+    authorization: str | None = Header(None),
+):
+    """Body-based public search contract.
+
+    JSON POST is the only search contract so task text never appears in
+    access-log URLs.
+    """
+    return await _find_semantic(body.q, body.limit, body.gate, authorization)
 
 
 @router.get("/route-metrics")
@@ -980,7 +980,8 @@ async def route_feedback(body: RouteFeedbackRequest):
     """Outcome feedback for route analytics, reported by the Claude Code hook,
     the CLI, and the hosted connector. Public callers need an account (see
     scraper.py's guards). Keep payloads privacy-safe: route_id plus a small
-    enum-style outcome, never raw prompts.
+    enum-style outcome and source. ``note`` is accepted only for compatibility
+    and is deliberately ignored rather than retained.
     """
     outcome = (body.outcome or "").strip().lower()
     allowed = {"used", "skipped", "installed", "failed", "dismissed", "shown", "injected"}
@@ -994,7 +995,6 @@ async def route_feedback(body: RouteFeedbackRequest):
         route_id,
         outcome,
         body.source,
-        body.note,
     )
     if not updated:
         return Response(status_code=404)

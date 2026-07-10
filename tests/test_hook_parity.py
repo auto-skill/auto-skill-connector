@@ -113,6 +113,198 @@ def test_route_filter_parity(prompt: str) -> None:
     assert core.should_route_prompt(prompt)["should_route"] == hook._should_route(prompt)[0]
 
 
+@pytest.mark.parametrize("prompt", ["ok", "/help", "what is the current state?"])
+def test_hook_main_skips_without_any_network_call(
+    prompt: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    network_calls = []
+
+    def fail_if_called(request, timeout=None):
+        network_calls.append(request)
+        raise AssertionError("skipped prompts must not make network calls")
+
+    monkeypatch.delenv("AUTOSKILL_DIAGNOSTICS", raising=False)
+    monkeypatch.setattr(hook.urllib.request, "urlopen", fail_if_called)
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps({"prompt": prompt})))
+
+    hook.main()
+
+    assert network_calls == []
+
+
+def test_hook_main_eligible_prompt_uses_only_post_route(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    requests = []
+
+    class JsonResponse(io.BytesIO):
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            self.close()
+
+    def fake_urlopen(request, timeout=None):
+        requests.append(request)
+        return JsonResponse(json.dumps({"tier": "none"}).encode("utf-8"))
+
+    prompt = "create a spreadsheet with formulas for my monthly budget"
+    monkeypatch.delenv("AUTOSKILL_DIAGNOSTICS", raising=False)
+    monkeypatch.setattr(hook, "AUTOSKILL_URL", "https://skills.example")
+    monkeypatch.setattr(hook, "_auth_headers", lambda: {})
+    monkeypatch.setattr(hook.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps({"prompt": prompt})))
+
+    hook.main()
+
+    assert len(requests) == 1
+    request = requests[0]
+    assert request.get_method() == "POST"
+    assert request.full_url == "https://skills.example/route"
+    assert "/route-skip" not in request.full_url
+    assert "/find-semantic" not in request.full_url
+    assert json.loads(request.data.decode("utf-8"))["task"] == prompt
+
+
+def test_hook_main_diagnostics_are_off_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    log_path = tmp_path / "routing.jsonl"
+    monkeypatch.delenv("AUTOSKILL_DIAGNOSTICS", raising=False)
+    monkeypatch.setattr(hook, "ROUTING_LOG_PATH", log_path)
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps({"prompt": "ok"})))
+
+    hook.main()
+
+    assert not log_path.exists()
+
+
+def test_hook_main_diagnostics_are_opt_in_and_metadata_only(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    prompt = "make a private spreadsheet report containing SECRET-PROMPT-CONTENT"
+    skill = {
+        "name": "spreadsheet-router",
+        "description": "Create spreadsheet reports.",
+        "url": "https://example.com/spreadsheet",
+        "risk_score": 0,
+    }
+    log_path = tmp_path / "routing.jsonl"
+    monkeypatch.setenv("AUTOSKILL_DIAGNOSTICS", "true")
+    monkeypatch.setattr(hook, "ROUTING_LOG_PATH", log_path)
+    monkeypatch.setattr(
+        hook,
+        "_selfhosted_route",
+        lambda routed_prompt: {"tier": "hint", "skill": skill, "candidates": [skill]},
+    )
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps({"prompt": prompt})))
+
+    hook.main()
+
+    serialized = log_path.read_text(encoding="utf-8").strip()
+    record = json.loads(serialized)
+    assert set(record) == {"timestamp", "tier", "prompt_len", "reason", "selected_skill"}
+    assert record["timestamp"]
+    assert record["tier"] == "hint"
+    assert record["prompt_len"] == len(prompt)
+    assert record["reason"] == "multiple candidates plausible"
+    assert record["selected_skill"] == {
+        "name": "spreadsheet-router",
+        "url": "https://example.com/spreadsheet",
+        "risk_score": 0,
+    }
+    assert prompt not in serialized
+    assert "SECRET-PROMPT-CONTENT" not in serialized
+    assert "prompt_snippet" not in record
+    assert "prompt_text" not in record
+    assert "prompt_hash" not in record
+
+
+def test_hook_scrubs_legacy_prompt_fields_from_existing_log(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    log_path = tmp_path / "routing.jsonl"
+    log_path.write_text(
+        json.dumps(
+            {
+                "at": "2026-07-01T00:00:00Z",
+                "tier": "full",
+                "prompt_len": 22,
+                "prompt_snippet": "PRIVATE LEGACY PROMPT",
+                "query_hash": "legacy-hash",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(hook, "ROUTING_LOG_PATH", log_path)
+    monkeypatch.setattr(hook, "_selfhosted_route", lambda prompt: None)
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps({"prompt": "make a spreadsheet report"})))
+
+    hook.main()
+
+    serialized = log_path.read_text(encoding="utf-8")
+    record = json.loads(serialized)
+    assert record == {"at": "2026-07-01T00:00:00Z", "tier": "full", "prompt_len": 22}
+    assert "PRIVATE LEGACY PROMPT" not in serialized
+    assert "legacy-hash" not in serialized
+
+
+@pytest.mark.parametrize(
+    ("verified", "expected"),
+    [
+        (False, "content was not verified as static and hash-pinned"),
+        (True, "<auto_skill_content>"),
+    ],
+)
+def test_hook_full_route_requires_verified_content_hash(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    verified: bool,
+    expected: str,
+) -> None:
+    content = """---
+name: spreadsheet-router
+description: Create spreadsheet reports with formulas, charts, and validation.
+---
+
+## Workflow
+
+- Use this workflow when the user requests a spreadsheet report.
+- Inspect inputs, create formulas and charts, verify every result, and explain assumptions.
+- Return the validated workbook and a concise summary of the checks performed.
+"""
+    skill = {
+        "name": "spreadsheet-router",
+        "description": "Create spreadsheet reports.",
+        "url": "https://example.com/spreadsheet",
+        "risk_score": 0,
+        "verification": {
+            "content_hash_verified": verified,
+            "static_instruction_only": verified,
+        },
+    }
+    monkeypatch.setattr(
+        hook,
+        "_selfhosted_route",
+        lambda prompt: {"tier": "full", "skill": skill, "content": content},
+    )
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps({"prompt": "make a spreadsheet report"})))
+
+    hook.main()
+
+    out = capsys.readouterr().out
+    assert expected in out
+    if not verified:
+        assert "<auto_skill_content>" not in out
+
+
 def test_hook_hint_output_includes_candidates_and_metrics(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     def fake_route(prompt: str) -> dict:
         assert prompt == "make a spreadsheet report"

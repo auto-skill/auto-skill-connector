@@ -404,7 +404,11 @@ async def main() -> int:
         positive_cases = []
         negative_cases = []
         for query, _ in CASES:
-            r = await client.get(f"{SUPABASE_URL}/find-semantic", params={"q": query}, timeout=30)
+            r = await client.post(
+                f"{SUPABASE_URL}/find-semantic",
+                json={"q": query, "limit": 8, "gate": True},
+                timeout=30,
+            )
             body = r.json() if r.status_code == 200 else {}
             tier = body.get("tier", "none")
             tier_counts[tier] = tier_counts.get(tier, 0) + 1
@@ -421,7 +425,11 @@ async def main() -> int:
             # bar here is narrower than "no results at all": a "hint" tier is
             # harmless (never auto-injected, just named); the real failure
             # mode is "full" -- silent auto-injection of junk.
-            r = await client.get(f"{SUPABASE_URL}/find-semantic", params={"q": query}, timeout=30)
+            r = await client.post(
+                f"{SUPABASE_URL}/find-semantic",
+                json={"q": query, "limit": 8, "gate": True},
+                timeout=30,
+            )
             body = r.json() if r.status_code == 200 else {}
             tier = body.get("tier", "none")
             ok = tier != "full"

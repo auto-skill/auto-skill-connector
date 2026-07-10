@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import json
+import re
 import shutil
 import sys
 import threading
@@ -370,24 +372,29 @@ async def _command_preview(args: argparse.Namespace) -> int:
     return 0
 
 
-def _confirm_install(dest_hint: Path) -> bool:
+def _install_capability_warnings(content: str) -> list[str]:
+    checks = (
+        ("declares agent tool permissions", r"(?im)^\s*allowed-tools\s*:"),
+        ("references bundled scripts", r"(?i)(?:^|[\s`(])scripts[/\\]"),
+        ("references bundled assets or documentation", r"(?i)(?:^|[\s`(])(?:assets|references)[/\\]"),
+        ("mentions network access", r"(?i)\b(?:curl|wget|httpx|requests|fetch)\b|https?://"),
+        ("installs external dependencies", r"(?i)\b(?:pip|npm|pnpm|yarn|uv|brew|apt(?:-get)?)\s+(?:install|add)\b"),
+        ("mentions elevated or destructive commands", r"(?i)\b(?:sudo|rm\s+-rf|chmod\s+777|powershell\s+-enc)\b"),
+    )
+    return [label for label, pattern in checks if re.search(pattern, content)]
+
+
+def _confirm_install(dest_hint: Path, warnings: list[str]) -> bool:
     if not sys.stdin.isatty():
         print("error: refusing non-interactive install without --yes", file=sys.stderr)
         return False
-    answer = input(f"Install to {dest_hint}? [y/N] ").strip().lower()
+    qualifier = "unverified skill with capability warnings" if warnings else "unverified instruction-only skill"
+    answer = input(f"Install this {qualifier} to {dest_hint}? [y/N] ").strip().lower()
     return answer in {"y", "yes"}
 
 
 async def _command_install(args: argparse.Namespace) -> int:
     source = " ".join(args.source).strip()
-    if args.target == "codex":
-        print(
-            "Codex does not currently support permanent Claude SKILL.md installs. "
-            "Use the auto-skill MCP route_task tool and apply full routes in-turn.",
-            file=sys.stderr,
-        )
-        return 2
-
     try:
         resolved = await _resolve_cli_skill(source)
         home = get_skills_home(args.target)
@@ -408,12 +415,18 @@ async def _command_install(args: argparse.Namespace) -> int:
     print(f"target: {preview_result['target']}")
     print(f"destination: {preview_result['dest_file']}")
     print(f"overwrite: {'yes' if preview_result['would_overwrite'] else 'no'}")
+    print(f"content sha256: {hashlib.sha256(resolved['content'].encode('utf-8')).hexdigest()}")
+    print("publisher identity: unverified")
+    capability_warnings = _install_capability_warnings(resolved["content"])
+    for warning in capability_warnings:
+        print(f"capability warning: {warning}")
+    print("install policy: explicit local install; no automatic persistence or trust-policy bypass")
 
     if args.dry_run:
         print("dry run: no files written")
         return 0
 
-    if not args.yes and not _confirm_install(preview_result["dest_file"]):
+    if not args.yes and not _confirm_install(preview_result["dest_file"], capability_warnings):
         print("cancelled")
         return 1
 
@@ -493,10 +506,11 @@ def _command_enable_hook(args: argparse.Namespace) -> int:
         print(f"a hook entry already exists pointing at {existing_args}, will replace it with {HOOK_SCRIPT_PATH}")
 
     print(
-        "Privacy note: this hook sends a snippet of each eligible prompt to the "
+        "Privacy note: Auto Mode is optional. It locally skips non-task prompts, then sends each "
+        "eligible task to the "
         f"configured search backend ({get_autoskill_url() or 'disabled'}) to look "
-        "up a matching skill. See SECURITY.md. Do not enable this for sensitive "
-        "conversations."
+        "up a matching skill. The hosted backend processes task text transiently and does not "
+        "retain it. Diagnostics are off by default and never include prompt text. See SECURITY.md."
     )
     if not args.yes:
         if not sys.stdin.isatty():
@@ -762,7 +776,9 @@ async def _command_doctor(args: argparse.Namespace) -> int:
     except Exception as exc:
         print(f"mcp: unavailable ({exc})")
         ok = False
-    print("codex permanent skill install: unsupported; use MCP route_task in-turn")
+    print("skill install targets:")
+    for target in ("claude", "codex", "cursor"):
+        print(f"  {target}: {get_skills_home(target)}")
 
     profile = await whoami()
     print(f"account: logged in as {profile['email']}" if profile else "account: not logged in (run `auto-skill login`)")
@@ -797,7 +813,7 @@ def build_parser() -> argparse.ArgumentParser:
     feedback = subparsers.add_parser("feedback", help="Record privacy-safe route outcome feedback.")
     feedback.add_argument("route_id", help="Route id returned by route or route-prompt JSON.")
     feedback.add_argument("outcome", choices=["used", "skipped", "installed", "failed", "dismissed"], help="Outcome to record.")
-    feedback.add_argument("--note", default="", help="Optional short note; do not include raw prompts.")
+    feedback.add_argument("--note", default="", help="Deprecated compatibility option; ignored and never retained.")
     feedback.set_defaults(func=_command_feedback)
 
     metrics = subparsers.add_parser("metrics", help="Show local route analytics and launch budget breaches.")
@@ -813,7 +829,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     install = subparsers.add_parser("install", help="Install a skill by URL or task description.")
     install.add_argument("source", nargs="+", help="Skill URL or task description.")
-    install.add_argument("--target", choices=["claude", "codex"], default="claude", help="Install target.")
+    install.add_argument(
+        "--target",
+        choices=["claude", "codex", "cursor"],
+        default="claude",
+        help="Local Agent Skills target.",
+    )
     install.add_argument("--name", default="", help="Override installed skill name.")
     install.add_argument("--yes", action="store_true", help="Approve install without an interactive prompt.")
     install.add_argument("--force", action="store_true", help="Overwrite an existing skill with the same slug.")

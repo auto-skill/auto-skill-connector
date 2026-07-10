@@ -94,7 +94,6 @@ CREATE TABLE IF NOT EXISTS route_events (
     created_at TEXT,
     client TEXT,
     client_version TEXT,
-    query_hash TEXT,
     query_chars INTEGER,
     tier TEXT,
     skill_id TEXT,
@@ -116,7 +115,6 @@ CREATE TABLE IF NOT EXISTS route_events (
     outcome TEXT,
     outcome_at TEXT,
     feedback_source TEXT,
-    feedback_note TEXT,
     warnings TEXT DEFAULT '[]'
 );
 
@@ -228,15 +226,70 @@ ROUTE_EVENT_COLUMN_DEFAULTS = {
     "outcome": "TEXT",
     "outcome_at": "TEXT",
     "feedback_source": "TEXT",
-    "feedback_note": "TEXT",
     "skill_find_ms": "INTEGER",
     "rerank_ms": "INTEGER",
     "candidate_tokens": "INTEGER",
     "injected_tokens": "INTEGER",
     "user_id": "TEXT",
-    "prompt_text": "TEXT",
     "skip_reason": "TEXT",
 }
+
+# Route analytics are deliberately metadata-only. Keep this allowlist at the
+# storage boundary rather than trusting every HTTP/MCP caller to remember not
+# to pass a raw task. Legacy callers may still include prompt_text/query_hash/
+# feedback_note; those keys are silently discarded before SQL is constructed.
+ROUTE_EVENT_WRITE_COLUMNS = frozenset(
+    {
+        "id",
+        "created_at",
+        "client",
+        "client_version",
+        "query_chars",
+        "tier",
+        "skill_id",
+        "skill_name",
+        "skill_url",
+        "latency_ms",
+        "skill_find_ms",
+        "retrieval_ms",
+        "rerank_ms",
+        "content_ms",
+        "result_count",
+        "input_tokens",
+        "hint_tokens",
+        "candidate_tokens",
+        "content_tokens",
+        "injected_tokens",
+        "response_tokens",
+        "config_version",
+        "outcome",
+        "outcome_at",
+        "feedback_source",
+        "warnings",
+        "user_id",
+        "skip_reason",
+    }
+)
+
+ROUTE_EVENT_FORBIDDEN_LEGACY_COLUMNS = ("prompt_text", "query_hash", "feedback_note")
+ROUTE_EVENT_OUTCOMES = frozenset(
+    {"used", "skipped", "installed", "failed", "dismissed", "shown", "injected"}
+)
+ROUTE_EVENT_TIERS = frozenset({"full", "hint", "none", "skipped"})
+SAFE_ROUTE_SKIP_REASONS = frozenset(
+    {
+        "empty prompt",
+        "command prompt",
+        "too short",
+        "too long",
+        "too long; likely pasted context",
+        "acknowledgement",
+        "acknowledgement or continuation",
+        "meta prompt",
+        "meta or status prompt",
+    }
+)
+_SAFE_ROUTE_IDENTIFIER_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/+@-]*\Z")
 
 CLI_TOKEN_TTL_SECONDS = 90 * 24 * 60 * 60  # 90 days, sliding forward on each use
 
@@ -272,6 +325,88 @@ def _stale_duplicate_running_scrapes(conn: sqlite3.Connection) -> None:
         )
 
 
+def _route_event_columns(conn: sqlite3.Connection) -> set[str]:
+    return {
+        str(row["name"] if isinstance(row, sqlite3.Row) else row[1])
+        for row in conn.execute("PRAGMA table_info(route_events)").fetchall()
+    }
+
+
+def _safe_route_identifier(value: object, max_length: int = 80) -> str:
+    """Return a compact identifier or empty string, never arbitrary prose."""
+    text = str(value or "").strip()[:max_length]
+    return text if _SAFE_ROUTE_IDENTIFIER_RE.fullmatch(text) else ""
+
+
+def _scrub_route_event_privacy(conn: sqlite3.Connection) -> None:
+    """Logically clear legacy free-text route data on an existing connection.
+
+    ``secure_delete`` is enabled before the UPDATE so SQLite overwrites deleted
+    cell content instead of merely releasing it for reuse. The standalone scrub
+    utility additionally checkpoints and vacuums with the services stopped.
+    """
+    conn.execute("PRAGMA secure_delete=ON")
+    columns = _route_event_columns(conn)
+    assignments = [
+        f"{column}=NULL" for column in ROUTE_EVENT_FORBIDDEN_LEGACY_COLUMNS if column in columns
+    ]
+    if assignments:
+        where = " OR ".join(
+            f"{column} IS NOT NULL"
+            for column in ROUTE_EVENT_FORBIDDEN_LEGACY_COLUMNS
+            if column in columns
+        )
+        conn.execute(f"UPDATE route_events SET {', '.join(assignments)} WHERE {where}")
+    if "skip_reason" in columns:
+        placeholders = ",".join("?" for _ in SAFE_ROUTE_SKIP_REASONS)
+        conn.execute(
+            f"UPDATE route_events SET skip_reason=NULL "
+            f"WHERE skip_reason IS NOT NULL AND skip_reason NOT IN ({placeholders})",
+            tuple(sorted(SAFE_ROUTE_SKIP_REASONS)),
+        )
+    if "warnings" in columns:
+        # Warning prose is operationally useful in the HTTP response but is
+        # not needed in retained analytics. Reset legacy rows and keep the
+        # storage boundary free of arbitrary caller-controlled text.
+        conn.execute("UPDATE route_events SET warnings='[]' WHERE warnings IS NOT NULL")
+
+
+def route_event_privacy_status(conn: sqlite3.Connection | None = None) -> dict:
+    """Count legacy privacy violations without loading or returning their text."""
+    owned = conn is None
+    if conn is None:
+        conn = get_conn()
+    try:
+        columns = _route_event_columns(conn)
+        forbidden_counts = {}
+        for column in ROUTE_EVENT_FORBIDDEN_LEGACY_COLUMNS:
+            forbidden_counts[column] = (
+                int(conn.execute(f"SELECT COUNT(*) FROM route_events WHERE {column} IS NOT NULL").fetchone()[0])
+                if column in columns
+                else 0
+            )
+        unsafe_skip_reason = 0
+        if "skip_reason" in columns:
+            placeholders = ",".join("?" for _ in SAFE_ROUTE_SKIP_REASONS)
+            unsafe_skip_reason = int(
+                conn.execute(
+                    f"SELECT COUNT(*) FROM route_events "
+                    f"WHERE skip_reason IS NOT NULL AND skip_reason NOT IN ({placeholders})",
+                    tuple(sorted(SAFE_ROUTE_SKIP_REASONS)),
+                ).fetchone()[0]
+            )
+        violations = sum(forbidden_counts.values()) + unsafe_skip_reason
+        return {
+            "ok": violations == 0,
+            "violations": violations,
+            "forbidden_non_null": forbidden_counts,
+            "unsafe_skip_reason": unsafe_skip_reason,
+        }
+    finally:
+        if owned:
+            conn.close()
+
+
 def init_db() -> None:
     conn = get_conn()
     try:
@@ -284,6 +419,7 @@ def init_db() -> None:
         for col, spec in ROUTE_EVENT_COLUMN_DEFAULTS.items():
             if col not in route_existing:
                 conn.execute(f"ALTER TABLE route_events ADD COLUMN {col} {spec}")
+        _scrub_route_event_privacy(conn)
         cli_token_existing = {row["name"] for row in conn.execute("PRAGMA table_info(cli_tokens)").fetchall()}
         for col, spec in CLI_TOKEN_COLUMN_DEFAULTS.items():
             if col not in cli_token_existing:
@@ -497,14 +633,22 @@ def delete_rows(table: str, filters: dict) -> int:
 
 
 def insert_route_event(event: dict) -> None:
-    """Best-effort append-only analytics for route latency and token churn."""
+    """Append privacy-safe route metadata, discarding every unknown field."""
     conn = get_conn()
     try:
-        row = dict(event)
+        row = {key: value for key, value in event.items() if key in ROUTE_EVENT_WRITE_COLUMNS}
         row.setdefault("id", str(uuid.uuid4()))
         row.setdefault("created_at", _now())
-        if not isinstance(row.get("warnings"), str):
-            row["warnings"] = json.dumps(row.get("warnings") or [])
+        for key in ("client", "client_version", "config_version", "feedback_source"):
+            if key in row:
+                row[key] = _safe_route_identifier(row[key]) or None
+        if row.get("tier") not in ROUTE_EVENT_TIERS:
+            row["tier"] = None
+        if row.get("outcome") not in ROUTE_EVENT_OUTCOMES:
+            row["outcome"] = None
+        if row.get("skip_reason") not in SAFE_ROUTE_SKIP_REASONS:
+            row["skip_reason"] = None
+        row["warnings"] = "[]"
         cols = list(row.keys())
         placeholders = ",".join("?" for _ in cols)
         conn.execute(
@@ -760,20 +904,26 @@ def scrape_run_summary(stale_after_seconds: int = 7200, limit: int = 5) -> dict:
 
 
 def update_route_event_feedback(route_id: str, outcome: str, source: str = "", note: str = "") -> bool:
-    """Attach privacy-safe outcome feedback to a route event."""
+    """Attach enum outcome/source metadata; free-form ``note`` is ignored."""
+    del note
+    outcome = (outcome or "").strip().lower()
+    if outcome not in ROUTE_EVENT_OUTCOMES:
+        return False
+    safe_source = _safe_route_identifier(source)
     conn = get_conn()
     try:
+        columns = _route_event_columns(conn)
+        clear_legacy_note = ", feedback_note=NULL" if "feedback_note" in columns else ""
         cur = conn.execute(
-            """
+            f"""
             UPDATE route_events
-            SET outcome=?, outcome_at=?, feedback_source=?, feedback_note=?
+            SET outcome=?, outcome_at=?, feedback_source=?{clear_legacy_note}
             WHERE id=?
             """,
             (
                 outcome,
                 _now(),
-                source[:80],
-                note[:300],
+                safe_source or None,
                 route_id,
             ),
         )
@@ -1321,12 +1471,23 @@ def consume_mcp_auth_code(code: str, client_id: str) -> dict | None:
 
 
 def list_route_events_for_user(user_id: str, limit: int = 100) -> list[dict]:
-    """Every route_events column for this user, including prompt_text (raw
-    prompt retention is disclosed on the site's trust section)."""
+    """Return the current user's privacy-safe route metadata projection."""
+    limit = max(1, min(int(limit), 200))
     conn = get_conn()
     try:
         rows = conn.execute(
-            "SELECT * FROM route_events WHERE user_id=? ORDER BY created_at DESC LIMIT ?",
+            """
+            SELECT id, created_at, client, client_version, query_chars, tier,
+                   skill_id, skill_name, skill_url, latency_ms, skill_find_ms,
+                   retrieval_ms, rerank_ms, content_ms, result_count,
+                   input_tokens, hint_tokens, candidate_tokens, content_tokens,
+                   injected_tokens, response_tokens, config_version, outcome,
+                   outcome_at, feedback_source, warnings, skip_reason
+            FROM route_events
+            WHERE user_id=?
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
             (user_id, limit),
         ).fetchall()
         events = []

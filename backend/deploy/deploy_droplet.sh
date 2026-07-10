@@ -68,7 +68,14 @@ $SSH "mkdir -p ${REMOTE_DIR}/backend/data ${REMOTE_DIR}/backend/skills_library &
 echo "==> Tagging current images as :previous for rollback"
 $SSH "for img in deploy-api deploy-mcp deploy-worker; do docker tag \$img:latest \$img:previous 2>/dev/null || true; done"
 
+PRIVACY_SCRUBBED=0
+PRIVACY_MARKER="$REMOTE_DIR/backend/data/.route-privacy-scrub-v1.complete"
 rollback() {
+  if [ "$PRIVACY_SCRUBBED" -eq 1 ] || $SSH "test -f '$PRIVACY_MARKER'"; then
+    echo "==> Privacy scrub is complete; refusing to restore pre-privacy images" >&2
+    $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml up -d --no-build api mcp worker litestream" || true
+    return
+  fi
   echo "==> Rolling back to the previous images" >&2
   $SSH "cd ${REMOTE_DIR} && for img in deploy-api deploy-mcp deploy-worker; do docker tag \$img:previous \$img:latest 2>/dev/null || true; done && docker compose -f backend/deploy/docker-compose.yml rm -sf api mcp worker && docker compose -f backend/deploy/docker-compose.yml up -d --no-build api mcp worker"
 }
@@ -88,6 +95,45 @@ if ! $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.y
   echo "FAILED: could not drain the worker lease" >&2
   rollback
   exit 1
+fi
+
+PRIVACY_MARKER="${REMOTE_DIR}/backend/data/.route-privacy-scrub-v1.complete"
+if ! $SSH "test -f '${PRIVACY_MARKER}'"; then
+  echo "==> Stopping database users for the one-time route privacy scrub"
+  if ! $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml stop api mcp litestream"; then
+    echo "FAILED: could not stop database services for privacy scrub" >&2
+    rollback
+    exit 1
+  fi
+
+  echo "==> Physically scrubbing retained route text and verifying SQLite integrity"
+  if ! $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml run --rm --no-deps api python scrub_route_privacy.py --apply --timeout-seconds 30"; then
+    echo "FAILED: route privacy scrub did not complete" >&2
+    rollback
+    exit 1
+  fi
+  PRIVACY_SCRUBBED=1
+  echo "==> Removing pre-scrub Litestream local tracking state and rollback tags"
+  if ! $SSH "rm -rf '${REMOTE_DIR}/backend/data/local_skills.db-litestream' && for img in deploy-api deploy-mcp deploy-worker; do docker image rm \$img:previous 2>/dev/null || true; done"; then
+    echo "FAILED: could not clear pre-scrub Litestream/rollback state" >&2
+    rollback
+    exit 1
+  fi
+
+  echo "==> Physically scrubbing and removing local database backup copies"
+  if ! $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml run --rm --no-deps api python scrub_route_privacy.py --purge-backups-only --purge-backup-root /data/backups --purge-backup-root /data/seed-packets --timeout-seconds 30"; then
+    echo "FAILED: local database backup scrub did not complete" >&2
+    rollback
+    exit 1
+  fi
+
+  echo "==> Purging pre-scrub database generations from R2"
+  if ! $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml up -d library-backup && docker compose -f backend/deploy/docker-compose.yml exec -T library-backup sh -lc 'command -v aws >/dev/null 2>&1 || apk add --no-cache aws-cli >/dev/null; sh /scripts/purge-route-db-backups.sh --purge'"; then
+    echo "FAILED: could not purge pre-scrub database backups" >&2
+    rollback
+    exit 1
+  fi
+
 fi
 
 echo "==> Recreating API"
@@ -126,7 +172,24 @@ if ! $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.y
   exit 1
 fi
 
-if [ "$LITESTREAM_HASH_BEFORE" != "$LITESTREAM_HASH_AFTER" ]; then
+if [ "$PRIVACY_SCRUBBED" -eq 1 ]; then
+  echo "==> Starting a fresh sanitized Litestream generation"
+  $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml up -d --force-recreate litestream"
+  replica_ready=0
+  for attempt in $(seq 1 40); do
+    if $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml exec -T library-backup sh /scripts/purge-route-db-backups.sh --require-litestream >/dev/null"; then
+      replica_ready=1
+      break
+    fi
+    sleep 3
+  done
+  if [ "$replica_ready" -ne 1 ]; then
+    echo "FAILED: sanitized Litestream generation was not visible in R2" >&2
+    rollback
+    exit 1
+  fi
+  $SSH "touch '${PRIVACY_MARKER}' && chown 10001:10001 '${PRIVACY_MARKER}'"
+elif [ "$LITESTREAM_HASH_BEFORE" != "$LITESTREAM_HASH_AFTER" ]; then
   echo "==> litestream.yml changed -- restarting Litestream"
   $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml up -d --force-recreate litestream"
 fi
@@ -160,5 +223,14 @@ if [ "$smoke_failed" -ne 0 ]; then
   rollback
   exit 1
 fi
+
+privacy_clean=$(curl -fsS --max-time 15 https://skills.autoskill.dev/readyz \
+  | python3 -c 'import json,sys; p=json.load(sys.stdin).get("route_privacy") or {}; print("yes" if p.get("ok") is True and int(p.get("violations") or 0) == 0 else "no")')
+if [ "$privacy_clean" != "yes" ]; then
+  echo "FAILED: public readiness did not prove zero retained route prompt fields" >&2
+  rollback
+  exit 1
+fi
+echo "checked: route privacy -> clean"
 
 echo "==> Deploy complete"

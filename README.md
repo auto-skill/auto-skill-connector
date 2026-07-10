@@ -1,43 +1,109 @@
-# auto-skill-connector
+# Auto-Skill
 
-Find, preview, and install reusable AI agent skills before your agent rebuilds
-them from scratch.
+Trusted, compatible skill discovery and lifecycle foundations for Claude Code,
+Codex, and Cursor.
 
-`auto-skill` searches a large scraped index of agent skills, MCP servers, and
-plugins, routes a task to reusable skill content when confidence is high,
-returns hints when unsure, and lets Claude-style skill clients install vetted
-skills explicitly.
+Auto-Skill finds portable Agent Skills, checks their structure and provenance,
+routes an explicit task to a compatible `SKILL.md`, and supports careful local
+installation. The launch product is deliberately not a claim to have the
+largest scraped catalog. Existing registries already compete on breadth;
+Auto-Skill is focused on integrity, compatibility, predictable routing, and a
+safe path toward update, rollback, and team policy.
 
-## Why This Exists
+## Launch Scope
 
-Agents keep rediscovering the same workflows: spreadsheet generation, browser
-testing, document formatting, security review, outreach writing, and hundreds
-more. Static skill lists are useful, but they still make you browse, compare,
-copy, and install by hand.
+What ships now:
 
-`auto-skill` is different:
+- Deterministic task ranking with quality and platform gates.
+- Source provenance and normalized content hashes.
+- Full in-turn use only for high-confidence, risk-0 public content whose
+  canonical hash and returned raw digest verify; ambiguous matches return hints.
+- Explicit search, route, preview, and manual persistent install commands.
+- Native `SKILL.md` install targets for Claude Code, Codex, and Cursor.
+- An optional Claude Code prompt adapter for users who deliberately enable Auto
+  Mode.
+- A hosted MCP connector with no skill/filesystem writes; optional enum-only
+  route feedback.
+- Health, readiness, eval, smoke-test, backup, and deploy checks.
+- No server-side retention of raw prompts or prompt snippets.
 
-- Route by task, not by repo name.
-- Auto-pick one safe best match, with full/hint/no-route confidence tiers.
-- Preview the actual skill instructions before installing.
-- Install with overwrite protection.
-- Use through MCP in any compatible agent.
-- Keep permanent installs honest: Claude skills install to Claude; Codex uses
-  MCP instructions in the current turn.
+For an indexed public skill, `content-hash verified` means the local indexed
+snapshot matches its canonical normalized hash and the served bytes carry a
+separate raw SHA-256 digest. It does not query the current upstream revision,
+prove publisher identity, guarantee safety, or replace review of an unfamiliar
+skill.
+
+Not shipped yet:
+
+- Automatic persistent installation.
+- A one-time publisher/permission trust policy.
+- Publisher identity verification or signed releases.
+- Managed updates, uninstall, or rollback.
+- Auto Mode adapters for Codex or Cursor.
+- Complete installation of skill bundles that require scripts, dependencies,
+  references, or assets.
+
+## Client Compatibility
+
+Claude Code, Codex, and Cursor all support Agent Skills built around
+`SKILL.md`. Their native discovery locations differ:
+
+| Client | Auto-Skill default user location | Launch behavior |
+| --- | --- | --- |
+| Claude Code | `~/.claude/skills` | Manual install; optional opt-in prompt adapter |
+| Codex | `~/.agents/skills` | Manual install and explicit MCP/CLI routing |
+| Cursor | `~/.agents/skills` | Manual install and explicit MCP/CLI routing |
+
+Cursor also recognizes `~/.cursor/skills`. Auto-Skill uses the portable
+`~/.agents/skills` location by default for Codex and Cursor. `SKILLS_HOME` can
+override the selected destination.
+
+Vendor references:
+
+- [Claude Code skills](https://code.claude.com/docs/en/skills)
+- [Codex skills](https://developers.openai.com/codex/skills)
+- [Cursor Agent Skills](https://cursor.com/docs/skills)
+
+## Routing Modes
+
+### On-demand mode (default)
+
+Nothing intercepts prompts. A user or agent explicitly calls `search`,
+`route`, `preview`, `route_prompt`, or the corresponding MCP tool. This is the
+default for every client.
+
+### Auto Mode (opt-in adapter)
+
+Auto Mode is a client integration, not a property of MCP. The launch build
+only includes a Claude Code `UserPromptSubmit` adapter. Enabling it allows the
+adapter to inspect eligible prompts, call the route service, and add verified
+task-specific context for the current turn. Tiny acknowledgements, commands,
+meta/status prompts, and pasted context are filtered locally without a server
+call.
+
+Auto Mode never means automatic persistent installation. It can use
+high-confidence, content-hash-verified, risk-0, static instructions in the current task
+without a modal; ambiguous matches stay as candidate hints, and unverifiable
+content is not injected. Normal client permissions still govern every tool,
+script, network call, and side effect mentioned by those instructions.
+
+MCP servers cannot invisibly intercept every prompt. Codex and Cursor can use
+the explicit router today, but true Auto Mode for those clients requires a
+separate, tested adapter and is P1 work.
 
 ## Repo Layout
 
-This repo holds both halves of Auto-Skill:
+This repository holds both halves of Auto-Skill:
 
-- **Client** (repo root) -- `auto_skill_cli.py`, `mcp_server.py`, `hooks/`: the
-  package end users `pip install`, which talks to the hosted backend over
+- **Client** (repo root): `auto_skill_cli.py`, `mcp_server.py`, and `hooks/`.
+  This is the package end users install; it talks to the hosted backend over
   HTTP.
-- **Backend** (`backend/`) -- the FastAPI/SQLite service that powers
-  `skills.autoskill.dev` (scraper, embeddings, deterministic router, deploy
-  scripts). It has its own run story (`python backend/scraper.py`) and its own
-  CI (`.github/workflows/backend-ci.yml`); it is not part of the pip package.
+- **Backend** (`backend/`): the FastAPI/SQLite service behind
+  `skills.autoskill.dev`, including ingestion, embeddings, deterministic
+  routing, content storage, and deploy scripts. It has its own run story and CI
+  and is not part of the pip package.
 
-The backend subtree tracks the standalone backend repo at
+The backend subtree tracks the standalone backend repository at
 `https://github.com/auto-skill/auto-skill.git`. After syncing it, update
 `.autoskill-backend-subtree.json` and run:
 
@@ -45,15 +111,15 @@ The backend subtree tracks the standalone backend repo at
 python scripts/check_backend_subtree.py --check-remote
 ```
 
-The standalone backend workflow is intentionally kept at the connector repo's
-top-level `.github/workflows/backend-ci.yml`, not under `backend/.github/`.
+The standalone backend workflow is intentionally kept at the connector
+repository's top-level `.github/workflows/backend-ci.yml`, not under
+`backend/.github/`.
 
 ## Demo
 
-Three real tasks, run against the live index (2026-07-07) -- not placeholder
-output:
+These example searches were run against the live index on 2026-07-07:
 
-```bash
+```text
 $ auto-skill search "create an excel report with formulas and charts"
 backend: self-hosted
 best match:
@@ -79,30 +145,17 @@ best match:
    https://github.com/xiaomimimo/mimo-code/tree/HEAD/packages/opencode/src/skill/builtin/.bundle/frontend-design
 ```
 
-Once a match looks right, apply it in-turn (`route`), read it first
-(`preview`), or install it permanently (`install`):
-
-```bash
-auto-skill route "create an excel report with formulas and charts" --show-content
-auto-skill preview "extract text and tables from a pdf"
-auto-skill install "build a react landing page with tailwind" --target claude --dry-run
-auto-skill doctor
-```
-
-Demo GIF/video: not yet recorded -- contributions welcome.
+Search results are candidates, not endorsements. A `risk=0` result only means
+the current pattern scanner found no flagged indicator.
 
 ## Prerequisites
 
 - Python 3.10+
-- `git`, for cloning this repo or the `uvx --from git+...` install path below
-- [`uv`](https://docs.astral.sh/uv/getting-started/installation/) if you use
-  the `claude mcp add ... uvx --from ...` install command -- it's what
-  resolves and runs the package without a manual clone. Not needed for the
-  "CLI From This Repo" path, which uses a plain venv instead.
+- `git`, for cloning this repository or using the `uvx --from git+...` path
+- [`uv`](https://docs.astral.sh/uv/getting-started/installation/) for the
+  `uvx` MCP setup below
 
-## Install
-
-### CLI From This Repo
+## Install the CLI
 
 ```bash
 git clone https://github.com/auto-skill/auto-skill-connector
@@ -111,30 +164,80 @@ python -m venv .venv
 .venv\Scripts\python -m pip install -e ".[dev]"
 ```
 
-Then run:
+Start in explicit mode:
 
 ```bash
+auto-skill doctor
+auto-skill search "create an excel report with formulas and charts"
+auto-skill route "create an excel report with formulas and charts" --show-content
+auto-skill preview "extract text and tables from a pdf"
+```
+
+No prompt hook is enabled by installation or by `doctor`.
+
+## Commands
+
+```bash
+auto-skill search "<task>"
+auto-skill route "<task>"
+auto-skill route "<task>" --json --show-content
+auto-skill route-prompt "<raw-user-prompt>"
+auto-skill preview "<task-or-url>"
+auto-skill install "<task-or-url>" --target claude --dry-run
+auto-skill install "<task-or-url>" --target codex --dry-run
+auto-skill install "<task-or-url>" --target cursor --dry-run
+auto-skill feedback "<route-id>" used
+auto-skill metrics --base-url http://127.0.0.1:8000
 auto-skill doctor
 auto-skill enable-hook
-auto-skill doctor
+auto-skill disable-hook
 ```
 
-`doctor` checks that `python` resolves on PATH, that the self-hosted search
-backend is reachable (with round-trip latency), and whether the routing hook
-is registered. `enable-hook` writes (or repoints) the `UserPromptSubmit` hook
-entry in Claude Code's `settings.json`, after showing a privacy note --
-prompt snippets are sent to the configured search backend, so read
-`SECURITY.md` first if that matters for your conversations. Run
-`auto-skill disable-hook` to remove it again. Once enabled, just type a task
-in Claude Code -- no need to mention this connector by name.
+`route-prompt` accepts raw prompt text and sends an eligible prompt to the
+configured router. It is intended for an explicitly enabled adapter or manual
+testing, not as a required first action for every task.
 
-### Claude Code MCP
+When the backend provides route metrics, `route` prints latency, skill-find
+time, injected-token estimates, and response-token estimates. The aggregate
+`/route-metrics` endpoint is host-local and is intended for operational smoke
+checks, not a consumer analytics product.
+
+## Manual Persistent Install
+
+Persistent installation is a separate action from using a skill in the
+current task:
 
 ```bash
-claude mcp add auto-skill --scope user -- uvx --from git+https://github.com/auto-skill/auto-skill-connector auto-skill-mcp
+auto-skill install "<task-or-url>" --target claude --dry-run
+auto-skill install "<task-or-url>" --target codex --dry-run
+auto-skill install "<task-or-url>" --target cursor --dry-run
 ```
 
-### Claude Desktop MCP
+After reviewing the source, destination, and content, repeat without
+`--dry-run`. Installation safety defaults are:
+
+- Interactive confirmation unless the user explicitly passes `--yes`.
+- No overwrite unless the user explicitly passes `--force`.
+- A visible source URL and destination before writing.
+- No automatic install from Auto Mode or hosted MCP.
+
+The launch installer is for static, instruction-only `SKILL.md` content. It
+does not promise to fetch a complete bundle of scripts, references, assets, or
+dependencies. Do not install an unfamiliar skill that relies on those
+capabilities until they can be reviewed as a bundle. Managed update and
+rollback are P1; back up an existing skill before using `--force`.
+
+## MCP
+
+### Claude Code local MCP
+
+```bash
+# From a local checkout with repository access:
+python -m pip install -e .
+claude mcp add auto-skill --scope user -- auto-skill-mcp
+```
+
+### Claude Desktop local MCP
 
 Add this to `claude_desktop_config.json`:
 
@@ -142,104 +245,44 @@ Add this to `claude_desktop_config.json`:
 {
   "mcpServers": {
     "auto-skill": {
-      "command": "uvx",
-      "args": ["--from", "git+https://github.com/auto-skill/auto-skill-connector", "auto-skill-mcp"]
+      "command": "auto-skill-mcp",
+      "args": []
     }
   }
 }
 ```
 
-Restart Claude Desktop after editing the config.
+Restart Claude Desktop after editing the configuration.
 
-## Commands
+### Launch-facing tools
 
-```bash
-auto-skill route "<task>"
-auto-skill route "<task>" --json
-auto-skill route-prompt "<raw-user-prompt>"
-auto-skill route-prompt "<raw-user-prompt>" --context-only
-auto-skill metrics --base-url http://127.0.0.1:8000
-auto-skill search "<task>"
-auto-skill preview "<task-or-url>"
-auto-skill install "<task-or-url>" --target claude
-auto-skill install "<task-or-url>" --target claude --yes
-auto-skill install "<task-or-url>" --target claude --force
-auto-skill doctor
-auto-skill enable-hook
-auto-skill enable-hook --yes
-auto-skill disable-hook
+- `route_task(task)` explicitly routes a cleaned-up task and returns `full`,
+  `hint`, or no route.
+- `route_prompt(prompt)` locally preflights a raw prompt, then routes only when
+  it is task-shaped.
+- `record_feedback(route_id, outcome)` records an enum-only privacy-safe
+  outcome; it accepts no free-form notes.
+
+`recommend_skill` is a deprecated compatibility preview surface. New clients
+should use `route_task`. The supported persistent-install flow is the explicit
+local CLI. MCP exposes no skill/filesystem write tool over either local stdio or
+hosted streamable HTTP; enum-only route feedback is optional.
+
+Adding an MCP server makes these tools available. It does not cause a client to
+call them on every prompt.
+
+## Hosted Read-only Connector
+
+The hosted streamable-HTTP connector is available at:
+
+```text
+https://mcp.autoskill.dev/mcp
 ```
 
-When the backend provides route metrics, `auto-skill route` prints a short
-`metrics:` line with latency, skill-find time, injected tokens, and response
-tokens. Use it during live smoke checks to spot slow routing or token churn.
-Use `auto-skill metrics --base-url http://127.0.0.1:8000` on the host to view
-recent aggregate p95s, budget breaches, tier/outcome counts, and top routed
-skills. It intentionally fails against the public URL because `/route-metrics`
-is local-only.
+It requires MCP OAuth and exposes routing/preview behavior only. It cannot
+write skills onto a caller's computer.
 
-Install safety defaults:
-
-- Installs preview the destination and source before writing.
-- Non-interactive installs require `--yes`.
-- Existing skills are never overwritten unless `--force` is passed.
-- `SKILLS_HOME` can override the Claude skill install directory.
-- `AUTOSKILL_URL` can override or disable the self-hosted route/search endpoint.
-
-**Self-hosting on the same LAN as your Cloudflare Tunnel:** if you run the
-skills server and the connector on the same machine that hosts the tunnel,
-your own router/DNS may resolve the public hostname (e.g.
-`skills.autoskill.dev`) to a private LAN address instead of Cloudflare's edge
--- a router-level DNS override or split-horizon DNS setup, common on home
-routers, will do this even though the hostname resolves correctly for
-everyone else. If requests to your own public URL fail only from that
-machine, set `AUTOSKILL_URL=http://localhost:<port>` (or whatever loopback
-address the skills server binds to) so the connector talks to it directly
-instead of round-tripping through DNS and the tunnel.
-
-## MCP Tools
-
-- `route_prompt(prompt)` is the always-on integration path: it skips prompts
-  that are too short, meta/status-like, commands, or pasted context, then emits
-  full skill context only for high-confidence real tasks. Medium-confidence
-  matches return a short hint, including up to three candidate options when the
-  backend provides them, instead of full instructions.
-- `route_task(task)` is the universal router contract: call it near the start
-  of a user task, and it returns one of three results: `route_tier=full` with
-  `skill_content`, `route_tier=hint` with candidate options, or no route.
-  Each route also includes a compact `route_summary` with the decision,
-  selected name/URL, candidate count, and route metrics so clients can display
-  or log the choice without reading full `SKILL.md` content.
-- `recommend_skill(task)` is a legacy explicit-preview path: it returns one
-  usable skill candidate with full content for inspection. Use `route_task` for
-  normal routing because it can return full, hint, or no route.
-- `record_feedback(route_id, outcome, note?)` records privacy-safe route
-  outcome feedback after a route is used, skipped, installed, dismissed, or
-  fails. Do not include raw prompts in notes.
-- `install_skill(url, name?, target?, force?, dry_run?)` fetches and installs a
-  Claude-style skill with overwrite protection. **Only registered on stdio**
-  (`claude mcp add` / Claude Desktop's local subprocess config) -- it writes
-  files to whatever machine runs the server, and the streamable-http transport
-  has no per-caller auth, so it's omitted there by default. See the Remote
-  Connector section below.
-
-Codex note: Codex should use `route_task` through MCP and apply full routes in
-the current turn. This repo does not pretend Claude `SKILL.md` folders are
-native Codex skills.
-
-Universal routing note: MCP servers cannot intercept every prompt by
-themselves. A client or agent still has to call `route_task`. The optional
-Claude Code hook gets closer to always-on routing for Claude Code by injecting
-selected skill content before the model answers. Other clients can call
-`route_prompt` or `route_task` as their first step for skill-shaped tasks.
-
-## Remote Connector
-
-Claude Code/Desktop's config-file install above runs the server as a local
-subprocess over stdio. To add it as a custom connector in claude.ai Settings >
-Connectors, reachable from the browser, mobile app, or any device on your
-account, it needs to run as an HTTP server with a public HTTPS URL because the
-connection is made from Anthropic's servers, not your local machine.
+For a self-hosted connector:
 
 ```bash
 git clone https://github.com/auto-skill/auto-skill-connector
@@ -248,21 +291,14 @@ pip install -e .
 MCP_TRANSPORT=streamable-http MCP_PORT=8765 python mcp_server.py
 ```
 
-Then expose port 8765 publicly. No router or firewall changes are needed with
-either option below.
-
-Temporary with ngrok:
+Only expose it publicly after configuring authentication, HTTPS, and
+`MCP_ALLOWED_HOSTS`. A temporary tunnel is useful for testing:
 
 ```bash
 ngrok http 8765
 ```
 
-Take the HTTPS URL it prints, append `/mcp`, and paste that into claude.ai >
-Settings > Connectors > Add custom connector. On ngrok's free tier, the
-hostname changes every time the tunnel restarts unless you claim a static
-domain from ngrok's dashboard.
-
-Permanent with Cloudflare Tunnel, if you already have a domain on Cloudflare:
+For a stable Cloudflare Tunnel:
 
 ```bash
 cloudflared tunnel login
@@ -270,10 +306,10 @@ cloudflared tunnel create auto-skill
 cloudflared tunnel route dns auto-skill mcp.yourdomain.com
 ```
 
-Add an ingress rule to `~/.cloudflared/config.yml`:
+Example ingress configuration:
 
 ```yaml
-tunnel: <the tunnel ID printed above>
+tunnel: <tunnel-id>
 credentials-file: /path/to/<tunnel-id>.json
 ingress:
   - hostname: mcp.yourdomain.com
@@ -281,79 +317,96 @@ ingress:
   - service: http_status:404
 ```
 
-Then run `cloudflared tunnel run auto-skill`, or install it as a service so it
-survives reboots. The connector URL is now permanent:
-`https://mcp.yourdomain.com/mcp`.
+## Optional Claude Code Auto Mode Adapter
 
-With a stable hostname, set `MCP_ALLOWED_HOSTS=mcp.yourdomain.com` to keep
-DNS-rebinding Host-header protection enabled. If no allowed hosts are provided
-for streamable HTTP mode, that protection is disabled so temporary tunnels can
-work.
+Enable the adapter only after reading `SECURITY.md`:
 
-Security note: `install_skill` writes files on whichever machine is running
-the server, so it is **not** registered as a tool over streamable-http by
-default -- a caller with your tunnel URL gets read-only routing and preview
-tools only. Set `AUTOSKILL_ALLOW_REMOTE_INSTALL=1` to re-enable it
-remotely, but only if you've added your own auth in front of the tunnel;
-never on an unauthenticated public URL.
+```bash
+auto-skill enable-hook
+```
 
-## Hosted Claude Connector
+The command shows a privacy notice and asks for confirmation. Once enabled,
+eligible prompt text is sent to the configured route service so it can select
+task-specific skill context. Neither the hosted backend nor the local routing
+log retains raw prompt text or snippets. Operational events retain only
+privacy-safe metadata such as prompt length, route tier, selected skill,
+latency, client/version, and outcome.
 
-For claude.ai custom connectors, use:
+Local diagnostics are off by default. Set `AUTOSKILL_DIAGNOSTICS=1` only when
+you need a metadata-only routing log for troubleshooting. The current hook
+removes legacy prompt fields from an older routing log on its next run; if you
+have not upgraded the hook, delete `~/.claude/auto-skill-routing.jsonl`.
 
-- Name: `Auto-Skill`
-- Remote MCP server URL: `https://mcp.autoskill.dev/mcp`
+Disable the adapter at any time:
 
-## Automatic Suggestions For Claude Code
+```bash
+auto-skill disable-hook
+```
 
-The optional hook in `hooks/skill_suggest.py` can check each submitted prompt,
-skip tiny/meta prompts, call the backend `/route` contract for real tasks, and
-inject selected `SKILL.md` content only for full routes. Hint routes stay as
-non-instructional suggestions and may include candidate options. Run
-`auto-skill enable-hook` to turn it on (see [Commands](#commands) above) -- it
-prints a privacy note before doing anything, since eligible prompt snippets
-are sent to the configured route service. Read `SECURITY.md` before enabling it
-for sensitive conversations.
-Every routing decision it makes is logged locally to
-`~/.claude/auto-skill-routing.jsonl` so you can review what got suggested and
-why.
+There is no launch adapter for Codex or Cursor. Codex has a hook surface that
+may support a future adapter; Cursor's current prompt hook does not provide the
+same context-injection contract. Until a tested adapter ships, use explicit
+CLI/MCP routing on those clients.
 
 ## How Routing Works
 
-Routing uses the self-hosted server at `AUTOSKILL_URL` only. `route_task` and
-the Claude Code hook call `/route` first so the backend owns quality gates,
-platform-trap handling, and full/hint/no-route tiers. `/find-semantic` remains
-as a compatibility fallback for older self-hosted backends.
+Routing uses the service configured by `AUTOSKILL_URL`, defaulting to
+`https://skills.autoskill.dev`. The backend performs local embedding retrieval
+and deterministic reranking with lexical overlap, quality, platform mismatch,
+and a capped popularity prior.
 
-Hint routes are intentionally low-token: they show names, descriptions, URLs,
-candidate options, and route metrics such as `skill_find_ms` and
-`injected_tokens`, but never inject full `SKILL.md` content. Full routes carry
-the selected skill content plus the same metrics so benchmark regressions are
-visible during manual testing.
+The response tiers are:
 
-Before a public launch or backend deploy, run the live smoke test from a source
-checkout:
+- `full`: a high-confidence, risk-0 public match whose local snapshot matches
+  its canonical hash and served digest, and passes the static capability
+  screen. Content is
+  eligible for current-task use; normal client tool and permission controls
+  still apply.
+- `hint`: an ambiguous, unverified, risky, incomplete, platform-specific, or
+  capability-bearing match. The response contains metadata and up to three
+  candidates, not active instructions.
+- `none`: no candidate cleared the routing floor.
+
+If the service is unavailable, the client reports no route instead of silently
+querying a stale fallback.
+
+To disable hosted routing entirely:
+
+```bash
+AUTOSKILL_URL=
+```
+
+If the API and client run on the same LAN behind a Cloudflare Tunnel and local
+DNS resolves the public hostname to a private address, point the client at the
+loopback service instead:
+
+```bash
+AUTOSKILL_URL=http://localhost:<port>
+```
+
+## Launch Verification
+
+Before a public launch or backend deploy, run:
 
 ```bash
 python scripts/live_smoke.py
 ```
 
-It verifies remote MCP health, prompt preflight, a full spreadsheet route with
-content, and the generic landing-page trap that must not route to Landingi.
+The smoke test checks remote MCP health, prompt preflight, a verified full
+route, and a generic platform-trap case that must not misroute.
 
-There is no Supabase fallback: an earlier version of this connector fell back
-to a Supabase-hosted corpus that was frozen once storage moved local, silently
-serving stale results with no signal that they weren't fresh. If the
-self-hosted service is unavailable, the CLI and MCP payload report no route
-found instead -- one truthful backend beats two that can silently disagree.
+Backend operators should also use the readiness, eval, backup, and deployment
+checks documented in `backend/README.md` and `backend/RUNBOOK.md`.
 
-## Roadmap
+## Intentionally Deferred
 
-The launch goal is public trust and GitHub stars, not immediate monetization.
-See `ROADMAP.md` for the free/open-source direction and possible future paid
-features.
+The Ollama `/chat` recommender UI, broad web crawling as a product moat,
+consumer run analytics, mandatory accounts for public discovery, public remote
+installs, and `recommend_skill` are not launch priorities. Compatibility code
+may remain temporarily, but these surfaces are not the product contract.
 
 ## Security
 
-This tool fetches and installs instructions that can shape agent behavior.
-Read `SECURITY.md` before using auto suggestions or installing untrusted skills.
+Skills are instructions that can shape agent behavior. Content-hash matching
+detects drift; it does not establish trust. Read `SECURITY.md` before enabling
+Auto Mode or installing an unfamiliar skill.
