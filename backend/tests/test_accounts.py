@@ -42,6 +42,28 @@ class AccountsStoreTests(unittest.TestCase):
         self.assertIsNone(local_store.get_user_by_token_hash("hash-1"))
         self.assertFalse(local_store.revoke_cli_token("hash-1"))  # already revoked
 
+    def test_cli_token_expires_and_slides_forward_on_use(self) -> None:
+        user = local_store.get_or_create_user("a@example.com", "Alice", None)
+        local_store.create_cli_token(user["id"], "hash-2")
+
+        # A pre-migration token (no expires_at yet) must keep working --
+        # this deploy must not silently log out everyone already logged in.
+        conn = local_store.get_conn()
+        conn.execute(
+            "INSERT INTO cli_tokens (id, token_hash, user_id, created_at) VALUES ('legacy', 'hash-legacy', ?, ?)",
+            (user["id"], local_store._now()),
+        )
+        conn.commit()
+        conn.close()
+        self.assertIsNotNone(local_store.get_user_by_token_hash("hash-legacy"))
+
+        # An expired token is rejected.
+        conn = local_store.get_conn()
+        conn.execute("UPDATE cli_tokens SET expires_at=? WHERE token_hash='hash-2'", ("2020-01-01T00:00:00+00:00",))
+        conn.commit()
+        conn.close()
+        self.assertIsNone(local_store.get_user_by_token_hash("hash-2"))
+
     def test_favorites_are_isolated_per_user(self) -> None:
         user_a = local_store.get_or_create_user("a@example.com", "A", None)
         user_b = local_store.get_or_create_user("b@example.com", "B", None)
@@ -421,6 +443,73 @@ class PublicGuardAccountsTests(unittest.TestCase):
         self.assertFalse(scraper.public_api_allows("GET", "/rest/v1/skills"))
         self.assertFalse(scraper.public_api_allows("POST", "/rest/v1/skills"))
         self.assertFalse(scraper.public_api_allows("DELETE", "/rest/v1/skills"))
+
+    def test_mcp_oauth_internal_endpoints_stay_loopback_only(self) -> None:
+        """/mcp-oauth/token deliberately skips its own PKCE/client-secret
+        checks (the mcp SDK already verified code_verifier against
+        code_challenge in the connector's own TokenHandler before ever
+        reaching here -- see mcp_oauth.py's /token docstring). That's only
+        safe as long as this endpoint never becomes reachable from the
+        public tunnel, so this asserts that invariant directly rather than
+        leaving it as an implicit assumption -- the same class of silent
+        allowlist drift caused a real incident (see /skills-catalog, fixed
+        2026-07-09)."""
+        for method, path in [
+            ("POST", "/mcp-oauth/token"),
+            ("POST", "/mcp-oauth/clients"),
+            ("GET", "/mcp-oauth/clients/some-client-id"),
+            ("GET", "/mcp-oauth/codes/some-code"),
+        ]:
+            with self.subTest(method=method, path=path):
+                self.assertFalse(scraper.public_api_allows(method, path))
+        # Only the two browser-facing pages are meant to be public.
+        self.assertTrue(scraper.public_api_allows("GET", "/mcp-oauth/authorize"))
+        self.assertTrue(scraper.public_api_allows("GET", "/mcp-oauth/choose"))
+
+
+class RateLimitGuardTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.old_db_path = local_store.DB_PATH
+        self.db_path = Path(self.tmp.name) / "local_skills.db"
+        local_store.DB_PATH = self.db_path
+        scraper.store.DB_PATH = self.db_path
+        local_store.init_db()
+        local_store.invalidate_vector_cache()
+        scraper._rate_limit_counters.clear()
+        self.client = TestClient(scraper.app)
+
+    def tearDown(self) -> None:
+        local_store.invalidate_vector_cache()
+        local_store.DB_PATH = self.old_db_path
+        scraper.store.DB_PATH = self.old_db_path
+        scraper._rate_limit_counters.clear()
+
+    def test_exceeding_the_limit_returns_429(self) -> None:
+        headers = {"x-forwarded-for": "203.0.113.5"}
+        limit, _ = scraper.RATE_LIMIT_BUCKETS["/auth/"]
+        statuses = [self.client.get("/auth/whoami", headers=headers).status_code for _ in range(limit + 5)]
+        self.assertNotIn(429, statuses[:limit])
+        self.assertIn(429, statuses[limit:])
+
+    def test_different_ips_have_independent_limits(self) -> None:
+        limit, _ = scraper.RATE_LIMIT_BUCKETS["/auth/"]
+        for _ in range(limit + 5):
+            self.client.get("/auth/whoami", headers={"x-forwarded-for": "203.0.113.5"})
+        r = self.client.get("/auth/whoami", headers={"x-forwarded-for": "203.0.113.9"})
+        self.assertNotEqual(r.status_code, 429)
+
+    def test_loopback_traffic_is_never_rate_limited(self) -> None:
+        limit, _ = scraper.RATE_LIMIT_BUCKETS["/auth/"]
+        statuses = [self.client.get("/auth/whoami").status_code for _ in range(limit + 10)]
+        self.assertNotIn(429, statuses)
+
+    def test_unbucketed_paths_are_not_limited(self) -> None:
+        headers = {"x-forwarded-for": "203.0.113.5"}
+        limit, _ = scraper.RATE_LIMIT_BUCKETS["/auth/"]
+        statuses = [self.client.get("/favorites", headers=headers).status_code for _ in range(limit + 10)]
+        self.assertNotIn(429, statuses)
 
 
 if __name__ == "__main__":

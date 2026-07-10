@@ -15,7 +15,7 @@ import sqlite3
 import struct
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import numpy as np
@@ -226,6 +226,12 @@ ROUTE_EVENT_COLUMN_DEFAULTS = {
     "skip_reason": "TEXT",
 }
 
+CLI_TOKEN_TTL_SECONDS = 90 * 24 * 60 * 60  # 90 days, sliding forward on each use
+
+CLI_TOKEN_COLUMN_DEFAULTS = {
+    "expires_at": "TEXT",
+}
+
 
 def get_conn() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH, timeout=30)  # ride out concurrent write bursts (migration, embed loop)
@@ -266,6 +272,10 @@ def init_db() -> None:
         for col, spec in ROUTE_EVENT_COLUMN_DEFAULTS.items():
             if col not in route_existing:
                 conn.execute(f"ALTER TABLE route_events ADD COLUMN {col} {spec}")
+        cli_token_existing = {row["name"] for row in conn.execute("PRAGMA table_info(cli_tokens)").fetchall()}
+        for col, spec in CLI_TOKEN_COLUMN_DEFAULTS.items():
+            if col not in cli_token_existing:
+                conn.execute(f"ALTER TABLE cli_tokens ADD COLUMN {col} {spec}")
         _stale_duplicate_running_scrapes(conn)
         conn.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS scrape_runs_one_running_idx "
@@ -974,12 +984,16 @@ def link_oauth_identity(user_id: str, provider: str, provider_user_id: str) -> N
         conn.close()
 
 
+def _cli_token_expiry() -> str:
+    return (datetime.now(timezone.utc) + timedelta(seconds=CLI_TOKEN_TTL_SECONDS)).isoformat()
+
+
 def create_cli_token(user_id: str, token_hash: str) -> None:
     conn = get_conn()
     try:
         conn.execute(
-            "INSERT INTO cli_tokens (id, token_hash, user_id, created_at) VALUES (?, ?, ?, ?)",
-            (str(uuid.uuid4()), token_hash, user_id, _now()),
+            "INSERT INTO cli_tokens (id, token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?, ?)",
+            (str(uuid.uuid4()), token_hash, user_id, _now(), _cli_token_expiry()),
         )
         conn.commit()
     finally:
@@ -987,17 +1001,24 @@ def create_cli_token(user_id: str, token_hash: str) -> None:
 
 
 def get_user_by_token_hash(token_hash: str) -> dict | None:
-    """Resolve a live (non-revoked) CLI token to its user, bumping last_used_at."""
+    """Resolve a live (non-revoked, non-expired) CLI token to its user. Each
+    successful use bumps last_used_at and slides expires_at forward another
+    CLI_TOKEN_TTL_SECONDS, so an actively-used token never expires underneath
+    a user, while an abandoned/leaked one ages out on its own."""
     conn = get_conn()
     try:
         row = conn.execute(
             "SELECT u.* FROM cli_tokens t JOIN users u ON u.id = t.user_id "
-            "WHERE t.token_hash=? AND t.revoked_at IS NULL",
-            (token_hash,),
+            "WHERE t.token_hash=? AND t.revoked_at IS NULL "
+            "AND (t.expires_at IS NULL OR t.expires_at > ?)",
+            (token_hash, _now()),
         ).fetchone()
         if row is None:
             return None
-        conn.execute("UPDATE cli_tokens SET last_used_at=? WHERE token_hash=?", (_now(), token_hash))
+        conn.execute(
+            "UPDATE cli_tokens SET last_used_at=?, expires_at=? WHERE token_hash=?",
+            (_now(), _cli_token_expiry(), token_hash),
+        )
         conn.commit()
         return dict(row)
     finally:

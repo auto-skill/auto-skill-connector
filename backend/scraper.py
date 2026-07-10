@@ -34,8 +34,30 @@ STALE_SCRAPE_RUN_SECONDS = int(os.getenv("STALE_SCRAPE_RUN_SECONDS", "7200"))
 AUTO_START_SCRAPER = os.getenv("AUTO_START_SCRAPER", "1").lower() not in {"0", "false", "no"}
 API_VERSION = "quality-route-v1"
 
+# Same origin list accounts_api.py's _allowed_web_return_origins() validates
+# OAuth return_to targets against -- kept in sync manually since scraper.py
+# can't import accounts_api.py this early without reordering module-level
+# setup. Bearer tokens (not cookies) mean CORS isn't a CSRF boundary here,
+# but scoping it stops a browser on any other origin from reading responses
+# if a token ever leaks (e.g. via referrer, browser history, or XSS
+# elsewhere) -- a wildcard let that read happen from literally anywhere.
+_DEFAULT_CORS_ORIGINS = [
+    "https://autoskill.dev",
+    "https://www.autoskill.dev",
+    "https://auto-skill-site.pages.dev",
+    "https://auto-skill-site.vercel.app",
+    "https://skills.autoskill.dev",
+    "https://skills.avalahome.com",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+]
+_configured_cors_origins = [v.strip() for v in os.getenv("AUTO_SKILL_DASHBOARD_ORIGINS", "").split(",") if v.strip()]
+CORS_ORIGINS = _configured_cors_origins or _DEFAULT_CORS_ORIGINS
+
 app = FastAPI()
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_methods=["*"], allow_headers=["*"])
 
 # --- Public read-only guard ------------------------------------------------
 # When this app is exposed to the internet through a tunnel (cloudflared runs
@@ -140,6 +162,58 @@ async def require_account_guard(request, call_next):
                 return RedirectResponse("/signup")
             return JSONResponse({"error": "account required", "signup_url": "/signup"}, status_code=401)
     return await call_next(request)
+
+
+# --- Public rate limiting ----------------------------------------------------
+# In-memory fixed-window counters per (client IP, bucket). No new
+# infrastructure (Redis etc.) -- this is a single-instance deployment (see
+# RUNBOOK.md's hosting ladder), so process memory is a fine place for this.
+# Resets on restart, which is an acceptable tradeoff at this scale.
+RATE_LIMIT_BUCKETS = {
+    "/route": (30, 60),  # (max requests, window seconds) -- embeds + hybrid search, the most expensive endpoint
+    "/auth/": (10, 60),  # OAuth start/callback/whoami/logout/refresh -- brute-force/enumeration protection
+    "/private-skills": (20, 60),  # POST only; bounds per-account storage growth
+}
+_rate_limit_counters: dict[tuple[str, str], tuple[int, float]] = {}
+
+
+def _rate_limit_bucket(method: str, path: str) -> str | None:
+    if path == "/route" or path.startswith("/auth/"):
+        return "/route" if path == "/route" else "/auth/"
+    if method == "POST" and path == "/private-skills":
+        return "/private-skills"
+    return None
+
+
+def _client_ip(request) -> str:
+    return request.headers.get("cf-connecting-ip") or request.headers.get("x-forwarded-for") or "unknown"
+
+
+def _rate_limit_exceeded(client_ip: str, bucket: str) -> bool:
+    limit, window = RATE_LIMIT_BUCKETS[bucket]
+    now = time.time()
+    key = (client_ip, bucket)
+    count, window_start = _rate_limit_counters.get(key, (0, now))
+    if now - window_start >= window:
+        count, window_start = 0, now
+    count += 1
+    _rate_limit_counters[key] = (count, window_start)
+    return count > limit
+
+
+@app.middleware("http")
+async def rate_limit_guard(request, call_next):
+    from fastapi.responses import JSONResponse
+
+    if request.method == "OPTIONS":
+        return await call_next(request)
+    is_public = bool(request.headers.get("cf-connecting-ip") or request.headers.get("x-forwarded-for"))
+    if is_public:
+        bucket = _rate_limit_bucket(request.method, request.url.path.rstrip("/") or "/")
+        if bucket and _rate_limit_exceeded(_client_ip(request), bucket):
+            return JSONResponse({"error": "rate limit exceeded, try again shortly"}, status_code=429)
+    return await call_next(request)
+
 
 # Local SQLite-backed store, replacing Supabase for new writes (see SUPABASE_URL
 # above) -- mounted first so it's ready before the recommender's startup hook

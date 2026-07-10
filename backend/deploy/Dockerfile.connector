@@ -11,4 +11,11 @@ COPY hooks /app/hooks
 
 RUN pip install --no-cache-dir -e /app
 
+# Same fixed UID as deploy/Dockerfile -- this container doesn't write to the
+# bind-mounted data/skills_library volumes itself (it only talks to the api
+# container over HTTP), but running as non-root is still cheap defense in
+# depth here.
+RUN groupadd -g 10001 appuser && useradd -u 10001 -g appuser -M appuser
+USER appuser
+
 CMD ["auto-skill-mcp"]

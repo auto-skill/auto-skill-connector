@@ -45,6 +45,9 @@ rsync -a --delete \
 rm -rf /tmp/deploy-extract /tmp/deploy.tar.gz
 REMOTE
 
+echo "==> Ensuring bind-mounted data dirs are owned by the container's non-root user (uid 10001)"
+$SSH "mkdir -p ${REMOTE_DIR}/backend/data ${REMOTE_DIR}/backend/skills_library && chown -R 10001:10001 ${REMOTE_DIR}/backend/data ${REMOTE_DIR}/backend/skills_library"
+
 echo "==> Rebuilding containers"
 $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml up -d --build api mcp worker"
 
