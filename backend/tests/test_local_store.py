@@ -159,6 +159,47 @@ class RecomputeFeedbackScoresTests(unittest.TestCase):
         self.assertTrue(stats["cache_ready"])
         self.assertEqual(stats["cache_vectors"], 1)
 
+    def test_invalidation_keeps_last_complete_matrix_until_background_warm(self) -> None:
+        conn = local_store.get_conn()
+        try:
+            _insert_skill(conn, "first-vector", "hash-first-vector")
+            conn.execute(
+                "UPDATE skills SET embedding=? WHERE id='first-vector'",
+                (local_store.pack_embedding([1.0] + [0.0] * 383),),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        local_store.warm_vector_index()
+
+        conn = local_store.get_conn()
+        try:
+            _insert_skill(conn, "second-vector", "hash-second-vector")
+            conn.execute(
+                "UPDATE skills SET embedding=? WHERE id='second-vector'",
+                (local_store.pack_embedding([0.0, 1.0] + [0.0] * 382),),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        local_store.invalidate_vector_cache()
+
+        stale = local_store.vector_index_stats()
+        old_results = local_store.vector_search_skills([1.0] + [0.0] * 383, match_count=2)
+
+        self.assertTrue(stale["cache_ready"])
+        self.assertFalse(stale["cache_current"])
+        self.assertEqual(stale["cache_vectors"], 1)
+        self.assertEqual([row["id"] for row in old_results], ["first-vector"])
+
+        refreshed = local_store.warm_vector_index()
+        new_results = local_store.vector_search_skills([0.0, 1.0] + [0.0] * 382, match_count=2)
+
+        self.assertTrue(refreshed["cache_current"])
+        self.assertEqual(refreshed["cache_vectors"], 2)
+        self.assertEqual(new_results[0]["id"], "second-vector")
+
 
 if __name__ == "__main__":
     unittest.main()

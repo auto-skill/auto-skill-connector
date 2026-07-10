@@ -394,6 +394,7 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual([row["id"] for row in initial.json()], ["skill-1"])
 
         self.client.post("/rest/v1/skills?on_conflict=url", json=second)
+        local_store.warm_vector_index()
         refreshed = self.client.post(
             "/rest/v1/rpc/vector_search_skills",
             json={"query_embedding": [0.0, 1.0] + [0.0] * 382, "match_count": 5},
@@ -415,6 +416,7 @@ class ApiContractTests(unittest.TestCase):
             json={"embedding": [0.0, 0.0, 1.0] + [0.0] * 381},
         )
         self.assertEqual(patch.status_code, 204)
+        local_store.warm_vector_index()
         patched = self.client.post(
             "/rest/v1/rpc/vector_search_skills",
             json={"query_embedding": [0.0, 0.0, 1.0] + [0.0] * 381, "match_count": 5},

@@ -845,21 +845,31 @@ def search_skills_fts(query: str, max_results: int = 10) -> list[dict]:
 # In-memory embedding-matrix cache. Rebuilding the matrix from blobs is
 # O(corpus) per query and dominates latency once the corpus is large; with the
 # cache a search is a single matvec.
-# Writes invalidate this cache in-process, so a zero TTL is both faster and
-# fresher than rebuilding a 300MiB matrix on an arbitrary timer. Set a
-# positive value only when another process writes SQLite directly.
+#
+# Writes mark this cache stale but retain the last complete matrix. The API
+# rebuilds in the background and atomically swaps the replacement, so a route
+# request never waits behind a multi-second blob scan during a scraper burst.
+# Set a positive TTL only when another process writes SQLite directly.
 EMBEDDING_DIM = 384
 _EMB_DIM = EMBEDDING_DIM
 _EMB_BLOB_LEN = _EMB_DIM * 4
 _EMB_CACHE_TTL_SECONDS = float(os.getenv("EMBEDDING_MATRIX_CACHE_TTL_SECONDS", "0"))
-_emb_cache: dict = {"at": 0.0, "ids": [], "mat": None}
+_emb_cache: dict = {
+    "at": 0.0,
+    "ids": [],
+    "mat": None,
+    "db_path": "",
+    "generation": 0,
+    "built_generation": -1,
+}
 _emb_cache_lock = threading.RLock()
+_emb_rebuild_lock = threading.Lock()
 
 
 def invalidate_vector_cache() -> None:
-    """Clear the in-process vector matrix after skills writes."""
+    """Mark the vector matrix stale after skills writes without dropping it."""
     with _emb_cache_lock:
-        _emb_cache.update(at=0.0, ids=[], mat=None)
+        _emb_cache["generation"] = int(_emb_cache["generation"] or 0) + 1
 
 
 def _index_counts(conn: sqlite3.Connection) -> dict[str, int]:
@@ -895,16 +905,22 @@ def vector_index_stats() -> dict:
 
     with _emb_cache_lock:
         mat = _emb_cache.get("mat")
+        cache_matches_db = _emb_cache.get("db_path") == str(DB_PATH)
         cache_at = float(_emb_cache.get("at") or 0.0)
-        cache_vectors = len(_emb_cache.get("ids") or [])
-    age_ms = int((time.monotonic() - cache_at) * 1000) if mat is not None and cache_at else None
+        cache_vectors = len(_emb_cache.get("ids") or []) if cache_matches_db else 0
+        generation = int(_emb_cache.get("generation") or 0)
+        built_generation = int(_emb_cache.get("built_generation") or -1)
+    cache_ready = mat is not None and cache_matches_db
+    age_ms = int((time.monotonic() - cache_at) * 1000) if cache_ready and cache_at else None
     return {
         **counts,
-        "cache_ready": mat is not None,
+        "cache_ready": cache_ready,
+        "cache_current": cache_ready and built_generation == generation,
+        "cache_rebuild_in_progress": _emb_rebuild_lock.locked(),
         "cache_vectors": cache_vectors,
         "cache_age_ms": age_ms,
         "cache_ttl_seconds": int(_EMB_CACHE_TTL_SECONDS),
-        "matrix_bytes": int(mat.nbytes) if mat is not None else 0,
+        "matrix_bytes": int(mat.nbytes) if cache_ready else 0,
         "vector_dim": _EMB_DIM,
     }
 
@@ -933,37 +949,71 @@ def warm_vector_index() -> dict:
     """
     conn = get_conn()
     try:
-        _embedding_matrix(conn)
+        _embedding_matrix(conn, refresh=True)
     finally:
         conn.close()
     return vector_index_stats()
 
 
-def _embedding_matrix(conn: sqlite3.Connection) -> tuple[list[str], np.ndarray]:
-    now = time.monotonic()
+def _cached_embedding_matrix(*, refresh: bool) -> tuple[list[str], np.ndarray] | None:
+    """Read a usable matrix without making routing wait on a rebuild."""
     with _emb_cache_lock:
         cached = _emb_cache["mat"]
-        cache_is_fresh = (
-            cached is not None
-            and (_EMB_CACHE_TTL_SECONDS <= 0 or now - _emb_cache["at"] < _EMB_CACHE_TTL_SECONDS)
-        )
-        if cache_is_fresh:
+        if cached is None or _emb_cache.get("db_path") != str(DB_PATH):
+            return None
+        now = time.monotonic()
+        ttl_fresh = _EMB_CACHE_TTL_SECONDS <= 0 or now - _emb_cache["at"] < _EMB_CACHE_TTL_SECONDS
+        cache_current = _emb_cache["built_generation"] == _emb_cache["generation"]
+        if (not refresh and ttl_fresh) or (refresh and cache_current and ttl_fresh):
             return _emb_cache["ids"], cached
-        rows = conn.execute(
-            "SELECT id, embedding FROM skills "
-            "WHERE embedding IS NOT NULL "
-            "AND risk_score < 3 "
-            "AND COALESCE(quality_status, 'pending') = 'active'"
-        ).fetchall()
-        ids = [r["id"] for r in rows if len(r["embedding"]) == _EMB_BLOB_LEN]
-        blobs = [bytes(r["embedding"]) for r in rows if len(r["embedding"]) == _EMB_BLOB_LEN]
-        if blobs:
-            mat = np.frombuffer(b"".join(blobs), dtype=np.float32).reshape(len(blobs), _EMB_DIM)
-        else:
-            mat = np.zeros((0, _EMB_DIM), dtype=np.float32)
-        mat.setflags(write=False)
-        _emb_cache.update(at=now, ids=ids, mat=mat)
-        return ids, mat
+    return None
+
+
+def _embedding_matrix(conn: sqlite3.Connection, *, refresh: bool = False) -> tuple[list[str], np.ndarray]:
+    cached = _cached_embedding_matrix(refresh=refresh)
+    if cached is not None:
+        return cached
+
+    # Do the costly SQLite scan and BLOB copy outside the cache lock. Existing
+    # routes can keep using the previous matrix while a debounced write-side
+    # refresh is in progress.
+    with _emb_rebuild_lock:
+        while True:
+            cached = _cached_embedding_matrix(refresh=refresh)
+            if cached is not None:
+                return cached
+
+            with _emb_cache_lock:
+                target_generation = int(_emb_cache["generation"] or 0)
+
+            rows = conn.execute(
+                "SELECT id, embedding FROM skills "
+                "WHERE embedding IS NOT NULL "
+                "AND risk_score < 3 "
+                "AND COALESCE(quality_status, 'pending') = 'active'"
+            ).fetchall()
+            ids = [r["id"] for r in rows if len(r["embedding"]) == _EMB_BLOB_LEN]
+            blobs = [bytes(r["embedding"]) for r in rows if len(r["embedding"]) == _EMB_BLOB_LEN]
+            if blobs:
+                mat = np.frombuffer(b"".join(blobs), dtype=np.float32).reshape(len(blobs), _EMB_DIM)
+            else:
+                mat = np.zeros((0, _EMB_DIM), dtype=np.float32)
+            mat.setflags(write=False)
+
+            with _emb_cache_lock:
+                if int(_emb_cache["generation"] or 0) == target_generation:
+                    _emb_cache.update(
+                        at=time.monotonic(),
+                        ids=ids,
+                        mat=mat,
+                        db_path=str(DB_PATH),
+                        built_generation=target_generation,
+                    )
+                    return ids, mat
+
+                # A write arrived while the scan was running. Keep the last
+                # complete matrix serving and rebuild once more against the new
+                # generation before publishing anything.
 
 
 def vector_search_skills(query_embedding: list[float], match_count: int = 10) -> list[dict]:

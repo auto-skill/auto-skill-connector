@@ -1,6 +1,14 @@
 import unittest
 
-from quality import PLATFORM_ALIASES, evaluate_quality, infer_platforms, is_non_task_prompt, rerank_candidates, tier_for_prompt
+from quality import (
+    PLATFORM_ALIASES,
+    dedupe_by_content_hash,
+    evaluate_quality,
+    infer_platforms,
+    is_non_task_prompt,
+    rerank_candidates,
+    tier_for_prompt,
+)
 
 
 VALID_CONTENT = """---
@@ -104,6 +112,62 @@ Review chart ranges, headers, and totals before returning the deliverable.
 
 
 class RoutingTierTests(unittest.TestCase):
+    def test_exact_metadata_duplicates_collapse_even_when_content_hashes_differ(self):
+        candidates = [
+            {
+                "id": "fork-low-stars",
+                "name": "finance-report",
+                "description": "Create a monthly financial report with charts.",
+                "content_hash": "one",
+                "quality_score": 90,
+                "stars": 1,
+            },
+            {
+                "id": "fork-high-stars",
+                "name": "finance-report",
+                "description": "Create a monthly financial report with charts.",
+                "content_hash": "two",
+                "quality_score": 90,
+                "stars": 100,
+            },
+            {
+                "id": "xlsx-creator",
+                "name": "xlsx-creator",
+                "description": "Create Excel spreadsheets with formulas and charts.",
+                "content_hash": "three",
+                "quality_score": 90,
+            },
+        ]
+
+        deduped = dedupe_by_content_hash(candidates)
+
+        self.assertEqual([row["id"] for row in deduped], ["fork-high-stars", "xlsx-creator"])
+
+    def test_explicit_spreadsheet_semantics_beat_generic_report_words(self):
+        prompt = "create a monthly Excel sales report with formulas, charts, and a summary dashboard"
+        candidates = [
+            {
+                "name": "finance-report",
+                "description": "Monthly financial report with revenue charts and a summary table.",
+                "quality_status": "active",
+                "quality_score": 100,
+                "rank": 0.06575,
+                "similarity": 0.8599,
+            },
+            {
+                "name": "xlsx-creator",
+                "description": "Create Excel spreadsheets with formulas, professional formatting, and charts.",
+                "quality_status": "active",
+                "quality_score": 92,
+                "rank": 0.06903,
+                "similarity": 0.8701,
+            },
+        ]
+
+        ranked = rerank_candidates(prompt, candidates)
+
+        self.assertEqual(ranked[0]["name"], "xlsx-creator")
+
     def test_platform_trap_caps_landingi_to_hint(self):
         prompt = "build a landing page for an AI automation agency"
         candidate = {

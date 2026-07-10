@@ -78,11 +78,11 @@ if ! $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.y
   exit 1
 fi
 
-# A worker can be cancelled mid-scrape by Docker recreation. Stop it first,
+# A worker can be cancelled mid-scrape by Docker recreation. Remove it first,
 # mark its single SQLite lease stale through the still-running local API, then
 # start a fresh worker only after the replacement API has passed readiness.
 echo "==> Draining worker scrape lease"
-if ! $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml stop worker && curl -fsS -X PATCH 'http://127.0.0.1:8000/rest/v1/scrape_runs?status=eq.running' -H 'Content-Type: application/json' --data '{\"status\":\"stale\",\"error\":\"Marked stale during deploy before worker restart.\"}' -o /dev/null"; then
+if ! $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml rm -sf worker && curl -fsS -X PATCH 'http://127.0.0.1:8000/rest/v1/scrape_runs?status=eq.running' -H 'Content-Type: application/json' --data '{\"status\":\"stale\",\"error\":\"Marked stale during deploy before worker restart.\"}' -o /dev/null"; then
   echo "FAILED: could not drain the worker lease" >&2
   rollback
   exit 1
@@ -118,7 +118,7 @@ if ! $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.y
 fi
 
 echo "==> Starting worker after API/MCP readiness"
-if ! $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml rm -sf worker && docker compose -f backend/deploy/docker-compose.yml up -d --no-build worker"; then
+if ! $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml up -d --no-build worker"; then
   echo "FAILED: worker recreate failed" >&2
   rollback
   exit 1

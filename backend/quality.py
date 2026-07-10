@@ -17,6 +17,10 @@ MIN_BODY_WORDS = 35
 
 ACTIVE_STATUSES = {"active", "metadata_only"}
 FULL_ROUTE_STATUS = "active"
+# FTS has already contributed to hybrid retrieval. Keep the deterministic
+# lexical rerank as a small tie-breaker so generic terms such as "monthly
+# report" cannot outweigh an explicitly semantic Excel/spreadsheet match.
+LEXICAL_OVERLAP_WEIGHT = 0.001
 
 TRUSTED_METADATA_SOURCES = {
     "mcp_official_registry",
@@ -98,6 +102,7 @@ NAME_STOPWORDS = {
 }
 
 TOKEN_RE = re.compile(r"[a-z0-9]+")
+ROUTE_METADATA_WS_RE = re.compile(r"\s+")
 FRONTMATTER_BLOCK_RE = re.compile(r"\A\ufeff?---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\Z)", re.S)
 FRONTMATTER_NAME_RE = re.compile(r"^name:\s*\S+", re.MULTILINE)
 FRONTMATTER_DESCRIPTION_RE = re.compile(r"^description:\s*(?:\S+|[>|])", re.MULTILINE)
@@ -398,7 +403,13 @@ def rerank_candidates(prompt: str, candidates: list[dict[str, Any]]) -> list[dic
         quality = float(row.get("quality_score") or 50) / 100.0
         feedback = row.get("feedback_score")
         feedback = float(feedback) if feedback is not None else 0.5
-        route_score = base_rank + (0.02 * overlap) + (0.01 * quality) + (0.01 * (feedback - 0.5)) - penalty
+        route_score = (
+            base_rank
+            + (LEXICAL_OVERLAP_WEIGHT * overlap)
+            + (0.01 * quality)
+            + (0.01 * (feedback - 0.5))
+            - penalty
+        )
 
         row["lexical_overlap"] = overlap
         row["platform_mismatch"] = penalty > 0
@@ -448,30 +459,47 @@ def pick_canonical(rows: list[dict[str, Any]]) -> dict[str, Any]:
     return max(rows, key=sort_key)
 
 
-def dedupe_by_content_hash(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Group rows sharing a non-empty content_hash, keep only pick_canonical()
-    per group (in original relative order); rows with no hash pass through
-    unchanged. Only hashes that actually recur are grouped/decided -- a
-    unique-hash row is never replaced by itself through pick_canonical."""
+def _dedupe_by_key(rows: list[dict[str, Any]], key_for) -> list[dict[str, Any]]:
     groups: dict[str, list[dict[str, Any]]] = {}
     for row in rows:
-        chash = row.get("content_hash")
-        if chash:
-            groups.setdefault(chash, []).append(row)
-    winners = {chash: pick_canonical(group) for chash, group in groups.items() if len(group) > 1}
+        key = key_for(row)
+        if key:
+            groups.setdefault(key, []).append(row)
+    winners = {key: pick_canonical(group) for key, group in groups.items() if len(group) > 1}
 
     result: list[dict[str, Any]] = []
     emitted: set[str] = set()
     for row in rows:
-        chash = row.get("content_hash")
-        if not chash or chash not in winners:
+        key = key_for(row)
+        if not key or key not in winners:
             result.append(row)
             continue
-        if chash in emitted:
+        if key in emitted:
             continue
-        emitted.add(chash)
-        result.append(winners[chash])
+        emitted.add(key)
+        result.append(winners[key])
     return result
+
+
+def _exact_metadata_key(row: dict[str, Any]) -> str:
+    """Conservatively identify forked copies with identical frontmatter."""
+    name = ROUTE_METADATA_WS_RE.sub(" ", str(row.get("name") or "").strip()).casefold()
+    description = ROUTE_METADATA_WS_RE.sub(" ", str(row.get("description") or "").strip()).casefold()
+    if not name or not description:
+        return ""
+    return f"{name}\x1f{description}"
+
+
+def dedupe_by_content_hash(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Keep one canonical result for duplicate content or exact metadata.
+
+    Content hashes catch true copies. Some forks carry slightly different
+    bodies but publish the exact same skill name and frontmatter; collapsing
+    those after hash dedupe keeps generic duplicate listings from crowding a
+    more specific candidate out of the top results.
+    """
+    by_content = _dedupe_by_key(rows, lambda row: str(row.get("content_hash") or ""))
+    return _dedupe_by_key(by_content, _exact_metadata_key)
 
 
 def tier_for_prompt(prompt: str, candidates: list[dict[str, Any]], recommend_gap: float = 1.6) -> str:
