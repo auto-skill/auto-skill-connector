@@ -186,8 +186,8 @@ class AccountsEndpointTests(unittest.TestCase):
         try:
             for i in range(3):
                 conn.execute(
-                    "INSERT INTO skills (id, name, description, source, url, tags, discovered_at)"
-                    " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO skills (id, name, description, source, url, tags, discovered_at, quality_status)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, 'active')",
                     (f"skill-{i}", f"catalog-skill-{i}", "spreadsheet helper" if i == 0 else "other",
                      "test", f"https://example.com/{i}", '["t"]', f"2026-07-0{i + 1}T00:00:00+00:00"),
                 )
