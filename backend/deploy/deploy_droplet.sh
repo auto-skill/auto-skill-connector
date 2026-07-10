@@ -68,7 +68,7 @@ $SSH "for img in deploy-api deploy-mcp deploy-worker; do docker tag \$img:latest
 
 rollback() {
   echo "==> Rolling back to the previous images" >&2
-  $SSH "cd ${REMOTE_DIR} && for img in deploy-api deploy-mcp deploy-worker; do docker tag \$img:previous \$img:latest 2>/dev/null || true; done && docker compose -f backend/deploy/docker-compose.yml up -d --force-recreate api mcp worker"
+  $SSH "cd ${REMOTE_DIR} && for img in deploy-api deploy-mcp deploy-worker; do docker tag \$img:previous \$img:latest 2>/dev/null || true; done && docker compose -f backend/deploy/docker-compose.yml rm -sf api mcp worker && docker compose -f backend/deploy/docker-compose.yml up -d api mcp worker"
 }
 
 echo "==> Building replacement images before touching live services"
@@ -89,7 +89,7 @@ if ! $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.y
 fi
 
 echo "==> Recreating API and MCP"
-if ! $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml up -d --force-recreate api mcp"; then
+if ! $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml rm -sf api mcp && docker compose -f backend/deploy/docker-compose.yml up -d api mcp"; then
   echo "FAILED: API/MCP recreate failed" >&2
   rollback
   exit 1
@@ -111,7 +111,7 @@ if [ "$ready" -ne 1 ]; then
 fi
 
 echo "==> Starting worker after readiness"
-if ! $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml up -d --force-recreate worker"; then
+if ! $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml rm -sf worker && docker compose -f backend/deploy/docker-compose.yml up -d worker"; then
   echo "FAILED: worker recreate failed" >&2
   rollback
   exit 1
