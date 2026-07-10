@@ -958,11 +958,15 @@ async def find_semantic(q: str, limit: int = 8, gate: bool = True, authorization
 
 
 @router.get("/route-metrics")
-async def route_metrics(hours: int = 24):
+async def route_metrics(hours: int = 24, config_version: str = CONFIG_VERSION):
     hours = max(1, min(int(hours or 24), 24 * 30))
+    selected_config = (config_version or "").strip()
+    if selected_config.lower() == "all":
+        selected_config = ""
     summary = await asyncio.to_thread(
         store.route_event_summary,
         hours,
+        config_version=selected_config or None,
         max_latency_ms=ROUTE_LATENCY_WARN_MS,
         max_skill_find_ms=ROUTE_SKILL_FIND_WARN_MS,
         max_injected_tokens=ROUTE_INJECTED_TOKEN_WARN,

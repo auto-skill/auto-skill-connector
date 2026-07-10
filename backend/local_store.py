@@ -527,6 +527,7 @@ def _percentile(values: list[int], percentile: float) -> int:
 def route_event_summary(
     hours: int = 24,
     *,
+    config_version: str | None = None,
     max_latency_ms: int = 1500,
     max_skill_find_ms: int = 1200,
     max_injected_tokens: int = 3000,
@@ -537,21 +538,24 @@ def route_event_summary(
     try:
         cutoff = time.time() - (max(1, hours) * 3600)
         cutoff_iso = datetime.fromtimestamp(cutoff, timezone.utc).isoformat()
-        total = conn.execute("SELECT COUNT(*) FROM route_events WHERE created_at >= ?", (cutoff_iso,)).fetchone()[0]
+        where = "created_at >= ?"
+        params: list[str] = [cutoff_iso]
+        if config_version:
+            where += " AND config_version = ?"
+            params.append(config_version)
+        total = conn.execute(f"SELECT COUNT(*) FROM route_events WHERE {where}", params).fetchone()[0]
         tiers = {
             row["tier"]: row["count"]
             for row in conn.execute(
-                "SELECT tier, COUNT(*) AS count FROM route_events "
-                "WHERE created_at >= ? GROUP BY tier",
-                (cutoff_iso,),
+                f"SELECT tier, COUNT(*) AS count FROM route_events WHERE {where} GROUP BY tier",
+                params,
             ).fetchall()
         }
         outcomes = {
             row["outcome"] or "pending": row["count"]
             for row in conn.execute(
-                "SELECT outcome, COUNT(*) AS count FROM route_events "
-                "WHERE created_at >= ? GROUP BY outcome",
-                (cutoff_iso,),
+                f"SELECT outcome, COUNT(*) AS count FROM route_events WHERE {where} GROUP BY outcome",
+                params,
             ).fetchall()
         }
         row = conn.execute(
@@ -569,9 +573,9 @@ def route_event_summary(
               MAX(injected_tokens) AS max_injected_tokens,
               MAX(response_tokens) AS max_response_tokens
             FROM route_events
-            WHERE created_at >= ?
-            """,
-            (cutoff_iso,),
+            WHERE {where}
+            """.format(where=where),
+            params,
         ).fetchone()
         metric_rows = [
             dict(r)
@@ -579,9 +583,9 @@ def route_event_summary(
                 """
                 SELECT latency_ms, skill_find_ms, injected_tokens, response_tokens
                 FROM route_events
-                WHERE created_at >= ?
-                """,
-                (cutoff_iso,),
+                WHERE {where}
+                """.format(where=where),
+                params,
             ).fetchall()
         ]
         latency_values = [int(r["latency_ms"] or 0) for r in metric_rows]
@@ -610,11 +614,11 @@ def route_event_summary(
                        retrieval_ms, rerank_ms, content_ms, injected_tokens,
                        response_tokens, warnings
                 FROM route_events
-                WHERE created_at >= ?
+                WHERE {where}
                 ORDER BY latency_ms DESC
                 LIMIT 5
-                """,
-                (cutoff_iso,),
+                """.format(where=where),
+                params,
             ).fetchall()
         ]
         for event in slowest:
@@ -639,14 +643,14 @@ def route_event_summary(
                   AVG(injected_tokens) AS avg_injected_tokens,
                   AVG(response_tokens) AS avg_response_tokens
                 FROM route_events
-                WHERE created_at >= ?
+                WHERE {where}
                   AND skill_name IS NOT NULL
                   AND skill_name != ''
                 GROUP BY skill_name, skill_url
                 ORDER BY count DESC, positive_count DESC, skill_name ASC
                 LIMIT 10
-                """,
-                (cutoff_iso,),
+                """.format(where=where),
+                params,
             ).fetchall()
         ]
         for skill in top_skills:
@@ -660,6 +664,7 @@ def route_event_summary(
         top_used_skills.sort(key=lambda s: (-s["positive_count"], -s["count"], s["skill_name"] or ""))
         return {
             "window_hours": hours,
+            "metrics_config_version": config_version or "all",
             "total": total,
             "tiers": tiers,
             "outcomes": outcomes,

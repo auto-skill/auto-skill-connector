@@ -679,6 +679,9 @@ class ApiContractTests(unittest.TestCase):
             }
         )
         metrics = self.client.get("/route-metrics").json()
+        self.assertEqual(metrics["budget_breaches"]["any"], 0)
+
+        metrics = self.client.get("/route-metrics?config_version=all").json()
         self.assertGreaterEqual(metrics["p95_latency_ms"], metrics["avg_latency_ms"])
         self.assertEqual(metrics["budget_breaches"]["latency_ms"], 1)
         self.assertEqual(metrics["budget_breaches"]["skill_find_ms"], 1)

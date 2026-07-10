@@ -11,7 +11,7 @@ import json
 import re
 from typing import Any
 
-CONFIG_VERSION = "quality-routing-v1"
+CONFIG_VERSION = "quality-routing-v2"
 MIN_CONTENT_CHARS = 180
 MIN_BODY_WORDS = 35
 
