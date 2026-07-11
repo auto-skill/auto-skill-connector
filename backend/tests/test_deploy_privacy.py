@@ -19,6 +19,7 @@ def test_droplet_deploy_establishes_irreversible_privacy_floor() -> None:
     assert stop_at < scrub_at < purge_at < restart_at < verify_at < marker_at
     assert "refusing to restore pre-privacy images" in script
     assert "up -d --force-recreate library-backup" in script
+    assert ".local_skills.db-litestream" in script
     assert "route privacy -> clean" in script
 
 

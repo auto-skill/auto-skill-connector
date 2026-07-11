@@ -114,7 +114,7 @@ if ! $SSH "test -f '${PRIVACY_MARKER}'"; then
   fi
   PRIVACY_SCRUBBED=1
   echo "==> Removing pre-scrub Litestream local tracking state and rollback tags"
-  if ! $SSH "rm -rf '${REMOTE_DIR}/backend/data/local_skills.db-litestream' && for img in deploy-api deploy-mcp deploy-worker; do docker image rm \$img:previous 2>/dev/null || true; done"; then
+  if ! $SSH "rm -rf '${REMOTE_DIR}/backend/data/local_skills.db-litestream' '${REMOTE_DIR}/backend/data/.local_skills.db-litestream' && for img in deploy-api deploy-mcp deploy-worker; do docker image rm \$img:previous 2>/dev/null || true; done"; then
     echo "FAILED: could not clear pre-scrub Litestream/rollback state" >&2
     rollback
     exit 1
