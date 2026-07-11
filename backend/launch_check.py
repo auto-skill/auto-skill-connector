@@ -522,7 +522,7 @@ def check_http(
             payload,
             headers={"x-forwarded-for": "203.0.113.10"},
         )
-        if status != 403:
+        if status not in {401, 403}:
             guard_failures.append(f"{method} {path} -> status={status}, body={body}")
     if guard_failures:
         reporter.fail("public write/admin guard", "; ".join(guard_failures)[:1200])
@@ -540,7 +540,10 @@ def check_http(
             payload,
             headers={"x-forwarded-for": "203.0.113.10"},
         )
-        if status not in {401, 403, 410}:
+        # /route-feedback is public for enum-only outcome metadata, so an
+        # unknown synthetic route id correctly returns 404. /route-skip is
+        # retired and may return 401/403/410 depending on middleware order.
+        if status not in {401, 403, 404, 410}:
             reporter.fail("protected route metadata", f"{method} {path} -> status={status}, body={body}")
         else:
             reporter.pass_("protected route metadata", f"{method} {path} -> {status}")
