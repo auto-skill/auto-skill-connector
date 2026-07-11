@@ -67,14 +67,14 @@ case "$mode" in
       --bucket "$R2_BUCKET" --prefix "$litestream_prefix/" \
       --max-items 200 --query 'Contents[].Key' --output text 2>/dev/null)"
     case "$keys" in
-      *"generations/"*) ;;
-      *) echo "no Litestream generation is visible in R2" >&2; exit 1 ;;
+      *".ltx"*) ;;
+      *) echo "no Litestream LTX file is visible in R2" >&2; exit 1 ;;
     esac
     case "$keys" in
-      *"snapshot"*|*"snapshots/"*) ;;
-      *) echo "no Litestream snapshot is visible in R2" >&2; exit 1 ;;
+      *"/0000/"*|*"0000/"*) ;;
+      *) echo "no fresh Litestream level-0 LTX file is visible in R2" >&2; exit 1 ;;
     esac
-    echo "sanitized Litestream generation and snapshot are visible in R2"
+    echo "sanitized Litestream level-0 LTX file is visible in R2"
     ;;
   *)
     echo "usage: $0 [--purge|--require-litestream]" >&2
