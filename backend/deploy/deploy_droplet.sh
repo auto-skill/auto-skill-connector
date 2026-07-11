@@ -27,12 +27,14 @@ SCP="scp -i ${DEPLOY_SSH_KEY_PATH} -o StrictHostKeyChecking=accept-new"
 
 WORKDIR=$(mktemp -d)
 trap 'rm -rf "$WORKDIR"' EXIT
+ARCHIVE_NAME="auto-skill-deploy-$(git rev-parse --short HEAD)-$$.tar.gz"
+REMOTE_ARCHIVE="/tmp/${ARCHIVE_NAME}"
 
 echo "==> Archiving $(git rev-parse HEAD)"
 git archive --format=tar.gz -o "$WORKDIR/deploy.tar.gz" HEAD
 
 echo "==> Shipping archive to ${DEPLOY_HOST}"
-$SCP "$WORKDIR/deploy.tar.gz" "${DEPLOY_USER}@${DEPLOY_HOST}:/tmp/deploy.tar.gz"
+$SCP "$WORKDIR/deploy.tar.gz" "${DEPLOY_USER}@${DEPLOY_HOST}:${REMOTE_ARCHIVE}"
 
 echo "==> Extracting and syncing into ${REMOTE_DIR}"
 # cloudflared has nothing in-repo to redeploy (it's the official image, auth'd
@@ -46,11 +48,11 @@ echo "==> Extracting and syncing into ${REMOTE_DIR}"
 LITESTREAM_HASH_BEFORE=$($SSH "sha256sum ${REMOTE_DIR}/backend/deploy/litestream.yml 2>/dev/null" || true)
 LIBRARY_BACKUP_HASH_BEFORE=$($SSH "sha256sum ${REMOTE_DIR}/backend/deploy/backup-library.sh 2>/dev/null" || true)
 
-$SSH bash -s <<'REMOTE'
+$SSH "REMOTE_ARCHIVE='${REMOTE_ARCHIVE}' bash -s" <<'REMOTE'
 set -euo pipefail
 rm -rf /tmp/deploy-extract
 mkdir -p /tmp/deploy-extract
-tar -xzf /tmp/deploy.tar.gz -C /tmp/deploy-extract
+tar -xzf "$REMOTE_ARCHIVE" -C /tmp/deploy-extract
 rsync -a --delete \
   --exclude 'backend/deploy/.env' \
   --exclude 'backend/deploy/.env.ci' \
@@ -59,7 +61,7 @@ rsync -a --delete \
   --exclude 'backend/content_blobs/' \
   --exclude '.git/' \
   /tmp/deploy-extract/ /opt/auto-skill-connector/
-rm -rf /tmp/deploy-extract /tmp/deploy.tar.gz
+rm -rf /tmp/deploy-extract "$REMOTE_ARCHIVE"
 REMOTE
 
 LITESTREAM_HASH_AFTER=$($SSH "sha256sum ${REMOTE_DIR}/backend/deploy/litestream.yml 2>/dev/null" || true)
