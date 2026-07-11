@@ -1,8 +1,13 @@
 name: Deploy
 
 on:
-  push:
-    branches: [master]
+  workflow_dispatch:
+
+# A deploy rebuilds the images on the Droplet and warms a large local index.
+# Keep it explicit so normal pushes do not create overlapping CPU spikes.
+concurrency:
+  group: autoskill-production-deploy
+  cancel-in-progress: true
 
 jobs:
   test:

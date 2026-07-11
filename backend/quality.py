@@ -8,12 +8,19 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 from typing import Any
 
-CONFIG_VERSION = "quality-routing-v2"
+CONFIG_VERSION = "quality-routing-v3-context-guard"
+MEANINGFULNESS_VERSION = "meaningfulness-v1"
 MIN_CONTENT_CHARS = 180
 MIN_BODY_WORDS = 35
+MIN_MEANINGFULNESS = 0.55
+MIN_QUALITY_FOR_FULL = 70
+MIN_TRUST_PROVENANCE = 0.55
+CLOSE_SIMILARITY_MARGIN = 0.025
+CLOSE_MEANINGFULNESS_MARGIN = 0.08
 
 ACTIVE_STATUSES = {"active", "metadata_only"}
 FULL_ROUTE_STATUS = "active"
@@ -124,6 +131,16 @@ ACK_PROMPTS = {
     "please do",
     "go ahead",
     "continue please",
+}
+
+PROVENANCE_SCORES = {
+    "mcp_official_registry": 0.95,
+    "smithery_registry": 0.75,
+    "glama_registry": 0.75,
+    "pulsemcp_registry": 0.75,
+    "npm": 0.75,
+    "github_skill_file": 0.55,
+    "github_repo": 0.45,
 }
 META_PATTERNS = (
     "what did you",
@@ -278,6 +295,133 @@ def skill_content_rejection_reasons(text: str) -> list[str]:
     return reasons
 
 
+def _raw_dict(skill: dict[str, Any]) -> dict[str, Any]:
+    raw = skill.get("raw") or {}
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except (TypeError, ValueError):
+            raw = {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def row_stars(skill: dict[str, Any]) -> int:
+    """Read a bounded integer star count without trusting arbitrary metadata."""
+    value = skill.get("stars")
+    if value is None:
+        value = _raw_dict(skill).get("stars")
+    try:
+        return max(0, int(value or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def prominence_score(skill: dict[str, Any]) -> float:
+    """Log-scaled popularity prior; popularity never replaces relevance."""
+    stars = row_stars(skill)
+    if stars <= 0:
+        return 0.0
+    return min(1.0, math.log1p(stars) / math.log1p(100_000))
+
+
+def provenance_score(skill: dict[str, Any]) -> float:
+    """Return a deterministic source/publisher trust prior in [0, 1]."""
+    raw = _raw_dict(skill)
+    if any(bool(raw.get(key)) for key in ("publisher_verified", "verified_publisher", "official")):
+        return 1.0
+    source = str(skill.get("source") or "").strip().lower()
+    if source in PROVENANCE_SCORES:
+        return PROVENANCE_SCORES[source]
+    if "official" in source or "verified" in source:
+        return 0.9
+    if "github" in source and "skill" in source:
+        return 0.55
+    if "github" in source or "git" in source:
+        return 0.45
+    return 0.25
+
+
+def evidence_score(skill: dict[str, Any]) -> float:
+    """Use evaluation/feedback evidence when available, otherwise neutral."""
+    raw = _raw_dict(skill)
+    eval_value = skill.get("eval_pass_rate")
+    if eval_value is None:
+        eval_value = raw.get("eval_pass_rate", raw.get("eval_score"))
+    feedback_value = skill.get("feedback_score")
+    if feedback_value is None:
+        feedback_value = raw.get("feedback_score")
+
+    def _bounded(value: Any) -> float | None:
+        try:
+            return max(0.0, min(1.0, float(value)))
+        except (TypeError, ValueError):
+            return None
+
+    eval_score = _bounded(eval_value)
+    feedback_score = _bounded(feedback_value)
+    if eval_score is not None and feedback_score is not None:
+        return 0.7 * eval_score + 0.3 * feedback_score
+    if eval_score is not None:
+        return eval_score
+    if feedback_score is not None:
+        return feedback_score
+    return 0.5
+
+
+def meaningfulness_components(skill: dict[str, Any], quality_value: int | None = None) -> dict[str, float | bool]:
+    """Return explainable quality/prominence/provenance/evidence components."""
+    if quality_value is None:
+        cached = skill.get("_meaningfulness_components")
+        if isinstance(cached, dict):
+            return cached
+    quality_score = quality_value if quality_value is not None else skill.get("quality_score")
+    try:
+        quality = max(0.0, min(1.0, float(quality_score or 0) / 100.0))
+    except (TypeError, ValueError):
+        quality = 0.0
+    persisted_components = False
+    try:
+        persisted_components = float(skill.get("meaningfulness_score") or 0) > 0
+    except (TypeError, ValueError):
+        persisted_components = False
+    try:
+        prominence = (
+            max(0.0, min(1.0, float(skill.get("prominence_score"))))
+            if persisted_components and skill.get("prominence_score") is not None
+            else prominence_score(skill)
+        )
+    except (TypeError, ValueError):
+        prominence = prominence_score(skill)
+    try:
+        provenance = (
+            max(0.0, min(1.0, float(skill.get("provenance_score"))))
+            if persisted_components and skill.get("provenance_score") is not None
+            else provenance_score(skill)
+        )
+    except (TypeError, ValueError):
+        provenance = provenance_score(skill)
+    evidence = evidence_score(skill)
+    meaningfulness = (0.55 * quality) + (0.20 * provenance) + (0.15 * prominence) + (0.10 * evidence)
+    explicit_stars = skill.get("stars") is not None or "stars" in _raw_dict(skill)
+    trust_signal = (
+        provenance >= MIN_TRUST_PROVENANCE
+        or row_stars(skill) >= 10
+        or evidence >= 0.8
+        or (not explicit_stars and quality >= 0.85)
+    )
+    result = {
+        "quality": round(quality, 6),
+        "prominence": round(prominence, 6),
+        "provenance": round(provenance, 6),
+        "evidence": round(evidence, 6),
+        "meaningfulness": round(meaningfulness, 6),
+        "trust_signal": trust_signal,
+    }
+    if quality_value is None:
+        skill["_meaningfulness_components"] = result
+    return result
+
+
 def infer_platforms(skill: dict[str, Any]) -> list[str]:
     blob = " ".join(
         [
@@ -348,16 +492,6 @@ def evaluate_quality(skill: dict[str, Any], content: str = "") -> dict[str, Any]
         else:
             reasons.append("missing-content")
 
-    raw = skill.get("raw") or {}
-    stars = 0
-    if isinstance(raw, dict):
-        try:
-            stars = int(raw.get("stars") or skill.get("stars") or 0)
-        except (TypeError, ValueError):
-            stars = 0
-    if stars > 0:
-        score += min(10, len(str(stars)) * 2)
-
     if content and content_reasons:
         status = "rejected"
     elif content and not valid_frontmatter:
@@ -370,11 +504,15 @@ def evaluate_quality(skill: dict[str, Any], content: str = "") -> dict[str, Any]
         status = "active"
 
     score = max(0, min(score, 100))
+    components = meaningfulness_components(skill, score)
     return {
         "content_hash": chash,
         "quality_status": status,
         "quality_reasons": sorted(set(reasons)),
         "quality_score": score,
+        "prominence_score": components["prominence"],
+        "provenance_score": components["provenance"],
+        "meaningfulness_score": components["meaningfulness"],
         "platforms": platforms,
         "category": "integration" if platforms else "capability",
     }
@@ -434,55 +572,55 @@ def rerank_candidates(prompt: str, candidates: list[dict[str, Any]]) -> list[dic
         quality = float(row.get("quality_score") or 50) / 100.0
         feedback = row.get("feedback_score")
         feedback = float(feedback) if feedback is not None else 0.5
+        components = meaningfulness_components(row)
         route_score = (
             base_rank
             + (LEXICAL_OVERLAP_WEIGHT * overlap)
             + (0.01 * quality)
             + (0.01 * (feedback - 0.5))
+            + (0.003 * float(components["meaningfulness"]))
             - penalty
         )
 
         row["lexical_overlap"] = overlap
         row["platform_mismatch"] = penalty > 0
+        row["quality_component"] = components["quality"]
+        row["prominence_score"] = components["prominence"]
+        row["provenance_score"] = components["provenance"]
+        row["evidence_score"] = components["evidence"]
+        row["meaningfulness_score"] = components["meaningfulness"]
+        row["trust_signal"] = components["trust_signal"]
         row["route_score"] = round(route_score, 6)
         if sim:
             row["similarity"] = sim
         reranked.append(row)
-    reranked.sort(key=lambda item: item.get("route_score", item.get("rank", 0)), reverse=True)
+    reranked.sort(
+        key=lambda item: (
+            item.get("route_score", item.get("rank", 0)),
+            item.get("meaningfulness_score", 0),
+        ),
+        reverse=True,
+    )
     return reranked
 
 
 def _row_stars(row: dict[str, Any]) -> int:
-    stars = row.get("stars")
-    if stars is not None:
-        try:
-            return int(stars)
-        except (TypeError, ValueError):
-            return 0
-    raw = row.get("raw")
-    if isinstance(raw, str):
-        try:
-            raw = json.loads(raw)
-        except Exception:
-            raw = {}
-    if isinstance(raw, dict):
-        try:
-            return int(raw.get("stars") or 0)
-        except (TypeError, ValueError):
-            return 0
-    return 0
+    return row_stars(row)
 
 
 def pick_canonical(rows: list[dict[str, Any]]) -> dict[str, Any]:
     """Given candidates that share the same content_hash, return the one that
-    should survive as canonical: highest quality_score, then highest stars,
-    then most recently scanned/discovered, then a stable id/url tiebreak."""
+    should survive as canonical: meaningfulness first, then quality, provenance,
+    prominence, recency, and a stable id/url tiebreak."""
 
     def sort_key(row: dict[str, Any]):
         recency = str(row.get("scanned_at") or row.get("discovered_at") or "")
+        components = meaningfulness_components(row)
         return (
+            float(components["meaningfulness"]),
             int(row.get("quality_score") or 0),
-            _row_stars(row),
+            float(components["provenance"]),
+            float(components["prominence"]),
             recency,
             str(row.get("id") or row.get("url") or ""),
         )
@@ -521,6 +659,88 @@ def _exact_metadata_key(row: dict[str, Any]) -> str:
     return f"{name}\x1f{description}"
 
 
+def _candidate_tokens(row: dict[str, Any]) -> set[str]:
+    return set(_tokens(" ".join(
+        [
+            str(row.get("name") or ""),
+            str(row.get("description") or ""),
+            " ".join(str(tag) for tag in (row.get("tags") or [])),
+        ]
+    )))
+
+
+def _near_duplicate(a: dict[str, Any], b: dict[str, Any]) -> bool:
+    """Conservatively identify forks with nearly identical advertised intent."""
+    a_tokens = _candidate_tokens(a)
+    b_tokens = _candidate_tokens(b)
+    if not a_tokens or not b_tokens:
+        return False
+    platforms_a = set(a.get("platforms") or [])
+    platforms_b = set(b.get("platforms") or [])
+    if platforms_a and platforms_b and not (platforms_a & platforms_b):
+        return False
+    overlap = len(a_tokens & b_tokens) / max(1, len(a_tokens | b_tokens))
+    name_overlap = len(set(_tokens(str(a.get("name") or ""))) & set(_tokens(str(b.get("name") or ""))))
+    description_a = set(_tokens(str(a.get("description") or "")))
+    description_b = set(_tokens(str(b.get("description") or "")))
+    description_overlap = len(description_a & description_b) / max(1, len(description_a | description_b))
+    return overlap >= 0.80 or (name_overlap >= 2 and description_overlap >= 0.50)
+
+
+def _dedupe_near_duplicates(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    prepared: list[tuple[dict[str, Any], set[str], set[str], set[str], set[str]]] = []
+    for row in rows:
+        prepared.append(
+            (
+                row,
+                _candidate_tokens(row),
+                set(_tokens(str(row.get("name") or ""))),
+                set(_tokens(str(row.get("description") or ""))),
+                set(row.get("platforms") or []),
+            )
+        )
+
+    groups: list[list[tuple[dict[str, Any], set[str], set[str], set[str], set[str]]]] = []
+    for item in prepared:
+        _row, tokens, name_tokens, description_tokens, platforms = item
+        for group in groups:
+            _other, other_tokens, other_name, other_description, other_platforms = group[0]
+            if platforms and other_platforms and not (platforms & other_platforms):
+                continue
+            overlap = len(tokens & other_tokens) / max(1, len(tokens | other_tokens))
+            name_overlap = len(name_tokens & other_name)
+            description_overlap = len(description_tokens & other_description) / max(
+                1, len(description_tokens | other_description)
+            )
+            if overlap >= 0.80 or (name_overlap >= 2 and description_overlap >= 0.50):
+                group.append(item)
+                break
+        else:
+            groups.append([item])
+
+    result: list[dict[str, Any]] = []
+    for group in groups:
+        def _canonical_key(item):
+            components = meaningfulness_components(item[0])
+            return (
+                float(components["meaningfulness"]),
+                int(item[0].get("quality_score") or 0),
+                float(components["provenance"]),
+                float(components["prominence"]),
+                str(item[0].get("scanned_at") or item[0].get("discovered_at") or ""),
+                str(item[0].get("id") or item[0].get("url") or ""),
+            )
+
+        winner = max(
+            group,
+            key=_canonical_key,
+        )[0]
+        winner = dict(winner)
+        winner["duplicate_group_size"] = len(group)
+        result.append(winner)
+    return result
+
+
 def dedupe_by_content_hash(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Keep one canonical result for duplicate content or exact metadata.
 
@@ -530,7 +750,8 @@ def dedupe_by_content_hash(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     more specific candidate out of the top results.
     """
     by_content = _dedupe_by_key(rows, lambda row: str(row.get("content_hash") or ""))
-    return _dedupe_by_key(by_content, _exact_metadata_key)
+    by_metadata = _dedupe_by_key(by_content, _exact_metadata_key)
+    return _dedupe_near_duplicates(by_metadata)
 
 
 def tier_for_prompt(prompt: str, candidates: list[dict[str, Any]], recommend_gap: float = 1.6) -> str:
@@ -545,9 +766,13 @@ def tier_for_prompt(prompt: str, candidates: list[dict[str, Any]], recommend_gap
         return "hint"
     if (top.get("quality_status") or "active") != FULL_ROUTE_STATUS:
         return "hint"
-    if int(top.get("quality_score") or 0) < 40:
+    if int(top.get("quality_score") or 0) < MIN_QUALITY_FOR_FULL:
         return "hint"
     if int(top.get("risk_score") or 0) > 0:
+        return "hint"
+    if float(top.get("meaningfulness_score") or 0.0) < MIN_MEANINGFULNESS:
+        return "hint"
+    if not top.get("trust_signal"):
         return "hint"
 
     top_similarity = top.get("similarity")
@@ -564,6 +789,17 @@ def tier_for_prompt(prompt: str, candidates: list[dict[str, Any]], recommend_gap
     if len(ranked) == 1:
         return "full"
     runner = ranked[1]
+    runner_similarity = runner.get("similarity")
+    if runner_similarity is not None:
+        try:
+            similarity_delta = float(top_similarity) - float(runner_similarity)
+            meaningfulness_delta = float(top.get("meaningfulness_score") or 0.0) - float(
+                runner.get("meaningfulness_score") or 0.0
+            )
+            if similarity_delta < CLOSE_SIMILARITY_MARGIN and meaningfulness_delta < CLOSE_MEANINGFULNESS_MARGIN:
+                return "hint"
+        except (TypeError, ValueError):
+            return "hint"
     top_score = float(top.get("route_score") or 0.0)
     runner_score = float(runner.get("route_score") or 0.0)
     if runner_score <= 0 or top_score >= runner_score * recommend_gap:

@@ -40,7 +40,11 @@ async def _warm_vector_index_when_quiet() -> None:
             continue
         try:
             stats = await asyncio.to_thread(store.warm_vector_index)
-            print(f"[local_api] warmed vector cache with {stats['cache_vectors']} vectors")
+            lexical = await asyncio.to_thread(store.warm_lexical_index)
+            print(
+                f"[local_api] warmed vector cache with {stats['cache_vectors']} vectors; "
+                f"lexical cache with {lexical['skills']} skills"
+            )
         except Exception as exc:
             print(f"[local_api] vector cache warm failed: {exc}")
         if generation == _vector_warm_generation:

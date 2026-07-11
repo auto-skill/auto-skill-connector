@@ -291,6 +291,8 @@ class AccountsEndpointTests(unittest.TestCase):
             self.assertEqual(row["tiers"], {"full": 2, "hint": 1})
             self.assertEqual(row["outcomes"], {"used": 1, "dismissed": 1})
             self.assertEqual(row["avg_latency_ms"], round((100 + 200 + 50) / 3))
+            self.assertIn("route_metrics", body)
+            self.assertIn("anonymous_installations", body["route_metrics"])
 
             latest_event = body["recent_events"][0]
             self.assertEqual(latest_event["user_email"], "busy@example.com")
@@ -469,7 +471,7 @@ class AccountsEndpointTests(unittest.TestCase):
 
         with patch("recommender.retrieve_skills", fake_retrieve):
             anon = self.client.post("/route", json={"task": "deploy to fly"})
-            self.assertEqual(anon.json()["tier"], "none")
+            self.assertEqual(anon.status_code, 401)
 
             resp_a = self.client.post(
                 "/route", json={"task": "deploy to fly"}, headers={"Authorization": f"Bearer {token_a}"}
@@ -493,7 +495,7 @@ class AccountsEndpointTests(unittest.TestCase):
 
         with patch("recommender.retrieve_skills", fake_retrieve):
             anon = self.client.post("/find-semantic", json={"q": "deploy to fly"})
-            self.assertEqual(anon.json()["results"], [])
+            self.assertEqual(anon.status_code, 401)
 
             authed = self.client.post(
                 "/find-semantic", json={"q": "deploy to fly"}, headers={"Authorization": f"Bearer {token_a}"}

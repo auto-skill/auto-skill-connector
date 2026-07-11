@@ -261,7 +261,8 @@ Restart Claude Desktop after editing the configuration.
 ### Launch-facing tools
 
 - `route_task(task)` explicitly routes a cleaned-up task and returns `full`,
-  `hint`, or no route.
+  `hint`, or no route. A full route may be delivered as a bounded context
+  capsule when the selected skill is too large for the current client.
 - `route_prompt(prompt)` locally preflights a raw prompt, then routes only when
   it is task-shaped.
 - `record_feedback(route_id, outcome)` records an enum-only privacy-safe
@@ -341,23 +342,34 @@ you need a metadata-only routing log for troubleshooting. The current hook
 removes legacy prompt fields from an older routing log on its next run; if you
 have not upgraded the hook, delete `~/.claude/auto-skill-routing.jsonl`.
 
+Anonymous usage analytics are also off by default. If you explicitly opt in by
+setting `AUTOSKILL_ANONYMOUS_ANALYTICS=1`, the local adapter creates one random
+installation UUID in `~/.autoskill/installation.json` and sends it with routes.
+The backend stores only a one-way hash of that UUID, never the UUID, prompt,
+IP address, or a machine fingerprint. Remove the file (or unset the variable)
+to reset/stop anonymous tracking. Account authentication always takes priority
+over the anonymous ID.
+
 Disable the adapter at any time:
 
 ```bash
 auto-skill disable-hook
 ```
 
-There is no launch adapter for Codex or Cursor. Codex has a hook surface that
-may support a future adapter; Cursor's current prompt hook does not provide the
-same context-injection contract. Until a tested adapter ships, use explicit
-CLI/MCP routing on those clients.
+There is no invisible prompt interceptor for Codex or Cursor. Use explicit
+CLI/MCP routing on those clients until a tested client-specific adapter exists.
+When a client cannot isolate a large skill, Auto-Skill falls back to a
+deterministic capsule rather than silently injecting the full document.
 
 ## How Routing Works
 
 Routing uses the service configured by `AUTOSKILL_URL`, defaulting to
 `https://skills.autoskill.dev`. The backend performs local embedding retrieval
 and deterministic reranking with lexical overlap, quality, platform mismatch,
-and a capped popularity prior.
+provenance, evaluation/feedback evidence, and a log-scaled popularity prior.
+Popularity is only a soft signal; relevance, verified static content, and
+meaningfulness gates decide whether a route is full, a hint, or no route.
+Routing does not install skills or write them to disk.
 
 The response tiers are:
 

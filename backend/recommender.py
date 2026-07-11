@@ -11,11 +11,13 @@ Endpoints:
                | {"type":"clarify","message":...,"options":[...]}
                | {"type":"none","message":...}
   POST /find-semantic {"q": ..., "limit": ...}  body-based public search
+  POST /route {"task": ..., "guard_mode": "hybrid", "supports_isolation": false}
 
 Also runs a background loop that embeds any skills rows missing embeddings,
 so freshly scraped skills become semantically searchable within minutes.
 """
 import asyncio
+import hashlib
 import json
 import os
 import re
@@ -23,13 +25,21 @@ import time
 import uuid
 from datetime import datetime, timezone
 from math import ceil
+from typing import Literal
 
 import httpx
-from fastapi import APIRouter, Header, Response
+from fastapi import APIRouter, Header, HTTPException, Response
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
 import auth
+from context_guard import (
+    DEFAULT_CAPSULE_CHARS,
+    DEFAULT_INLINE_CHARS,
+    POLICY_VERSION as CONTEXT_GUARD_POLICY,
+    build_context_guard,
+    estimate_tokens as estimate_guard_tokens,
+)
 from embeddings import LibraryContent, build_embed_text, embed_text_hash, embed_texts
 import local_store as store
 from quality import (
@@ -57,15 +67,16 @@ OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434").rstrip("/")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
 ENABLE_OLLAMA_CHAT = os.getenv("ENABLE_OLLAMA_CHAT", "").lower() in {"1", "true", "yes"}
 AUTO_START_EMBEDDER = os.getenv("AUTO_START_EMBEDDER", "1").lower() not in {"0", "false", "no"}
+CONTEXT_GUARD_ENABLED = os.getenv("AUTOSKILL_CONTEXT_GUARD", "1").lower() not in {"0", "false", "no"}
 
 # RRF scores cluster near 1/(rrf_k + ix), so near-ties sit ~1.0x apart; a top hit
 # that both retrievers agree on lands well above 1.6x the runner-up.
 RECOMMEND_GAP = 1.6
 ROUTE_TTL_SECONDS = int(os.getenv("ROUTE_TTL_SECONDS", "300"))
 MAX_INLINE_CONTENT_CHARS = int(os.getenv("MAX_INLINE_CONTENT_CHARS", "12000"))
-ROUTE_LATENCY_WARN_MS = int(os.getenv("ROUTE_LATENCY_WARN_MS", "1500"))
-ROUTE_SKILL_FIND_WARN_MS = int(os.getenv("ROUTE_SKILL_FIND_WARN_MS", "1200"))
-ROUTE_INJECTED_TOKEN_WARN = int(os.getenv("ROUTE_INJECTED_TOKEN_WARN", "3000"))
+ROUTE_LATENCY_WARN_MS = int(os.getenv("ROUTE_LATENCY_WARN_MS", "750"))
+ROUTE_SKILL_FIND_WARN_MS = int(os.getenv("ROUTE_SKILL_FIND_WARN_MS", "500"))
+ROUTE_INJECTED_TOKEN_WARN = int(os.getenv("ROUTE_INJECTED_TOKEN_WARN", "1000"))
 ROUTE_RESPONSE_TOKEN_WARN = int(os.getenv("ROUTE_RESPONSE_TOKEN_WARN", "3500"))
 CONTENT_HASH_RE = re.compile(r"^[a-f0-9]{64}$")
 EMBED_INTERVAL_SECONDS = int(os.getenv("EMBED_INTERVAL_SECONDS", "300"))
@@ -166,6 +177,26 @@ async def _start_embed_loop():
     if AUTO_START_EMBEDDER:
         asyncio.create_task(_embed_backlog_loop())
     asyncio.create_task(_warm_embedding_model())
+    if _uses_local_store():
+        asyncio.create_task(_warm_local_vector_index())
+        asyncio.create_task(_warm_local_lexical_index())
+
+
+async def _warm_local_vector_index() -> None:
+    """Publish the in-memory vector matrix before the first route request."""
+    try:
+        stats = await asyncio.to_thread(store.warm_vector_index)
+        print(f"[recommender] warmed local vector index ({stats.get('cache_vectors', 0)} vectors)")
+    except Exception as exc:
+        print(f"[recommender] local vector warm-up failed: {exc}")
+
+
+async def _warm_local_lexical_index() -> None:
+    try:
+        stats = await asyncio.to_thread(store.warm_lexical_index)
+        print(f"[recommender] warmed lexical index ({stats.get('skills', 0)} skills, {stats.get('tokens', 0)} tokens)")
+    except Exception as exc:
+        print(f"[recommender] lexical warm-up failed: {exc}")
 
 
 async def _warm_embedding_model() -> None:
@@ -197,6 +228,10 @@ def _stars(row: dict) -> int:
 
 async def embed_query(text: str) -> list[float]:
     return (await asyncio.to_thread(embed_texts, [text]))[0]
+
+
+def _uses_local_store() -> bool:
+    return SUPABASE_URL.startswith(("http://127.0.0.1", "http://localhost", "http://[::1]"))
 
 
 # Minimum top-hit cosine similarity for a query to count as having a real
@@ -246,9 +281,26 @@ async def retrieve_skills(client: httpx.AsyncClient, query_text: str, limit: int
     fetch_limit = max(limit, 20)
     body = {"query_text": query_text, "match_count": fetch_limit}
     try:
-        body["query_embedding"] = await embed_query(query_text)
-        rpc = "hybrid_search_skills"
+        query_embedding = await embed_query(query_text)
     except Exception:
+        query_embedding = None
+
+    if _uses_local_store():
+        try:
+            results = await asyncio.to_thread(
+                store.hybrid_search_skills,
+                query_text,
+                query_embedding,
+                fetch_limit,
+            )
+            return rerank_candidates(query_text, results)[:limit]
+        except Exception as exc:
+            print(f"[recommender] local retrieval fast path failed: {exc}")
+
+    if query_embedding is not None:
+        body["query_embedding"] = query_embedding
+        rpc = "hybrid_search_skills"
+    else:
         rpc = "search_skills"
         body = {"query": query_text, "max_results": fetch_limit}
 
@@ -383,6 +435,11 @@ class RouteRequest(BaseModel):
     client: str = ""
     client_version: str = ""
     limit: int = 8
+    guard_mode: Literal["hybrid", "capsule_only"] = "hybrid"
+    supports_isolation: bool = False
+    max_inline_chars: int = DEFAULT_INLINE_CHARS
+    max_capsule_chars: int = DEFAULT_CAPSULE_CHARS
+    anonymous_id: str | None = None
 
 
 class SemanticSearchRequest(BaseModel):
@@ -527,9 +584,14 @@ def _public_skill(row: dict | None) -> dict | None:
         "source": row.get("source"),
         "source_url": row.get("url"),
         "url": row.get("url"),
+        "stars": row.get("stars") or 0,
         "content_hash": row.get("content_hash"),
         "quality_status": row.get("quality_status"),
         "quality_score": row.get("quality_score"),
+        "prominence_score": row.get("prominence_score"),
+        "provenance_score": row.get("provenance_score"),
+        "meaningfulness_score": row.get("meaningfulness_score"),
+        "duplicate_group_size": row.get("duplicate_group_size"),
         "platforms": row.get("platforms") or [],
         "category": row.get("category"),
         "risk_score": row.get("risk_score"),
@@ -632,6 +694,18 @@ def _score_debug(results: list[dict], tier: str) -> dict:
         "similarity": top.get("similarity"),
         "quality_status": top.get("quality_status"),
         "quality_score": top.get("quality_score"),
+        "quality_component": top.get("quality_component"),
+        "prominence_score": top.get("prominence_score"),
+        "provenance_score": top.get("provenance_score"),
+        "evidence_score": top.get("evidence_score"),
+        "meaningfulness_score": top.get("meaningfulness_score"),
+        "trust_signal": bool(top.get("trust_signal")),
+        "duplicate_group_size": top.get("duplicate_group_size", 1),
+        "winner_reason": (
+            "verified static content with strong relevance and meaningfulness"
+            if tier == "full"
+            else "candidate retained as a hint because one or more confidence/context gates did not clear"
+        ),
         "recommend_gap": RECOMMEND_GAP,
         "min_similarity": MIN_SIMILARITY,
     }
@@ -648,11 +722,61 @@ def _estimate_tokens(value) -> int:
     return max(1, ceil(len(value) / 4))
 
 
+def _estimate_candidate_tokens(candidates: list[dict]) -> int:
+    """Estimate what an adapter actually presents, not duplicated JSON fields."""
+    compact = [
+        {
+            "name": candidate.get("name"),
+            "description": (candidate.get("description") or "")[:160],
+            "url": candidate.get("url") or candidate.get("source_url"),
+        }
+        for candidate in candidates
+    ]
+    return _estimate_tokens(compact)
+
+
+def _empty_context_guard(reason: str = "no-route") -> dict:
+    return {
+        "policy": CONTEXT_GUARD_POLICY,
+        "delivery": "none",
+        "reason": reason,
+        "capsule": None,
+        "capsule_chars": 0,
+        "estimated_tokens": 0,
+        "content_hash": None,
+        "content_digest": None,
+    }
+
+
 async def _record_route_event(event: dict) -> None:
     try:
         await asyncio.to_thread(store.insert_route_event, event)
     except Exception as exc:
         print(f"[recommender] route event logging failed: {exc}")
+
+
+def _anonymous_id_hash(value: str | None) -> str | None:
+    """Hash a client-generated UUID before it reaches retained analytics."""
+    if not value:
+        return None
+    try:
+        normalized = str(uuid.UUID(str(value)))
+    except (ValueError, TypeError, AttributeError):
+        return None
+    if normalized == str(uuid.UUID(int=0)):
+        return None
+    return hashlib.sha256(f"autoskill-anonymous-installation-v1:{normalized}".encode("ascii")).hexdigest()
+
+
+def _require_route_user(authorization: str | None) -> dict:
+    """Require identity at the handler boundary, even when proxy headers are absent."""
+    user = auth.user_from_authorization_header(authorization)
+    if user is None:
+        raise HTTPException(
+            status_code=401,
+            detail={"error": "account required", "signup_url": "/signup"},
+        )
+    return user
 
 
 def _none_route_payload(reason: str, start: float, route_id: str | None = None) -> dict:
@@ -678,6 +802,7 @@ def _none_route_payload(reason: str, start: float, route_id: str | None = None) 
         "candidates": [],
         "content": None,
         "content_url": None,
+        "context_guard": _empty_context_guard(reason),
         "route_id": route_id,
         "score_debug": {"tier": "none", "reason": reason, "metrics": metrics},
         "config_version": CONFIG_VERSION,
@@ -707,7 +832,8 @@ async def get_content(hash_value: str):
 async def route(body: RouteRequest, authorization: str | None = Header(None)):
     """Deterministic backend-owned route contract for connectors."""
     start = time.monotonic()
-    user = auth.user_from_authorization_header(authorization)
+    user = _require_route_user(authorization)
+    anonymous_id_hash = None
     query = (body.task or body.prompt or "").strip()
     if not query:
         return _none_route_payload("empty-query", start)
@@ -721,6 +847,7 @@ async def route(body: RouteRequest, authorization: str | None = Header(None)):
                 "client_version": body.client_version[:80],
                 "id": route_id,
                 "user_id": user["id"] if user else None,
+                "anonymous_id_hash": anonymous_id_hash,
                 "query_chars": len(query),
                 "tier": "none",
                 "config_version": CONFIG_VERSION,
@@ -745,6 +872,7 @@ async def route(body: RouteRequest, authorization: str | None = Header(None)):
     skill = _public_skill(results[0]) if results else None
     content_ms = 0
     route_id = str(uuid.uuid4())
+    context_guard = _empty_context_guard("no-route")
 
     # A caller's own private skill submissions never enter the public quality
     # gate or embedding index (see _best_private_skill_match) -- when one
@@ -760,6 +888,7 @@ async def route(body: RouteRequest, authorization: str | None = Header(None)):
         capability_flags = skill_capability_flags(private_content)
         if capability_flags:
             skill["capability_flags"] = capability_flags
+        context_guard = _empty_context_guard("private_hint")
         warnings.append("Private skills are hint-only until they pass the public verification and capability gates.")
     elif tier == "full" and skill:
         content_start = time.monotonic()
@@ -788,33 +917,72 @@ async def route(body: RouteRequest, authorization: str | None = Header(None)):
                 "Matched skill declares scripts, tools, network, dependencies, or dangerous commands; "
                 "downgraded to hint for explicit review."
             )
-        elif len(text) > MAX_INLINE_CONTENT_CHARS:
-            tier = "hint"
-            chash = skill.get("content_hash") or content_hash(text)
-            content_url = f"/content/{chash}" if chash else None
-            warnings.append("Matched skill content exceeds inline size cap; downgraded to hint.")
         else:
-            content = text
             chash = skill["content_hash"]
-            content_url = f"/content/{chash}"
+            digest = content_digest(text)
             skill["verification"] = {
                 "content_hash_verified": True,
                 "static_instruction_only": True,
                 "hash_kind": "canonical_normalized",
-                "content_digest": content_digest(text),
+                "content_digest": digest,
                 "source": "indexed-local-copy",
                 "publisher_verified": False,
             }
+            if CONTEXT_GUARD_ENABLED:
+                context_guard = build_context_guard(
+                    task=query,
+                    content=text,
+                    content_hash=chash,
+                    content_digest=digest,
+                    supports_isolation=bool(body.supports_isolation),
+                    max_inline_chars=(0 if body.guard_mode == "capsule_only" else body.max_inline_chars),
+                    max_capsule_chars=body.max_capsule_chars,
+                    force_capsule=body.guard_mode == "capsule_only",
+                )
+            else:
+                context_guard = {
+                    "policy": "disabled",
+                    "delivery": "full" if len(text) <= MAX_INLINE_CONTENT_CHARS else "hint",
+                    "reason": "feature_disabled",
+                    "capsule": None,
+                    "capsule_chars": 0,
+                    "estimated_tokens": 0,
+                    "content_hash": chash,
+                    "content_digest": digest,
+                }
+            delivery = context_guard.get("delivery")
+            if delivery == "full":
+                content = text
+                content_url = f"/content/{chash}"
+            elif delivery == "isolation":
+                content_url = f"/content/{chash}"
+                warnings.append("Large verified skill reserved for an adapter-provided isolated context.")
+            elif delivery == "capsule":
+                warnings.append("Large verified skill reduced to a bounded context capsule.")
+            else:
+                tier = "hint"
+                warnings.append("Verified content could not be delivered within the context guard; downgraded to hint.")
 
+    if tier == "hint" and context_guard.get("delivery") == "none":
+        context_guard = _empty_context_guard("confidence_or_safety_gate")
+        context_guard["delivery"] = "hint"
     debug = _score_debug(results, tier)
+    debug["context_guard"] = {
+        "policy": context_guard.get("policy"),
+        "delivery": context_guard.get("delivery"),
+        "reason": context_guard.get("reason"),
+        "capsule_chars": context_guard.get("capsule_chars", 0),
+        "estimated_tokens": context_guard.get("estimated_tokens", 0),
+    }
     candidates = _hint_candidates(results) if tier == "hint" else []
     input_tokens = _estimate_tokens(query)
     hint_tokens = _estimate_tokens(skill)
-    candidate_tokens = _estimate_tokens(candidates)
+    candidate_tokens = _estimate_candidate_tokens(candidates)
     content_tokens = _estimate_tokens(content)
+    guard_tokens = estimate_guard_tokens(context_guard.get("capsule"))
     injected_tokens = 0
     if tier == "full":
-        injected_tokens = hint_tokens + content_tokens
+        injected_tokens = hint_tokens + (content_tokens or guard_tokens)
     elif tier == "hint":
         injected_tokens = candidate_tokens
     response_preview = {
@@ -823,6 +991,7 @@ async def route(body: RouteRequest, authorization: str | None = Header(None)):
         "candidates": candidates,
         "content": content,
         "content_url": content_url,
+        "context_guard": context_guard,
         "config_version": CONFIG_VERSION,
     }
     metrics = {
@@ -858,6 +1027,7 @@ async def route(body: RouteRequest, authorization: str | None = Header(None)):
             "client_version": body.client_version[:80],
             "id": route_id,
             "user_id": user["id"] if user else None,
+            "anonymous_id_hash": anonymous_id_hash,
             "query_chars": len(query),
             "tier": tier,
             "skill_id": skill.get("id") if skill else None,
@@ -876,6 +1046,9 @@ async def route(body: RouteRequest, authorization: str | None = Header(None)):
             "injected_tokens": metrics["injected_tokens"],
             "response_tokens": metrics["response_tokens"],
             "config_version": CONFIG_VERSION,
+            "guard_delivery": context_guard.get("delivery"),
+            "capsule_chars": context_guard.get("capsule_chars", 0),
+            "meaningfulness_score": skill.get("meaningfulness_score") if skill else None,
             "warnings": warnings,
         }
     )
@@ -885,6 +1058,7 @@ async def route(body: RouteRequest, authorization: str | None = Header(None)):
         "candidates": candidates,
         "content": content,
         "content_url": content_url,
+        "context_guard": context_guard,
         "route_id": route_id,
         "score_debug": debug,
         "config_version": CONFIG_VERSION,
@@ -954,6 +1128,7 @@ async def find_semantic_post(
     JSON POST is the only search contract so task text never appears in
     access-log URLs.
     """
+    _require_route_user(authorization)
     return await _find_semantic(body.q, body.limit, body.gate, authorization)
 
 
@@ -976,13 +1151,14 @@ async def route_metrics(hours: int = 24, config_version: str = CONFIG_VERSION):
 
 
 @router.post("/route-feedback")
-async def route_feedback(body: RouteFeedbackRequest):
+async def route_feedback(body: RouteFeedbackRequest, authorization: str | None = Header(None)):
     """Outcome feedback for route analytics, reported by the Claude Code hook,
     the CLI, and the hosted connector. Public callers need an account (see
     scraper.py's guards). Keep payloads privacy-safe: route_id plus a small
     enum-style outcome and source. ``note`` is accepted only for compatibility
     and is deliberately ignored rather than retained.
     """
+    _require_route_user(authorization)
     outcome = (body.outcome or "").strip().lower()
     allowed = {"used", "skipped", "installed", "failed", "dismissed", "shown", "injected"}
     if outcome not in allowed:

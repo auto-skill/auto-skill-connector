@@ -15,9 +15,11 @@ import json
 import hashlib
 import os
 import re
+import stat
 import sys
 import time
 import urllib.request
+import uuid
 from pathlib import Path
 
 AUTOSKILL_URL = os.getenv("AUTOSKILL_URL", "https://skills.autoskill.dev").rstrip("/")
@@ -33,7 +35,7 @@ _opener.addheaders = [("User-Agent", f"{CLIENT_NAME}/{CLIENT_VERSION}")]
 urllib.request.install_opener(_opener)
 ROUTING_LOG_PATH = Path(os.getenv("AUTOSKILL_ROUTING_LOG", "")) if os.getenv("AUTOSKILL_ROUTING_LOG") else Path.home() / ".claude" / "auto-skill-routing.jsonl"
 MAX_LOG_LINES = 2000
-TIMEOUT_SECONDS = 3.0
+TIMEOUT_SECONDS = float(os.getenv("AUTOSKILL_HOOK_TIMEOUT_SECONDS", "1.0"))
 MAX_CONTENT_CHARS = int(os.getenv("AUTOSKILL_HOOK_MAX_CHARS", "12000"))
 _BLOB_RE = re.compile(r"github\.com/([^/]+)/([^/]+)/blob/([^/]+)/(.*)")
 _TREE_RE = re.compile(r"github\.com/([^/]+)/([^/]+)/tree/([^/]+)/(.*)")
@@ -75,6 +77,33 @@ def _auth_headers() -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"} if token else {}
 
 
+def _anonymous_installation_id() -> str | None:
+    """Return a local opaque ID only when anonymous analytics is opted in."""
+    if os.getenv("AUTOSKILL_ANONYMOUS_ANALYTICS", "").strip().lower() not in _TRUTHY_VALUES:
+        return None
+    override = os.getenv("AUTOSKILL_INSTALLATION_ID_PATH")
+    path = Path(override) if override else Path.home() / ".autoskill" / "installation.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        value = str(uuid.UUID(str(data.get("anonymous_id"))))
+        return value
+    except (OSError, ValueError, TypeError, AttributeError, json.JSONDecodeError):
+        value = str(uuid.uuid4())
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temp = path.with_suffix(path.suffix + ".tmp")
+        temp.write_text(json.dumps({"anonymous_id": value}) + "\n", encoding="utf-8")
+        try:
+            os.chmod(temp, stat.S_IRUSR | stat.S_IWUSR)
+        except OSError:
+            pass
+        temp.replace(path)
+    except OSError:
+        # Routing remains fail-open if the local profile is read-only.
+        pass
+    return value
+
+
 def _should_route(prompt: str) -> tuple[bool, str]:
     text = " ".join(prompt.split())
     lowered = text.lower()
@@ -112,18 +141,28 @@ def _selfhosted_route(prompt: str) -> dict | None:
     if not AUTOSKILL_URL:
         return None
     try:
+        headers = _auth_headers()
+        body_data = {
+            "task": prompt[:500],
+            "limit": 8,
+            "client": CLIENT_NAME,
+            "client_version": CLIENT_VERSION,
+            "guard_mode": "hybrid",
+            "supports_isolation": False,
+            "max_inline_chars": 4000,
+            "max_capsule_chars": 2400,
+        }
+        if not headers:
+            anonymous_id = _anonymous_installation_id()
+            if anonymous_id:
+                body_data["anonymous_id"] = anonymous_id
         body = json.dumps(
-            {
-                "task": prompt[:500],
-                "limit": 8,
-                "client": CLIENT_NAME,
-                "client_version": CLIENT_VERSION,
-            }
+            body_data
         ).encode("utf-8")
         request = urllib.request.Request(
             f"{AUTOSKILL_URL}/route",
             data=body,
-            headers={"Content-Type": "application/json", **_auth_headers()},
+            headers={"Content-Type": "application/json", **headers},
             method="POST",
         )
         with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as r:
@@ -375,6 +414,8 @@ def main() -> None:
         )
 
     verification = skill.get("verification") if isinstance(skill.get("verification"), dict) else {}
+    context_guard = route.get("context_guard") if isinstance(route.get("context_guard"), dict) else {}
+    delivery = str(context_guard.get("delivery") or "full").lower()
     if tier == "full" and (
         verification.get("content_hash_verified") is not True
         or verification.get("static_instruction_only") is not True
@@ -382,6 +423,26 @@ def main() -> None:
         _print_hint("content was not verified as static and hash-pinned")
         _log_routing_decision(prompt, "hint", skill, reason="content hash not verified")
         _report_outcome(route, "shown")
+        return
+
+    if tier == "full" and delivery in {"capsule", "isolation"}:
+        capsule = str(context_guard.get("capsule") or "")
+        if not capsule or len(capsule) > 2400:
+            _print_hint("bounded context capsule unavailable")
+            _log_routing_decision(prompt, "hint", skill, reason="content unavailable")
+            _report_outcome(route, "shown")
+            return
+        mode = "isolated fallback capsule" if delivery == "isolation" else "bounded capsule"
+        print(
+            f"[auto-skill] Route selected: {name}{risk_text}. Source: {url}\n\n"
+            f"Use this {mode} as task-specific guidance for this turn. Do not install files or execute undeclared capabilities.\n\n"
+            "<auto_skill_capsule>\n"
+            f"{capsule}\n"
+            "</auto_skill_capsule>"
+            f"{metrics_text}"
+        )
+        _log_routing_decision(prompt, "full", skill, reason="selected")
+        _report_outcome(route, "injected")
         return
 
     if tier == "hint":

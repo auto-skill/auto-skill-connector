@@ -9,6 +9,7 @@ packed float32 BLOBs; vector search is brute-force numpy (fine at the scale
 a single scraper accumulates going forward).
 """
 import json
+import heapq
 import os
 import re
 import sqlite3
@@ -16,6 +17,7 @@ import struct
 import threading
 import time
 import uuid
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -43,6 +45,9 @@ CREATE TABLE IF NOT EXISTS skills (
     quality_status TEXT DEFAULT 'pending',
     quality_reasons TEXT DEFAULT '[]',
     quality_score INTEGER DEFAULT 0,
+    prominence_score REAL DEFAULT 0,
+    provenance_score REAL DEFAULT 0.25,
+    meaningfulness_score REAL DEFAULT 0,
     platforms TEXT DEFAULT '[]',
     category TEXT,
     embedding BLOB,
@@ -111,10 +116,14 @@ CREATE TABLE IF NOT EXISTS route_events (
     content_tokens INTEGER,
     injected_tokens INTEGER,
     response_tokens INTEGER,
+    guard_delivery TEXT,
+    capsule_chars INTEGER,
+    meaningfulness_score REAL,
     config_version TEXT,
     outcome TEXT,
     outcome_at TEXT,
     feedback_source TEXT,
+    anonymous_id_hash TEXT,
     warnings TEXT DEFAULT '[]'
 );
 
@@ -217,6 +226,9 @@ SKILL_COLUMN_DEFAULTS = {
     "quality_status": "TEXT DEFAULT 'pending'",
     "quality_reasons": "TEXT DEFAULT '[]'",
     "quality_score": "INTEGER DEFAULT 0",
+    "prominence_score": "REAL DEFAULT 0",
+    "provenance_score": "REAL DEFAULT 0.25",
+    "meaningfulness_score": "REAL DEFAULT 0",
     "platforms": "TEXT DEFAULT '[]'",
     "category": "TEXT",
     "feedback_score": "REAL",
@@ -230,6 +242,10 @@ ROUTE_EVENT_COLUMN_DEFAULTS = {
     "rerank_ms": "INTEGER",
     "candidate_tokens": "INTEGER",
     "injected_tokens": "INTEGER",
+    "guard_delivery": "TEXT",
+    "capsule_chars": "INTEGER",
+    "meaningfulness_score": "REAL",
+    "anonymous_id_hash": "TEXT",
     "user_id": "TEXT",
     "skip_reason": "TEXT",
 }
@@ -261,6 +277,10 @@ ROUTE_EVENT_WRITE_COLUMNS = frozenset(
         "content_tokens",
         "injected_tokens",
         "response_tokens",
+        "guard_delivery",
+        "capsule_chars",
+        "meaningfulness_score",
+        "anonymous_id_hash",
         "config_version",
         "outcome",
         "outcome_at",
@@ -276,6 +296,7 @@ ROUTE_EVENT_OUTCOMES = frozenset(
     {"used", "skipped", "installed", "failed", "dismissed", "shown", "injected"}
 )
 ROUTE_EVENT_TIERS = frozenset({"full", "hint", "none", "skipped"})
+ROUTE_GUARD_DELIVERIES = frozenset({"full", "capsule", "isolation", "hint", "none"})
 SAFE_ROUTE_SKIP_REASONS = frozenset(
     {
         "empty prompt",
@@ -290,8 +311,10 @@ SAFE_ROUTE_SKIP_REASONS = frozenset(
     }
 )
 _SAFE_ROUTE_IDENTIFIER_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/+@-]*\Z")
+_ANONYMOUS_HASH_RE = re.compile(r"^[a-f0-9]{64}$")
 
 CLI_TOKEN_TTL_SECONDS = 90 * 24 * 60 * 60  # 90 days, sliding forward on each use
+ANONYMOUS_ID_RETENTION_DAYS = max(1, int(os.getenv("AUTOSKILL_ANONYMOUS_ID_RETENTION_DAYS", "90")))
 
 CLI_TOKEN_COLUMN_DEFAULTS = {
     "expires_at": "TEXT",
@@ -419,6 +442,7 @@ def init_db() -> None:
         for col, spec in ROUTE_EVENT_COLUMN_DEFAULTS.items():
             if col not in route_existing:
                 conn.execute(f"ALTER TABLE route_events ADD COLUMN {col} {spec}")
+        conn.execute("CREATE INDEX IF NOT EXISTS route_events_anonymous_id_idx ON route_events(anonymous_id_hash)")
         _scrub_route_event_privacy(conn)
         cli_token_existing = {row["name"] for row in conn.execute("PRAGMA table_info(cli_tokens)").fetchall()}
         for col, spec in CLI_TOKEN_COLUMN_DEFAULTS.items():
@@ -642,8 +666,19 @@ def insert_route_event(event: dict) -> None:
         for key in ("client", "client_version", "config_version", "feedback_source"):
             if key in row:
                 row[key] = _safe_route_identifier(row[key]) or None
+        if row.get("anonymous_id_hash") and not _ANONYMOUS_HASH_RE.fullmatch(str(row["anonymous_id_hash"])):
+            row["anonymous_id_hash"] = None
+        if row.get("anonymous_id_hash"):
+            cutoff = (datetime.now(timezone.utc) - timedelta(days=ANONYMOUS_ID_RETENTION_DAYS)).isoformat()
+            conn.execute(
+                "UPDATE route_events SET anonymous_id_hash=NULL "
+                "WHERE anonymous_id_hash IS NOT NULL AND created_at < ?",
+                (cutoff,),
+            )
         if row.get("tier") not in ROUTE_EVENT_TIERS:
             row["tier"] = None
+        if row.get("guard_delivery") not in ROUTE_GUARD_DELIVERIES:
+            row["guard_delivery"] = None
         if row.get("outcome") not in ROUTE_EVENT_OUTCOMES:
             row["outcome"] = None
         if row.get("skip_reason") not in SAFE_ROUTE_SKIP_REASONS:
@@ -672,9 +707,9 @@ def route_event_summary(
     hours: int = 24,
     *,
     config_version: str | None = None,
-    max_latency_ms: int = 1500,
-    max_skill_find_ms: int = 1200,
-    max_injected_tokens: int = 3000,
+    max_latency_ms: int = 750,
+    max_skill_find_ms: int = 500,
+    max_injected_tokens: int = 1000,
     max_response_tokens: int = 3500,
 ) -> dict:
     """Aggregate recent route events for local ops/product checks."""
@@ -688,6 +723,17 @@ def route_event_summary(
             where += " AND config_version = ?"
             params.append(config_version)
         total = conn.execute(f"SELECT COUNT(*) FROM route_events WHERE {where}", params).fetchone()[0]
+        identity_counts = conn.execute(
+            f"""
+            SELECT
+              SUM(CASE WHEN user_id IS NOT NULL THEN 1 ELSE 0 END) AS authenticated,
+              SUM(CASE WHEN user_id IS NULL AND anonymous_id_hash IS NOT NULL THEN 1 ELSE 0 END) AS anonymous,
+              COUNT(DISTINCT CASE WHEN user_id IS NULL THEN anonymous_id_hash END) AS anonymous_installations
+            FROM route_events
+            WHERE {where}
+            """,
+            params,
+        ).fetchone()
         tiers = {
             row["tier"]: row["count"]
             for row in conn.execute(
@@ -699,6 +745,13 @@ def route_event_summary(
             row["outcome"] or "pending": row["count"]
             for row in conn.execute(
                 f"SELECT outcome, COUNT(*) AS count FROM route_events WHERE {where} GROUP BY outcome",
+                params,
+            ).fetchall()
+        }
+        guard_deliveries = {
+            row["guard_delivery"] or "none": row["count"]
+            for row in conn.execute(
+                f"SELECT guard_delivery, COUNT(*) AS count FROM route_events WHERE {where} GROUP BY guard_delivery",
                 params,
             ).fetchall()
         }
@@ -756,7 +809,8 @@ def route_event_summary(
                 """
                 SELECT created_at, client, tier, skill_name, latency_ms, skill_find_ms,
                        retrieval_ms, rerank_ms, content_ms, injected_tokens,
-                       response_tokens, warnings
+                       response_tokens, guard_delivery, capsule_chars,
+                       meaningfulness_score, warnings
                 FROM route_events
                 WHERE {where}
                 ORDER BY latency_ms DESC
@@ -810,8 +864,12 @@ def route_event_summary(
             "window_hours": hours,
             "metrics_config_version": config_version or "all",
             "total": total,
+            "authenticated_events": int(identity_counts["authenticated"] or 0),
+            "anonymous_events": int(identity_counts["anonymous"] or 0),
+            "anonymous_installations": int(identity_counts["anonymous_installations"] or 0),
             "tiers": tiers,
             "outcomes": outcomes,
+            "guard_deliveries": guard_deliveries,
             "top_skills": top_skills,
             "top_used_skills": top_used_skills[:10],
             "vector_index": vector_index_stats(),
@@ -954,6 +1012,112 @@ def _fts_query(text: str) -> str:
     return " OR ".join(f'"{word}"' for word in selected[:12]) if selected else ""
 
 
+_lex_cache_lock = threading.RLock()
+_lex_cache: dict = {
+    "generation": -1,
+    "db_path": "",
+    "postings": {},
+}
+
+
+def _lexical_tokens(text: str) -> list[str]:
+    tokens: set[str] = set()
+    for raw_word in _WORD_RE.findall(text or ""):
+        word = raw_word.lower()
+        if len(word) < 3 or word in _FTS_STOPWORDS:
+            continue
+        tokens.add(word)
+        if len(word) > 4 and word.endswith("s"):
+            tokens.add(word[:-1])
+    return sorted(tokens)
+
+
+def warm_lexical_index() -> dict:
+    """Build a compact in-memory token->skill-id index for fast route probes."""
+    conn = get_conn()
+    try:
+        postings: dict[str, list[str]] = defaultdict(list)
+        rows = conn.execute(
+            """
+            SELECT id, name, description, tags
+            FROM skills
+            WHERE risk_score < 3
+              AND COALESCE(quality_status, 'pending') IN ('active', 'metadata_only')
+            """
+        ).fetchall()
+        for row in rows:
+            text = " ".join(
+                [
+                    str(row["name"] or ""),
+                    str(row["description"] or ""),
+                    str(row["tags"] or ""),
+                ]
+            )
+            for token in set(_lexical_tokens(text)):
+                postings[token].append(row["id"])
+        generation = int(_emb_cache.get("generation") or 0)
+        with _lex_cache_lock:
+            _lex_cache.update(
+                {
+                    "generation": generation,
+                    "db_path": str(DB_PATH),
+                    "postings": dict(postings),
+                }
+            )
+        return {"tokens": len(postings), "skills": len(rows)}
+    finally:
+        conn.close()
+
+
+def _cached_lexical_postings() -> dict[str, list[str]] | None:
+    with _lex_cache_lock:
+        postings = _lex_cache.get("postings")
+        if not postings or _lex_cache.get("db_path") != str(DB_PATH):
+            return None
+        return postings
+
+
+def _search_skills_lexical_memory(query: str, max_results: int) -> list[dict]:
+    postings = _cached_lexical_postings()
+    if postings is None:
+        return []
+    tokens = _lexical_tokens(query)[:12]
+    if not tokens:
+        return []
+    scores: dict[str, float] = defaultdict(float)
+    for token in tokens:
+        for skill_id in postings.get(token, ()):
+            scores[skill_id] += 1.0
+    if not scores:
+        return []
+    # Keep the in-memory path bounded: near-duplicate comparison is quadratic
+    # in candidate count, and the router only needs a small recall set before
+    # deterministic reranking trims it to the requested limit.
+    top_count = max(1, max_results)
+    top_ids = [
+        skill_id
+        for skill_id, _score in heapq.nlargest(
+            top_count,
+            scores.items(),
+            key=lambda item: (item[1], item[0]),
+        )
+    ]
+    placeholders = ",".join("?" for _ in top_ids)
+    conn = get_conn()
+    try:
+        rows = conn.execute(f"SELECT * FROM skills WHERE id IN ({placeholders})", top_ids).fetchall()
+        by_id = {}
+        for row in rows:
+            item = _row_to_dict(row, "skills", None)
+            item["stars"] = _stars(dict(row).get("raw", "{}"))
+            item["rank"] = scores.get(item["id"], 0.0)
+            by_id[item["id"]] = item
+        ordered = [by_id[skill_id] for skill_id in top_ids if skill_id in by_id]
+        return quality.dedupe_by_content_hash(ordered)[:max_results]
+    finally:
+        conn.close()
+
+
 def _stars(raw_json: str) -> int:
     try:
         return int(json.loads(raw_json or "{}").get("stars") or 0)
@@ -966,6 +1130,9 @@ def search_skills_fts(query: str, max_results: int = 10) -> list[dict]:
         limit = max(1, min(int(max_results), 100))
     except (TypeError, ValueError):
         limit = 10
+    fast = _search_skills_lexical_memory(query, limit)
+    if fast:
+        return fast
     conn = get_conn()
     try:
         fts_q = _fts_query(query)
@@ -1025,6 +1192,8 @@ def invalidate_vector_cache() -> None:
     """Mark the vector matrix stale after skills writes without dropping it."""
     with _emb_cache_lock:
         _emb_cache["generation"] = int(_emb_cache["generation"] or 0) + 1
+    with _lex_cache_lock:
+        _lex_cache["generation"] = -1
 
 
 def _index_counts(conn: sqlite3.Connection) -> dict[str, int]:
@@ -1172,17 +1341,37 @@ def _embedding_matrix(conn: sqlite3.Connection, *, refresh: bool = False) -> tup
                 # generation before publishing anything.
 
 
-def vector_search_skills(query_embedding: list[float], match_count: int = 10) -> list[dict]:
+def vector_search_skills(
+    query_embedding: list[float],
+    match_count: int = 10,
+    candidate_ids: list[str] | None = None,
+) -> list[dict]:
     conn = get_conn()
     try:
         ids, mat = _embedding_matrix(conn)
         if not ids:
             return []
         q = np.array(query_embedding, dtype=np.float32)
-        sims = mat @ q  # both L2-normalized -> cosine similarity
-        k = min(match_count, len(ids))
-        top = np.argpartition(-sims, k - 1)[:k]
-        top = top[np.argsort(-sims[top])]
+        similarity_by_position: dict[int, float] = {}
+        if candidate_ids:
+            candidate_set = set(candidate_ids)
+            positions = [index for index, skill_id in enumerate(ids) if skill_id in candidate_set]
+            if positions:
+                candidate_mat = mat[positions]
+                sims = candidate_mat @ q
+                similarity_by_position = {position: float(sim) for position, sim in zip(positions, sims)}
+                k = min(match_count, len(positions))
+                local_top = np.argpartition(-sims, k - 1)[:k]
+                top = np.array([positions[index] for index in local_top], dtype=np.int64)
+                top = top[np.argsort(-sims[local_top])]
+            else:
+                return []
+        else:
+            sims = mat @ q  # both L2-normalized -> cosine similarity
+            k = min(match_count, len(ids))
+            top = np.argpartition(-sims, k - 1)[:k]
+            top = top[np.argsort(-sims[top])]
+            similarity_by_position = {int(index): float(sims[index]) for index in top}
         top_ids = [ids[i] for i in top]
         placeholders = ",".join("?" for _ in top_ids)
         fetched = conn.execute(
@@ -1197,7 +1386,7 @@ def vector_search_skills(query_embedding: list[float], match_count: int = 10) ->
         for i in top:
             d = by_id.get(ids[i])
             if d is not None:
-                d["rank"] = float(sims[i])
+                d["rank"] = similarity_by_position.get(int(i), 0.0)
                 out.append(d)
         return out
     finally:
@@ -1213,7 +1402,19 @@ def hybrid_search_skills(
     rrf_k: int = 20,
 ) -> list[dict]:
     fts = search_skills_fts(query_text, 60)
-    vec = vector_search_skills(query_embedding, 60) if query_embedding else []
+    lexical_ids = [str(row.get("id")) for row in fts if row.get("id")]
+    # Once the lexical cache has produced a useful candidate set, compare the
+    # query vector only against those rows. This preserves semantic ordering
+    # without scanning the entire 60k-vector matrix on every route.
+    vec = (
+        vector_search_skills(
+            query_embedding,
+            60,
+            candidate_ids=lexical_ids if len(lexical_ids) >= 10 else None,
+        )
+        if query_embedding
+        else []
+    )
 
     by_id: dict[str, dict] = {}
     scores: dict[str, float] = {}
@@ -1245,12 +1446,13 @@ def hybrid_search_skills(
     out = []
     for row in fused_rows[:match_count]:
         score = row.pop("_fuse_score")
-        stars = row.get("stars") or 0
         risk = row.get("risk_score") or 0
-        qual = max(0, min(int(row.get("quality_score") or 50), 100)) / 100
-        star_bonus = 0.003 * min(np.log1p(max(stars, 0)), 6) / 6
+        components = quality.meaningfulness_components(row)
+        row["prominence_score"] = components["prominence"]
+        row["provenance_score"] = components["provenance"]
+        row["meaningfulness_score"] = components["meaningfulness"]
         risk_penalty = 0.01 * min(risk, 2)
-        row["rank"] = float(score + star_bonus + (0.004 * qual) - risk_penalty)
+        row["rank"] = float(score + (0.006 * float(components["meaningfulness"])) - risk_penalty)
         out.append(row)
     out.sort(key=lambda r: r["rank"], reverse=True)
     return out
@@ -1481,7 +1683,8 @@ def list_route_events_for_user(user_id: str, limit: int = 100) -> list[dict]:
                    skill_id, skill_name, skill_url, latency_ms, skill_find_ms,
                    retrieval_ms, rerank_ms, content_ms, result_count,
                    input_tokens, hint_tokens, candidate_tokens, content_tokens,
-                   injected_tokens, response_tokens, config_version, outcome,
+                   injected_tokens, response_tokens, guard_delivery, capsule_chars,
+                   meaningfulness_score, config_version, outcome,
                    outcome_at, feedback_source, warnings, skip_reason
             FROM route_events
             WHERE user_id=?
@@ -1579,7 +1782,18 @@ def admin_recent_events(limit: int = 100) -> list[dict]:
     try:
         rows = conn.execute(
             """
-            SELECT r.*, u.email AS user_email
+            SELECT r.id, r.created_at, r.client, r.client_version,
+                   r.query_chars, r.tier, r.skill_id, r.skill_name,
+                   r.skill_url, r.latency_ms, r.skill_find_ms,
+                   r.retrieval_ms, r.rerank_ms, r.content_ms,
+                   r.result_count, r.input_tokens, r.hint_tokens,
+                   r.candidate_tokens, r.content_tokens, r.injected_tokens,
+                   r.response_tokens, r.guard_delivery, r.capsule_chars,
+                   r.meaningfulness_score, r.config_version, r.outcome,
+                   r.outcome_at, r.feedback_source, r.warnings,
+                   CASE WHEN r.anonymous_id_hash IS NOT NULL
+                        THEN substr(r.anonymous_id_hash, 1, 12) END AS anonymous_installation,
+                   u.email AS user_email
             FROM route_events r
             LEFT JOIN users u ON u.id = r.user_id
             ORDER BY r.created_at DESC

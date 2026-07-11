@@ -96,6 +96,34 @@ class RouteEventPrivacyTests(unittest.TestCase):
         self.assertIsNone(row["outcome"])
         self.assertNotIn(sentinel.encode(), self.db_path.read_bytes())
 
+    def test_anonymous_id_hash_is_retained_only_when_well_formed(self) -> None:
+        local_store.insert_route_event(
+            {
+                "id": "anonymous-valid",
+                "tier": "hint",
+                "anonymous_id_hash": "a" * 64,
+            }
+        )
+        local_store.insert_route_event(
+            {
+                "id": "anonymous-invalid",
+                "tier": "hint",
+                "anonymous_id_hash": "not-a-user-id",
+            }
+        )
+        conn = local_store.get_conn()
+        try:
+            valid = conn.execute(
+                "SELECT anonymous_id_hash FROM route_events WHERE id='anonymous-valid'"
+            ).fetchone()
+            invalid = conn.execute(
+                "SELECT anonymous_id_hash FROM route_events WHERE id='anonymous-invalid'"
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertEqual(valid["anonymous_id_hash"], "a" * 64)
+        self.assertIsNone(invalid["anonymous_id_hash"])
+
     def test_init_db_scrubs_legacy_columns_and_unsafe_skip_reason(self) -> None:
         self._add_legacy_columns()
         sentinel = f"legacy-private-prompt-{uuid.uuid4()}"

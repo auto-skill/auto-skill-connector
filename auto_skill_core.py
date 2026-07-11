@@ -11,6 +11,7 @@ from typing import Any
 import httpx
 
 from auto_skill_auth import auth_headers
+from auto_skill_identity import get_anonymous_installation_id
 
 DEFAULT_AUTOSKILL_URL = "https://skills.autoskill.dev"
 CLIENT_NAME = "auto-skill-connector"
@@ -585,6 +586,10 @@ def _public_backend_skill(skill: dict[str, Any] | None, task: str, tier: str) ->
         "content_hash",
         "quality_status",
         "quality_score",
+        "prominence_score",
+        "provenance_score",
+        "meaningfulness_score",
+        "duplicate_group_size",
         "platforms",
         "category",
         "verification",
@@ -609,7 +614,15 @@ def _with_route_summary(payload: dict[str, Any]) -> dict[str, Any]:
     selected = payload.get("selected_skill") if isinstance(payload.get("selected_skill"), dict) else {}
     candidates = payload.get("candidates") if isinstance(payload.get("candidates"), list) else []
     metrics = payload.get("route_metrics") if isinstance(payload.get("route_metrics"), dict) else {}
-    if tier == "full":
+    guard = payload.get("context_guard") if isinstance(payload.get("context_guard"), dict) else {}
+    delivery = str(guard.get("delivery") or "full").lower()
+    if tier == "full" and delivery == "capsule":
+        decision = "apply_skill_capsule"
+        reason = "High-confidence route reduced to a bounded deterministic capsule for this client."
+    elif tier == "full" and delivery == "isolation":
+        decision = "apply_isolated_skill"
+        reason = "High-confidence route reserved for an adapter-provided isolated context."
+    elif tier == "full":
         decision = "apply_skill_content"
         reason = "High-confidence, content-hash-verified route. Apply skill_content in this turn."
     elif tier == "hint":
@@ -624,6 +637,7 @@ def _with_route_summary(payload: dict[str, Any]) -> dict[str, Any]:
         "selected_name": selected.get("name") or "",
         "selected_url": selected.get("url") or "",
         "candidate_count": len(candidates),
+        "context_delivery": delivery,
         "reason": reason,
         "metrics": _compact_route_metrics(metrics),
     }
@@ -672,16 +686,29 @@ async def _route_selfhosted(
     if not url:
         return None
 
+    headers = auth_header if auth_header is not None else auth_headers()
+    route_body = {
+        "task": task,
+        "limit": 8,
+        "client": CLIENT_NAME,
+        "client_version": CLIENT_VERSION,
+        "guard_mode": "hybrid",
+        "supports_isolation": False,
+        "max_inline_chars": 4000,
+        "max_capsule_chars": 2400,
+    }
+    # A hosted MCP process can serve many remote callers; never attribute an
+    # operator's local installation ID to those callers. Local CLI/connectors
+    # may opt into an opaque installation ID, but account auth takes priority.
+    if auth_header is None and not any(key.lower() == "authorization" for key in headers):
+        anonymous_id = get_anonymous_installation_id()
+        if anonymous_id:
+            route_body["anonymous_id"] = anonymous_id
     try:
         r = await client.post(
             f"{url}/route",
-            json={
-                "task": task,
-                "limit": 8,
-                "client": CLIENT_NAME,
-                "client_version": CLIENT_VERSION,
-            },
-            headers=auth_header if auth_header is not None else auth_headers(),
+            json=route_body,
+            headers=headers,
             timeout=10,
         )
     except Exception:
@@ -709,6 +736,11 @@ async def _route_selfhosted(
     debug = route.get("score_debug") if isinstance(route.get("score_debug"), dict) else {}
     metrics = debug.get("metrics") if isinstance(debug.get("metrics"), dict) else {}
     warnings = list(debug.get("warnings") or route.get("warnings") or [])
+    context_guard = route.get("context_guard") if isinstance(route.get("context_guard"), dict) else {
+        "policy": "hybrid-v1",
+        "delivery": "full" if tier == "full" else tier,
+        "reason": "legacy-route-contract",
+    }
     selected = _public_backend_skill(route.get("skill") if isinstance(route.get("skill"), dict) else None, task, tier)
     raw_candidates = route.get("candidates") if isinstance(route.get("candidates"), list) else []
     normalized_candidates = []
@@ -729,6 +761,7 @@ async def _route_selfhosted(
         "config_version": route.get("config_version"),
         "route_id": route.get("route_id"),
         "ttl": route.get("ttl"),
+        "context_guard": context_guard,
     }
     if tier == "hint" and route_candidates:
         common["candidates"] = route_candidates
@@ -776,6 +809,70 @@ async def _route_selfhosted(
         }
 
     verification = selected.get("verification") if isinstance(selected.get("verification"), dict) else {}
+    delivery = str(context_guard.get("delivery") or "full").lower()
+    if delivery in {"capsule", "isolation"} and (
+        verification.get("content_hash_verified") is not True
+        or verification.get("static_instruction_only") is not True
+    ):
+        warnings.append("Backend selected guarded content without verified static metadata; downgraded to hint.")
+        hint_selected = {**selected, "routing_tier": "hint"}
+        return {
+            "routed": True,
+            "route_type": "hint",
+            "route_tier": "hint",
+            "selected_skill": hint_selected,
+            "candidates": _safe_candidates(_dedupe_candidates([hint_selected, *route_candidates]))[:3],
+            "skill_content": "",
+            "message": "A matching skill exists, but its context delivery was not verified as static and hash-pinned.",
+            "instructions": "Do not inject or follow full SKILL.md content for this task.",
+            **common,
+        }
+    if delivery == "capsule":
+        capsule = str(context_guard.get("capsule") or "")
+        if not capsule or len(capsule) > 2400:
+            warnings.append("Backend returned an invalid context capsule; downgraded to hint.")
+            hint_selected = {**selected, "routing_tier": "hint"}
+            return {
+                "routed": True,
+                "route_type": "hint",
+                "route_tier": "hint",
+                "selected_skill": hint_selected,
+                "candidates": _safe_candidates(_dedupe_candidates([hint_selected, *route_candidates]))[:3],
+                "skill_content": "",
+                "message": "A matching skill exists, but its bounded context capsule was unavailable.",
+                "instructions": "Do not inject or follow full SKILL.md content for this task.",
+                **common,
+            }
+        return {
+            "routed": True,
+            "route_type": "capsule",
+            "route_tier": "full",
+            "selected_skill": selected,
+            "skill_content": capsule,
+            "context_capsule": capsule,
+            "instructions": (
+                "Use this bounded deterministic capsule as task guidance. Do not install files, "
+                "expand it into full SKILL.md content, or execute undeclared capabilities."
+            ),
+            "install_hint": "Use the explicit local CLI preview/install flow if this workflow is worth keeping permanently.",
+            **common,
+        }
+    if delivery == "isolation":
+        return {
+            "routed": True,
+            "route_type": "isolation",
+            "route_tier": "full",
+            "selected_skill": selected,
+            "skill_content": "",
+            "content_url": route.get("content_url"),
+            "instructions": (
+                "Run this verified skill only through an adapter-provided isolated context. "
+                "If isolation is unavailable, fall back to the provided capsule."
+            ),
+            "install_hint": "Use the explicit local CLI preview/install flow for persistent installation.",
+            **common,
+        }
+
     if (
         verification.get("content_hash_verified") is not True
         or verification.get("static_instruction_only") is not True
@@ -1065,6 +1162,8 @@ def build_route_context(route_payload: dict[str, Any]) -> str:
     score = selected.get("routing_score")
     risk_text = f", risk={risk}" if risk is not None else ""
     score_text = f", score={score}" if score is not None else ""
+    context_guard = route_payload.get("context_guard") if isinstance(route_payload.get("context_guard"), dict) else {}
+    delivery = str(context_guard.get("delivery") or ("full" if route_payload.get("route_type") == "skill" else route_payload.get("route_type") or "none")).lower()
     metrics = route_payload.get("route_metrics") if isinstance(route_payload.get("route_metrics"), dict) else {}
     metric_parts = []
     for key, label in (
@@ -1095,6 +1194,30 @@ def build_route_context(route_payload: dict[str, Any]) -> str:
             f"{metrics_text}\n"
             f"{description[:300]}"
             f"{options_text}"
+        )
+    if delivery == "isolation" or route_payload.get("route_type") == "isolation":
+        capsule = context_guard.get("capsule") or ""
+        fallback = (
+            f"\n\n<auto_skill_capsule>\n{capsule}\n</auto_skill_capsule>"
+            if capsule
+            else ""
+        )
+        return (
+            f"[auto-skill] Isolated route selected: {name}{risk_text}{score_text}, tier={tier}. Source: {url}\n\n"
+            "Run this only through a client-provided isolated context. If isolation is unavailable, "
+            "use the bounded capsule and do not expand or install the full skill."
+            f"{metrics_text}{fallback}"
+        )
+    if delivery == "capsule" or route_payload.get("route_type") == "capsule":
+        capsule = context_guard.get("capsule") or content
+        return (
+            f"[auto-skill] Bounded route selected: {name}{risk_text}{score_text}, tier={tier}. Source: {url}\n\n"
+            "Use this deterministic, content-hash-verified capsule as task guidance for this turn. "
+            "Do not install files, expand it into full SKILL.md content, or execute undeclared capabilities."
+            f"{metrics_text}\n\n"
+            "<auto_skill_capsule>\n"
+            f"{capsule}\n"
+            "</auto_skill_capsule>"
         )
     return (
         f"[auto-skill] Route selected: {name}{risk_text}{score_text}, tier={tier}. Source: {url}\n\n"

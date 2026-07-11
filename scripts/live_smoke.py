@@ -75,11 +75,19 @@ def validate_route_payload(check: dict, payload: dict) -> tuple[bool, list[str]]
     forbidden_words = [word for word in check.get("must_not_include", ()) if word in blob]
     if forbidden_words:
         failures.append(f"included forbidden word(s): {', '.join(forbidden_words)}")
-    if check["min_tier"] == "full" and not payload.get("skill_content"):
-        failures.append("full route did not include skill_content")
+    guard = payload.get("context_guard") if isinstance(payload.get("context_guard"), dict) else {}
+    delivery = str(guard.get("delivery") or "full").lower()
+    if check["min_tier"] == "full" and not payload.get("skill_content") and delivery != "isolation":
+        failures.append("full route did not include skill_content or an isolation delivery")
 
     summary = payload.get("route_summary") if isinstance(payload.get("route_summary"), dict) else {}
-    expected_decision = "apply_skill_content" if tier == "full" else "consider_hint" if tier == "hint" else "continue_normally"
+    expected_decision = (
+        "apply_skill_capsule" if tier == "full" and delivery == "capsule"
+        else "apply_isolated_skill" if tier == "full" and delivery == "isolation"
+        else "apply_skill_content" if tier == "full"
+        else "consider_hint" if tier == "hint"
+        else "continue_normally"
+    )
     if summary.get("decision") != expected_decision:
         failures.append(f"route_summary decision {summary.get('decision')!r} != {expected_decision!r}")
     if not summary.get("selected_name") and tier in {"full", "hint"}:

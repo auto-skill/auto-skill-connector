@@ -134,6 +134,8 @@ def embed_text_hash(text: str) -> str:
 class LibraryContent:
     """url -> saved .md content lookup, backed by skills_library/index.json."""
 
+    _index_cache: dict[str, tuple[int, dict[str, str], dict[str, str]]] = {}
+
     def __init__(self, library_dir: Path | None = None):
         self.library_dir = library_dir or Path(__file__).parent / "skills_library"
         self.files_dir = self.library_dir / "files"
@@ -142,6 +144,13 @@ class LibraryContent:
         index_path = self.library_dir / "index.json"
         if index_path.exists():
             try:
+                cache_key = str(index_path.resolve())
+                mtime_ns = index_path.stat().st_mtime_ns
+                cached = self._index_cache.get(cache_key)
+                if cached and cached[0] == mtime_ns:
+                    self._index = cached[1]
+                    self._hash_index = cached[2]
+                    return
                 raw = json.loads(index_path.read_text(encoding="utf-8"))
                 self._index = {url: entry.get("file", "") for url, entry in raw.items() if entry.get("file")}
                 self._hash_index = {
@@ -149,6 +158,7 @@ class LibraryContent:
                     for entry in raw.values()
                     if entry.get("content_hash") and entry.get("file")
                 }
+                self._index_cache[cache_key] = (mtime_ns, self._index, self._hash_index)
             except Exception:
                 self._index = {}
                 self._hash_index = {}
