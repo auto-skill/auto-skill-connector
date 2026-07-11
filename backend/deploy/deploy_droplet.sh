@@ -15,6 +15,12 @@ set -euo pipefail
 : "${DEPLOY_USER:?DEPLOY_USER is required}"
 : "${DEPLOY_SSH_KEY_PATH:?DEPLOY_SSH_KEY_PATH is required}"
 
+if command -v python3 >/dev/null 2>&1; then
+  PYTHON_BIN=python3
+else
+  PYTHON_BIN=python
+fi
+
 REMOTE_DIR="/opt/auto-skill-connector"
 SSH="ssh -i ${DEPLOY_SSH_KEY_PATH} -o StrictHostKeyChecking=accept-new ${DEPLOY_USER}@${DEPLOY_HOST}"
 SCP="scp -i ${DEPLOY_SSH_KEY_PATH} -o StrictHostKeyChecking=accept-new"
@@ -225,7 +231,7 @@ if [ "$smoke_failed" -ne 0 ]; then
 fi
 
 privacy_clean=$(curl -fsS --max-time 15 https://skills.autoskill.dev/readyz \
-  | python3 -c 'import json,sys; p=json.load(sys.stdin).get("route_privacy") or {}; print("yes" if p.get("ok") is True and int(p.get("violations") or 0) == 0 else "no")')
+  | "$PYTHON_BIN" -c 'import json,sys; p=json.load(sys.stdin).get("route_privacy") or {}; print("yes" if p.get("ok") is True and int(p.get("violations") or 0) == 0 else "no")')
 if [ "$privacy_clean" != "yes" ]; then
   echo "FAILED: public readiness did not prove zero retained route prompt fields" >&2
   rollback
