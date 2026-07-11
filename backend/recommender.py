@@ -28,7 +28,7 @@ from math import ceil
 from typing import Literal
 
 import httpx
-from fastapi import APIRouter, Header, Response
+from fastapi import APIRouter, Header, HTTPException, Response
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
@@ -768,6 +768,17 @@ def _anonymous_id_hash(value: str | None) -> str | None:
     return hashlib.sha256(f"autoskill-anonymous-installation-v1:{normalized}".encode("ascii")).hexdigest()
 
 
+def _require_route_user(authorization: str | None) -> dict:
+    """Require identity at the handler boundary, even when proxy headers are absent."""
+    user = auth.user_from_authorization_header(authorization)
+    if user is None:
+        raise HTTPException(
+            status_code=401,
+            detail={"error": "account required", "signup_url": "/signup"},
+        )
+    return user
+
+
 def _none_route_payload(reason: str, start: float, route_id: str | None = None) -> dict:
     metrics = {
         "latency_ms": int((time.monotonic() - start) * 1000),
@@ -821,8 +832,8 @@ async def get_content(hash_value: str):
 async def route(body: RouteRequest, authorization: str | None = Header(None)):
     """Deterministic backend-owned route contract for connectors."""
     start = time.monotonic()
-    user = auth.user_from_authorization_header(authorization)
-    anonymous_id_hash = None if user else _anonymous_id_hash(body.anonymous_id)
+    user = _require_route_user(authorization)
+    anonymous_id_hash = None
     query = (body.task or body.prompt or "").strip()
     if not query:
         return _none_route_payload("empty-query", start)
@@ -1117,6 +1128,7 @@ async def find_semantic_post(
     JSON POST is the only search contract so task text never appears in
     access-log URLs.
     """
+    _require_route_user(authorization)
     return await _find_semantic(body.q, body.limit, body.gate, authorization)
 
 
@@ -1139,13 +1151,14 @@ async def route_metrics(hours: int = 24, config_version: str = CONFIG_VERSION):
 
 
 @router.post("/route-feedback")
-async def route_feedback(body: RouteFeedbackRequest):
+async def route_feedback(body: RouteFeedbackRequest, authorization: str | None = Header(None)):
     """Outcome feedback for route analytics, reported by the Claude Code hook,
     the CLI, and the hosted connector. Public callers need an account (see
     scraper.py's guards). Keep payloads privacy-safe: route_id plus a small
     enum-style outcome and source. ``note`` is accepted only for compatibility
     and is deliberately ignored rather than retained.
     """
+    _require_route_user(authorization)
     outcome = (body.outcome or "").strip().lower()
     allowed = {"used", "skipped", "installed", "failed", "dismissed", "shown", "injected"}
     if outcome not in allowed:

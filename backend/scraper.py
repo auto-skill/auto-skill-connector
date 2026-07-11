@@ -136,12 +136,11 @@ async def public_readonly_guard(request, call_next):
 
 
 # --- Account-required guard --------------------------------------------------
-# Public discovery and routing do not require an account. Identity is required
-# only for private/account state and hosted MCP OAuth. A browser without a
-# token gets bounced to /signup; anything else (curl, the MCP connector, a
-# tool call) gets a 401 with a signup_url to act on.
+# Public routing and discovery require an account. A browser without a token
+# gets bounced to /signup; anything else (curl, the MCP connector, a tool
+# call) gets a 401 with a signup_url to act on.
 ACCOUNT_EXEMPT_PATHS = frozenset(
-    {"/", "/healthz", "/readyz", "/status", "/route", "/find-semantic", "/route-feedback", "/signup", "/account"}
+    {"/", "/healthz", "/readyz", "/status", "/signup", "/account"}
 )
 ACCOUNT_EXEMPT_PREFIXES = ("/auth/", "/mcp-oauth/", "/content/")
 

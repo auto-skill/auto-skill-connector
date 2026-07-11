@@ -202,7 +202,7 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(scraper_summary["recent_runs"][0]["id"], "run-done")
         self.assertGreater(scraper_summary["recent_runs"][1]["age_seconds"], scraper.STALE_SCRAPE_RUN_SECONDS)
 
-    def test_public_discovery_is_anonymous_but_account_state_is_protected(self) -> None:
+    def test_public_discovery_requires_an_account(self) -> None:
         no_auth = {"x-forwarded-for": "203.0.113.10"}
         for path in ("/readyz", "/healthz", "/signup", "/account"):
             self.assertNotEqual(self.client.get(path, headers=no_auth).status_code, 401, path)
@@ -213,15 +213,12 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(root.status_code, 307)
         self.assertEqual(root.headers["location"], "https://autoskill.dev")
 
-        for path in ("/status", "/route", "/find-semantic", "/content/example"):
+        for path in ("/status", "/content/example"):
             self.assertTrue(scraper._account_exempt(path), path)
-        self.assertEqual(
-            self.client.post("/route", json={"task": "ok"}, headers=no_auth).status_code,
-            200,
-        )
-        anonymous_search = self.client.post("/find-semantic", json={"q": "ok"}, headers=no_auth)
-        self.assertEqual(anonymous_search.status_code, 200)
-        self.assertNotIn("query", anonymous_search.json())
+        for path, body in (("/route", {"task": "ok"}), ("/find-semantic", {"q": "ok"})):
+            blocked = self.client.post(path, json=body, headers=no_auth)
+            self.assertEqual(blocked.status_code, 401, path)
+            self.assertEqual(blocked.json()["signup_url"], "/signup", path)
         self.assertEqual(self.client.get("/content/not-found", headers=no_auth).status_code, 404)
 
         for method, path, json_body in (
@@ -482,11 +479,11 @@ class ApiContractTests(unittest.TestCase):
                 self_url = "https://example.com/spreadsheet"
                 return VALID_SKILL if url == self_url else ""
 
-        anonymous_id = str(uuid.uuid4())
         with patch("recommender.retrieve_skills", fake_retrieve), patch("recommender.LibraryContent", FakeLibrary):
             response = self.client.post(
                 "/route",
-                json={"task": "create an excel report with formulas", "anonymous_id": anonymous_id},
+                json={"task": "create an excel report with formulas"},
+                headers=self._auth_headers(),
             )
 
         self.assertEqual(response.status_code, 200)
@@ -525,11 +522,7 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(event["tier"], "full")
         self.assertEqual(event["skill_name"], "spreadsheet-reporter")
         self.assertEqual(event["guard_delivery"], "full")
-        expected_anonymous_hash = hashlib.sha256(
-            f"autoskill-anonymous-installation-v1:{anonymous_id}".encode("ascii")
-        ).hexdigest()
-        self.assertEqual(event["anonymous_id_hash"], expected_anonymous_hash)
-        self.assertNotIn(anonymous_id, json.dumps(body))
+        self.assertIsNone(event["anonymous_id_hash"])
         self.assertEqual(event["query_chars"], len("create an excel report with formulas"))
         self.assertTrue({"prompt_text", "query_hash", "feedback_note"}.isdisjoint(event.keys()))
         self.assertGreaterEqual(event["skill_find_ms"], 0)
@@ -561,7 +554,9 @@ class ApiContractTests(unittest.TestCase):
                 return large_content if url == candidate["url"] else ""
 
         with patch("recommender.retrieve_skills", fake_retrieve), patch("recommender.LibraryContent", FakeLibrary):
-            response = self.client.post("/route", json={"task": "create an excel report with formulas"})
+            response = self.client.post(
+                "/route", json={"task": "create an excel report with formulas"}, headers=self._auth_headers()
+            )
 
         body = response.json()
         self.assertEqual(response.status_code, 200)
@@ -596,7 +591,9 @@ class ApiContractTests(unittest.TestCase):
                 return capability_skill if url == candidate["url"] else ""
 
         with patch("recommender.retrieve_skills", fake_retrieve), patch("recommender.LibraryContent", FakeLibrary):
-            body = self.client.post("/route", json={"task": "create an excel report with formulas"}).json()
+            body = self.client.post(
+                "/route", json={"task": "create an excel report with formulas"}, headers=self._auth_headers()
+            ).json()
 
         self.assertEqual(body["tier"], "hint")
         self.assertIsNone(body["content"])
@@ -628,7 +625,9 @@ class ApiContractTests(unittest.TestCase):
                 return "# Repository README\n\nUse this repository to build spreadsheet reports."
 
         with patch("recommender.retrieve_skills", fake_retrieve), patch("recommender.LibraryContent", FakeLibrary):
-            response = self.client.post("/route", json={"task": "create an excel report with formulas"})
+            response = self.client.post(
+                "/route", json={"task": "create an excel report with formulas"}, headers=self._auth_headers()
+            )
 
         body = response.json()
         self.assertEqual(body["tier"], "hint")
@@ -640,7 +639,9 @@ class ApiContractTests(unittest.TestCase):
             raise AssertionError("non-task prompt should not search")
 
         with patch("recommender.retrieve_skills", should_not_retrieve):
-            response = self.client.post("/route", json={"task": "thanks that worked great"})
+            response = self.client.post(
+                "/route", json={"task": "thanks that worked great"}, headers=self._auth_headers()
+            )
 
         body = response.json()
         self.assertEqual(body["tier"], "none")
@@ -699,7 +700,11 @@ class ApiContractTests(unittest.TestCase):
             return [landingi, landing_page]
 
         with patch("recommender.retrieve_skills", fake_retrieve):
-            response = self.client.post("/route", json={"task": "build a landing page for an AI automation agency"})
+            response = self.client.post(
+                "/route",
+                json={"task": "build a landing page for an AI automation agency"},
+                headers=self._auth_headers(),
+            )
 
         self.assertEqual(response.status_code, 200)
         body = response.json()
@@ -745,6 +750,7 @@ class ApiContractTests(unittest.TestCase):
                     "client": "test-client",
                     "client_version": "0.1",
                 },
+                headers=self._auth_headers(),
             )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["tier"], "hint")
@@ -825,7 +831,9 @@ class ApiContractTests(unittest.TestCase):
             return [candidate]
 
         with patch("recommender.retrieve_skills", fake_retrieve):
-            route = self.client.post("/route", json={"task": "create an excel report with formulas"}).json()
+            route = self.client.post(
+                "/route", json={"task": "create an excel report with formulas"}, headers=self._auth_headers()
+            ).json()
 
         feedback = self.client.post(
             "/route-feedback",
@@ -835,6 +843,7 @@ class ApiContractTests(unittest.TestCase):
                 "source": "unit-test",
                 "note": private_note,
             },
+            headers=self._auth_headers(),
         )
         self.assertEqual(feedback.status_code, 200)
         self.assertEqual(feedback.json()["outcome"], "used")
@@ -861,6 +870,7 @@ class ApiContractTests(unittest.TestCase):
         response = self.client.post(
             "/route-feedback",
             json={"route_id": "route-1", "outcome": "raw prompt was great"},
+            headers=self._auth_headers(),
         )
         self.assertEqual(response.status_code, 400)
 

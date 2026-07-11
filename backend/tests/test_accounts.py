@@ -471,7 +471,7 @@ class AccountsEndpointTests(unittest.TestCase):
 
         with patch("recommender.retrieve_skills", fake_retrieve):
             anon = self.client.post("/route", json={"task": "deploy to fly"})
-            self.assertEqual(anon.json()["tier"], "none")
+            self.assertEqual(anon.status_code, 401)
 
             resp_a = self.client.post(
                 "/route", json={"task": "deploy to fly"}, headers={"Authorization": f"Bearer {token_a}"}
@@ -495,7 +495,7 @@ class AccountsEndpointTests(unittest.TestCase):
 
         with patch("recommender.retrieve_skills", fake_retrieve):
             anon = self.client.post("/find-semantic", json={"q": "deploy to fly"})
-            self.assertEqual(anon.json()["results"], [])
+            self.assertEqual(anon.status_code, 401)
 
             authed = self.client.post(
                 "/find-semantic", json={"q": "deploy to fly"}, headers={"Authorization": f"Bearer {token_a}"}
