@@ -15,7 +15,7 @@ set -euo pipefail
 : "${DEPLOY_USER:?DEPLOY_USER is required}"
 : "${DEPLOY_SSH_KEY_PATH:?DEPLOY_SSH_KEY_PATH is required}"
 
-if command -v python3 >/dev/null 2>&1; then
+if python3 -c 'import sys' >/dev/null 2>&1; then
   PYTHON_BIN=python3
 else
   PYTHON_BIN=python
