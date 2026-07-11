@@ -224,6 +224,7 @@ class ApiContractTests(unittest.TestCase):
 
         for method, path, json_body in (
             ("get", "/skills-catalog", None),
+            ("get", "/admin/stats", None),
             ("post", "/route-skip", {"prompt": "x", "reason": "test"}),
             ("get", "/scrape", None),
             ("get", "/rest/v1/skills?select=id", None),
@@ -310,6 +311,7 @@ class ApiContractTests(unittest.TestCase):
             ("POST", "/installs"),
             ("GET", "/runs"),
             ("GET", "/skills-catalog"),
+            ("GET", "/admin/stats"),
             ("GET", "/private-skills"),
             ("POST", "/private-skills"),
             ("DELETE", "/private-skills/{skill_id}"),

@@ -244,6 +244,59 @@ class AccountsEndpointTests(unittest.TestCase):
         recent = self.client.get("/skills-catalog?sort=recent", headers=headers).json()
         self.assertEqual([s["name"] for s in recent["skills"]], ["low-stars", "high-stars"])
 
+    def test_admin_stats_requires_admin_email(self) -> None:
+        admin = local_store.get_or_create_user("admin@example.com", "Admin", None)
+        local_store.link_oauth_identity(admin["id"], "google", "google-sub-1")
+        regular_headers = {"Authorization": f"Bearer {self._login('regular@example.com')}"}
+        admin_token = auth.issue_cli_token(admin["id"])
+        admin_headers = {"Authorization": f"Bearer {admin_token}"}
+
+        self.assertEqual(self.client.get("/admin/stats").status_code, 401)
+        self.assertEqual(self.client.get("/admin/stats", headers=regular_headers).status_code, 403)
+
+        with patch.dict(os.environ, {"ADMIN_EMAILS": "admin@example.com"}):
+            r = self.client.get("/admin/stats", headers=admin_headers)
+            self.assertEqual(r.status_code, 200)
+            body = r.json()
+            emails = {u["email"] for u in body["users"]}
+            self.assertIn("admin@example.com", emails)
+            self.assertIn("regular@example.com", emails)
+            admin_row = next(u for u in body["users"] if u["email"] == "admin@example.com")
+            self.assertEqual(admin_row["login_provider"], "google")
+            self.assertEqual(admin_row["run_count"], 0)
+            self.assertEqual(admin_row["tiers"], {})
+            self.assertIn("recent_events", body)
+
+    def test_admin_stats_rolls_up_route_events(self) -> None:
+        user = local_store.get_or_create_user("busy@example.com", "Busy", None)
+        conn = local_store.get_conn()
+        try:
+            for i, (tier, latency, outcome, skill_name) in enumerate(
+                [("full", 100, "used", "skill-a"), ("full", 200, None, "skill-b"), ("hint", 50, "dismissed", "skill-c")]
+            ):
+                conn.execute(
+                    "INSERT INTO route_events (id, created_at, user_id, tier, latency_ms, outcome, skill_name)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (f"evt-{i}", f"2026-07-0{i + 1}T00:00:00+00:00", user["id"], tier, latency, outcome, skill_name),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+
+        admin_headers = {"Authorization": f"Bearer {self._login('admin2@example.com')}"}
+        with patch.dict(os.environ, {"ADMIN_EMAILS": "admin2@example.com"}):
+            body = self.client.get("/admin/stats", headers=admin_headers).json()
+            row = next(u for u in body["users"] if u["email"] == "busy@example.com")
+            self.assertEqual(row["run_count"], 3)
+            self.assertEqual(row["tiers"], {"full": 2, "hint": 1})
+            self.assertEqual(row["outcomes"], {"used": 1, "dismissed": 1})
+            self.assertEqual(row["avg_latency_ms"], round((100 + 200 + 50) / 3))
+
+            latest_event = body["recent_events"][0]
+            self.assertEqual(latest_event["user_email"], "busy@example.com")
+            self.assertEqual(latest_event["skill_name"], "skill-c")
+            self.assertNotIn("prompt_text", latest_event)
+
     def test_web_login_start_accepts_dashboard_return_url(self) -> None:
         with (
             patch.dict(auth.PROVIDERS["google"], {"client_id": "test-id"}),
