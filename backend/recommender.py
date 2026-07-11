@@ -720,6 +720,19 @@ def _estimate_tokens(value) -> int:
     return max(1, ceil(len(value) / 4))
 
 
+def _estimate_candidate_tokens(candidates: list[dict]) -> int:
+    """Estimate what an adapter actually presents, not duplicated JSON fields."""
+    compact = [
+        {
+            "name": candidate.get("name"),
+            "description": (candidate.get("description") or "")[:160],
+            "url": candidate.get("url") or candidate.get("source_url"),
+        }
+        for candidate in candidates
+    ]
+    return _estimate_tokens(compact)
+
+
 def _empty_context_guard(reason: str = "no-route") -> dict:
     return {
         "policy": CONTEXT_GUARD_POLICY,
@@ -936,7 +949,7 @@ async def route(body: RouteRequest, authorization: str | None = Header(None)):
     candidates = _hint_candidates(results) if tier == "hint" else []
     input_tokens = _estimate_tokens(query)
     hint_tokens = _estimate_tokens(skill)
-    candidate_tokens = _estimate_tokens(candidates)
+    candidate_tokens = _estimate_candidate_tokens(candidates)
     content_tokens = _estimate_tokens(content)
     guard_tokens = estimate_guard_tokens(context_guard.get("capsule"))
     injected_tokens = 0
