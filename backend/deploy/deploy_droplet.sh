@@ -128,7 +128,7 @@ if ! $SSH "test -f '${PRIVACY_MARKER}'"; then
   fi
 
   echo "==> Purging pre-scrub database generations from R2"
-  if ! $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml up -d library-backup && docker compose -f backend/deploy/docker-compose.yml exec -T library-backup sh -lc 'command -v aws >/dev/null 2>&1 || apk add --no-cache aws-cli >/dev/null; sh /scripts/purge-route-db-backups.sh --purge'"; then
+  if ! $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml up -d --force-recreate library-backup && docker compose -f backend/deploy/docker-compose.yml exec -T library-backup sh -lc 'command -v aws >/dev/null 2>&1 || apk add --no-cache aws-cli >/dev/null; sh /scripts/purge-route-db-backups.sh --purge'"; then
     echo "FAILED: could not purge pre-scrub database backups" >&2
     rollback
     exit 1
