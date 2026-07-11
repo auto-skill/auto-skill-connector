@@ -370,13 +370,36 @@ def evidence_score(skill: dict[str, Any]) -> float:
 
 def meaningfulness_components(skill: dict[str, Any], quality_value: int | None = None) -> dict[str, float | bool]:
     """Return explainable quality/prominence/provenance/evidence components."""
+    if quality_value is None:
+        cached = skill.get("_meaningfulness_components")
+        if isinstance(cached, dict):
+            return cached
     quality_score = quality_value if quality_value is not None else skill.get("quality_score")
     try:
         quality = max(0.0, min(1.0, float(quality_score or 0) / 100.0))
     except (TypeError, ValueError):
         quality = 0.0
-    prominence = prominence_score(skill)
-    provenance = provenance_score(skill)
+    persisted_components = False
+    try:
+        persisted_components = float(skill.get("meaningfulness_score") or 0) > 0
+    except (TypeError, ValueError):
+        persisted_components = False
+    try:
+        prominence = (
+            max(0.0, min(1.0, float(skill.get("prominence_score"))))
+            if persisted_components and skill.get("prominence_score") is not None
+            else prominence_score(skill)
+        )
+    except (TypeError, ValueError):
+        prominence = prominence_score(skill)
+    try:
+        provenance = (
+            max(0.0, min(1.0, float(skill.get("provenance_score"))))
+            if persisted_components and skill.get("provenance_score") is not None
+            else provenance_score(skill)
+        )
+    except (TypeError, ValueError):
+        provenance = provenance_score(skill)
     evidence = evidence_score(skill)
     meaningfulness = (0.55 * quality) + (0.20 * provenance) + (0.15 * prominence) + (0.10 * evidence)
     explicit_stars = skill.get("stars") is not None or "stars" in _raw_dict(skill)
@@ -386,7 +409,7 @@ def meaningfulness_components(skill: dict[str, Any], quality_value: int | None =
         or evidence >= 0.8
         or (not explicit_stars and quality >= 0.85)
     )
-    return {
+    result = {
         "quality": round(quality, 6),
         "prominence": round(prominence, 6),
         "provenance": round(provenance, 6),
@@ -394,6 +417,9 @@ def meaningfulness_components(skill: dict[str, Any], quality_value: int | None =
         "meaningfulness": round(meaningfulness, 6),
         "trust_signal": trust_signal,
     }
+    if quality_value is None:
+        skill["_meaningfulness_components"] = result
+    return result
 
 
 def infer_platforms(skill: dict[str, Any]) -> list[str]:
@@ -662,18 +688,53 @@ def _near_duplicate(a: dict[str, Any], b: dict[str, Any]) -> bool:
 
 
 def _dedupe_near_duplicates(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    groups: list[list[dict[str, Any]]] = []
+    prepared: list[tuple[dict[str, Any], set[str], set[str], set[str], set[str]]] = []
     for row in rows:
+        prepared.append(
+            (
+                row,
+                _candidate_tokens(row),
+                set(_tokens(str(row.get("name") or ""))),
+                set(_tokens(str(row.get("description") or ""))),
+                set(row.get("platforms") or []),
+            )
+        )
+
+    groups: list[list[tuple[dict[str, Any], set[str], set[str], set[str], set[str]]]] = []
+    for item in prepared:
+        _row, tokens, name_tokens, description_tokens, platforms = item
         for group in groups:
-            if _near_duplicate(row, group[0]):
-                group.append(row)
+            _other, other_tokens, other_name, other_description, other_platforms = group[0]
+            if platforms and other_platforms and not (platforms & other_platforms):
+                continue
+            overlap = len(tokens & other_tokens) / max(1, len(tokens | other_tokens))
+            name_overlap = len(name_tokens & other_name)
+            description_overlap = len(description_tokens & other_description) / max(
+                1, len(description_tokens | other_description)
+            )
+            if overlap >= 0.80 or (name_overlap >= 2 and description_overlap >= 0.50):
+                group.append(item)
                 break
         else:
-            groups.append([row])
+            groups.append([item])
 
     result: list[dict[str, Any]] = []
     for group in groups:
-        winner = pick_canonical(group)
+        def _canonical_key(item):
+            components = meaningfulness_components(item[0])
+            return (
+                float(components["meaningfulness"]),
+                int(item[0].get("quality_score") or 0),
+                float(components["provenance"]),
+                float(components["prominence"]),
+                str(item[0].get("scanned_at") or item[0].get("discovered_at") or ""),
+                str(item[0].get("id") or item[0].get("url") or ""),
+            )
+
+        winner = max(
+            group,
+            key=_canonical_key,
+        )[0]
         winner = dict(winner)
         winner["duplicate_group_size"] = len(group)
         result.append(winner)
