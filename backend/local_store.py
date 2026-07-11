@@ -1339,6 +1339,103 @@ def list_route_events_for_user(user_id: str, limit: int = 100) -> list[dict]:
         conn.close()
 
 
+def admin_user_stats() -> list[dict]:
+    """Per-user rollup for the admin dashboard: signup info, login provider,
+    tier/outcome breakdown, average latency/tokens, and favorites/installs/
+    private-skill counts. One row per user, newest signup first."""
+    conn = get_conn()
+    try:
+        users = conn.execute("SELECT * FROM users ORDER BY created_at DESC").fetchall()
+        stats = []
+        for user in users:
+            user_id = user["id"]
+            provider = conn.execute(
+                "SELECT provider FROM oauth_identities WHERE user_id=? ORDER BY created_at ASC LIMIT 1", (user_id,)
+            ).fetchone()
+            totals = conn.execute(
+                """
+                SELECT
+                    COUNT(*) AS run_count,
+                    MAX(created_at) AS last_run,
+                    AVG(latency_ms) AS avg_latency_ms,
+                    AVG(skill_find_ms) AS avg_skill_find_ms,
+                    AVG(injected_tokens) AS avg_injected_tokens,
+                    AVG(response_tokens) AS avg_response_tokens
+                FROM route_events WHERE user_id=?
+                """,
+                (user_id,),
+            ).fetchone()
+            tiers = conn.execute(
+                "SELECT tier, COUNT(*) AS c FROM route_events WHERE user_id=? GROUP BY tier", (user_id,)
+            ).fetchall()
+            outcomes = conn.execute(
+                "SELECT outcome, COUNT(*) AS c FROM route_events WHERE user_id=? AND outcome IS NOT NULL GROUP BY outcome",
+                (user_id,),
+            ).fetchall()
+            favorites_count = conn.execute("SELECT COUNT(*) FROM favorites WHERE user_id=?", (user_id,)).fetchone()[0]
+            installs_count = conn.execute("SELECT COUNT(*) FROM installs WHERE user_id=?", (user_id,)).fetchone()[0]
+            private_skills_count = conn.execute(
+                "SELECT COUNT(*) FROM private_skills WHERE owner_user_id=?", (user_id,)
+            ).fetchone()[0]
+            stats.append(
+                {
+                    "id": user_id,
+                    "email": user["email"],
+                    "name": user["name"],
+                    "created_at": user["created_at"],
+                    "login_provider": provider["provider"] if provider else None,
+                    "run_count": totals["run_count"] or 0,
+                    "last_run": totals["last_run"],
+                    "avg_latency_ms": round(totals["avg_latency_ms"]) if totals["avg_latency_ms"] is not None else None,
+                    "avg_skill_find_ms": round(totals["avg_skill_find_ms"])
+                    if totals["avg_skill_find_ms"] is not None
+                    else None,
+                    "avg_injected_tokens": round(totals["avg_injected_tokens"])
+                    if totals["avg_injected_tokens"] is not None
+                    else None,
+                    "avg_response_tokens": round(totals["avg_response_tokens"])
+                    if totals["avg_response_tokens"] is not None
+                    else None,
+                    "tiers": {row["tier"] or "unknown": row["c"] for row in tiers},
+                    "outcomes": {row["outcome"]: row["c"] for row in outcomes},
+                    "favorites_count": favorites_count,
+                    "installs_count": installs_count,
+                    "private_skills_count": private_skills_count,
+                }
+            )
+        return stats
+    finally:
+        conn.close()
+
+
+def admin_recent_events(limit: int = 100) -> list[dict]:
+    """Most recent route_events across every user, joined with the user's
+    email, for the admin dashboard's live feed. Includes prompt_text --
+    admin-only, never exposed on the per-user /runs endpoint's public
+    counterpart differently than it already is."""
+    limit = max(1, min(int(limit), 500))
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            """
+            SELECT r.*, u.email AS user_email
+            FROM route_events r
+            LEFT JOIN users u ON u.id = r.user_id
+            ORDER BY r.created_at DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+        events = []
+        for row in rows:
+            event = dict(row)
+            event["warnings"] = json.loads(event["warnings"]) if event.get("warnings") else []
+            events.append(event)
+        return events
+    finally:
+        conn.close()
+
+
 def list_skills_catalog(q: str = "", limit: int = 50, offset: int = 0, sort: str = "popular") -> dict:
     """Paginated public-safe slice of the skills table for the site's
     account-only browse page -- never raw/embedding columns, those stay

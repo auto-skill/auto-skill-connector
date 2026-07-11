@@ -18,6 +18,7 @@ services:
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
       GITHUB_CLIENT_ID_AUTOSKILL: ${GITHUB_CLIENT_ID_AUTOSKILL:-}
       GITHUB_CLIENT_SECRET_AUTOSKILL: ${GITHUB_CLIENT_SECRET_AUTOSKILL:-}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
     volumes:
       - ../data:/data
       - ../skills_library:/app/skills_library

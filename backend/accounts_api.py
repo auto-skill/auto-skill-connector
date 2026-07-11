@@ -14,6 +14,7 @@ Endpoints:
   POST /auth/logout                           -> revoke the bearer token
   GET  /runs                                  -> current user's recent route_events (dashboard metrics)
   GET  /skills-catalog                        -> paginated skill browse (account-only)
+  GET  /admin/stats                           -> operator-only: all users' stats + recent activity feed
   GET/POST/DELETE /favorites[/{skill_id}]     -> per-user favorited skills
   GET/POST        /installs                   -> per-user install history
   GET/POST/DELETE /private-skills[/{id}]      -> per-user private skill submissions
@@ -67,6 +68,20 @@ def _require_user(authorization: str | None) -> dict:
     user = auth.user_from_authorization_header(authorization)
     if user is None:
         raise HTTPException(status_code=401, detail="missing or invalid bearer token")
+    return user
+
+
+def _admin_emails() -> set[str]:
+    return {e.strip().lower() for e in os.environ.get("ADMIN_EMAILS", "").split(",") if e.strip()}
+
+
+def _require_admin(authorization: str | None) -> dict:
+    """Same bearer check as every other account endpoint, plus an email
+    allowlist -- there's no is_admin column, and this dashboard only ever
+    needs to serve the product's own operator(s), not a general role system."""
+    user = _require_user(authorization)
+    if (user.get("email") or "").lower() not in _admin_emails():
+        raise HTTPException(status_code=403, detail="not an admin account")
     return user
 
 
@@ -286,6 +301,19 @@ async def skills_catalog(
     or misconfigured-proxy traffic."""
     _require_user(authorization)
     return store.list_skills_catalog(q=q, limit=limit, offset=offset, sort=sort if sort == "recent" else "popular")
+
+
+@router.get("/admin/stats")
+async def admin_stats(events_limit: int = 100, authorization: str | None = Header(None)):
+    """Operator-only rollup: every user's signup/login-provider/tier/outcome/
+    token stats, plus a live feed of the most recent route_events across all
+    users (including prompt_text). Gated by ADMIN_EMAILS, not a public
+    feature -- see _require_admin."""
+    _require_admin(authorization)
+    return {
+        "users": store.admin_user_stats(),
+        "recent_events": store.admin_recent_events(events_limit),
+    }
 
 
 @router.post("/auth/logout")
