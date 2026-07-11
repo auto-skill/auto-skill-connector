@@ -22,6 +22,15 @@ validate_prefix() {
   esac
 }
 
+validate_library_prefix() {
+  case "$1" in
+    ""|"/"|"."|".."|*"/../"*|*"../"*|*"/./"*|*"./"*)
+      echo "refusing unsafe skill-library prefix" >&2
+      exit 1
+      ;;
+  esac
+}
+
 object_count() {
   aws --endpoint-url "$R2_ENDPOINT" s3 ls "s3://$R2_BUCKET/$1/" --recursive 2>/dev/null \
     | wc -l \
@@ -30,7 +39,7 @@ object_count() {
 
 validate_prefix "$litestream_prefix"
 validate_prefix "$manual_prefix"
-validate_prefix "$library_prefix"
+validate_library_prefix "$library_prefix"
 case "$litestream_prefix/" in
   "$library_prefix/"*) echo "refusing to purge the configured skill-library prefix" >&2; exit 1 ;;
 esac
