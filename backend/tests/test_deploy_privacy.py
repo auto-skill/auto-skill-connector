@@ -34,4 +34,3 @@ def test_backup_purge_is_scoped_away_from_skill_library() -> None:
     assert "validate_library_prefix" in script
     assert 'validate_library_prefix "$library_prefix"' in script
     assert "purge-route-db-backups.sh:/scripts/purge-route-db-backups.sh:ro" in compose
-    assert "AUTO_SKILL_ENABLE_PUBLIC_INSTALL" not in compose

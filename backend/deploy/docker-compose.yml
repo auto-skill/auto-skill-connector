@@ -47,6 +47,10 @@ services:
       BACKEND_BASE_URL: ${BACKEND_BASE_URL:-https://skills.autoskill.dev}
       MCP_ISSUER_URL: ${MCP_ISSUER_URL:-https://mcp.autoskill.dev}
       MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-mcp.autoskill.dev,localhost:8765,127.0.0.1:8765}
+      # install_skill writes files on whoever hosts this server -- never on
+      # by default over the public streamable-http connector (see
+      # mcp_server.py's _public_install_enabled()).
+      AUTO_SKILL_ENABLE_PUBLIC_INSTALL: "0"
     ports:
       - "127.0.0.1:8765:8765"
     command: auto-skill-mcp
