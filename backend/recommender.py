@@ -178,6 +178,7 @@ async def _start_embed_loop():
     asyncio.create_task(_warm_embedding_model())
     if _uses_local_store():
         asyncio.create_task(_warm_local_vector_index())
+        asyncio.create_task(_warm_local_lexical_index())
 
 
 async def _warm_local_vector_index() -> None:
@@ -187,6 +188,14 @@ async def _warm_local_vector_index() -> None:
         print(f"[recommender] warmed local vector index ({stats.get('cache_vectors', 0)} vectors)")
     except Exception as exc:
         print(f"[recommender] local vector warm-up failed: {exc}")
+
+
+async def _warm_local_lexical_index() -> None:
+    try:
+        stats = await asyncio.to_thread(store.warm_lexical_index)
+        print(f"[recommender] warmed lexical index ({stats.get('skills', 0)} skills, {stats.get('tokens', 0)} tokens)")
+    except Exception as exc:
+        print(f"[recommender] lexical warm-up failed: {exc}")
 
 
 async def _warm_embedding_model() -> None:

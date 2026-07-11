@@ -16,6 +16,7 @@ import struct
 import threading
 import time
 import uuid
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -981,6 +982,101 @@ def _fts_query(text: str) -> str:
     return " OR ".join(f'"{word}"' for word in selected[:12]) if selected else ""
 
 
+_lex_cache_lock = threading.RLock()
+_lex_cache: dict = {
+    "generation": -1,
+    "db_path": "",
+    "postings": {},
+}
+
+
+def _lexical_tokens(text: str) -> list[str]:
+    tokens: set[str] = set()
+    for raw_word in _WORD_RE.findall(text or ""):
+        word = raw_word.lower()
+        if len(word) < 3 or word in _FTS_STOPWORDS:
+            continue
+        tokens.add(word)
+        if len(word) > 4 and word.endswith("s"):
+            tokens.add(word[:-1])
+    return sorted(tokens)
+
+
+def warm_lexical_index() -> dict:
+    """Build a compact in-memory token->skill-id index for fast route probes."""
+    conn = get_conn()
+    try:
+        postings: dict[str, list[str]] = defaultdict(list)
+        rows = conn.execute(
+            """
+            SELECT id, name, description, tags
+            FROM skills
+            WHERE risk_score < 3
+              AND COALESCE(quality_status, 'pending') IN ('active', 'metadata_only')
+            """
+        ).fetchall()
+        for row in rows:
+            text = " ".join(
+                [
+                    str(row["name"] or ""),
+                    str(row["description"] or ""),
+                    str(row["tags"] or ""),
+                ]
+            )
+            for token in set(_lexical_tokens(text)):
+                postings[token].append(row["id"])
+        generation = int(_emb_cache.get("generation") or 0)
+        with _lex_cache_lock:
+            _lex_cache.update(
+                {
+                    "generation": generation,
+                    "db_path": str(DB_PATH),
+                    "postings": dict(postings),
+                }
+            )
+        return {"tokens": len(postings), "skills": len(rows)}
+    finally:
+        conn.close()
+
+
+def _cached_lexical_postings() -> dict[str, list[str]] | None:
+    with _lex_cache_lock:
+        postings = _lex_cache.get("postings")
+        if not postings or _lex_cache.get("db_path") != str(DB_PATH):
+            return None
+        return postings
+
+
+def _search_skills_lexical_memory(query: str, max_results: int) -> list[dict]:
+    postings = _cached_lexical_postings()
+    if postings is None:
+        return []
+    tokens = _lexical_tokens(query)[:12]
+    if not tokens:
+        return []
+    scores: dict[str, float] = defaultdict(float)
+    for token in tokens:
+        for skill_id in postings.get(token, ()):
+            scores[skill_id] += 1.0
+    if not scores:
+        return []
+    top_ids = [skill_id for skill_id, _score in sorted(scores.items(), key=lambda item: (-item[1], item[0]))[: max(max_results * 3, max_results)]]
+    placeholders = ",".join("?" for _ in top_ids)
+    conn = get_conn()
+    try:
+        rows = conn.execute(f"SELECT * FROM skills WHERE id IN ({placeholders})", top_ids).fetchall()
+        by_id = {}
+        for row in rows:
+            item = _row_to_dict(row, "skills", None)
+            item["stars"] = _stars(dict(row).get("raw", "{}"))
+            item["rank"] = scores.get(item["id"], 0.0)
+            by_id[item["id"]] = item
+        ordered = [by_id[skill_id] for skill_id in top_ids if skill_id in by_id]
+        return quality.dedupe_by_content_hash(ordered)[:max_results]
+    finally:
+        conn.close()
+
+
 def _stars(raw_json: str) -> int:
     try:
         return int(json.loads(raw_json or "{}").get("stars") or 0)
@@ -993,6 +1089,9 @@ def search_skills_fts(query: str, max_results: int = 10) -> list[dict]:
         limit = max(1, min(int(max_results), 100))
     except (TypeError, ValueError):
         limit = 10
+    fast = _search_skills_lexical_memory(query, limit)
+    if fast:
+        return fast
     conn = get_conn()
     try:
         fts_q = _fts_query(query)
@@ -1052,6 +1151,8 @@ def invalidate_vector_cache() -> None:
     """Mark the vector matrix stale after skills writes without dropping it."""
     with _emb_cache_lock:
         _emb_cache["generation"] = int(_emb_cache["generation"] or 0) + 1
+    with _lex_cache_lock:
+        _lex_cache["generation"] = -1
 
 
 def _index_counts(conn: sqlite3.Connection) -> dict[str, int]:
@@ -1199,17 +1300,37 @@ def _embedding_matrix(conn: sqlite3.Connection, *, refresh: bool = False) -> tup
                 # generation before publishing anything.
 
 
-def vector_search_skills(query_embedding: list[float], match_count: int = 10) -> list[dict]:
+def vector_search_skills(
+    query_embedding: list[float],
+    match_count: int = 10,
+    candidate_ids: list[str] | None = None,
+) -> list[dict]:
     conn = get_conn()
     try:
         ids, mat = _embedding_matrix(conn)
         if not ids:
             return []
         q = np.array(query_embedding, dtype=np.float32)
-        sims = mat @ q  # both L2-normalized -> cosine similarity
-        k = min(match_count, len(ids))
-        top = np.argpartition(-sims, k - 1)[:k]
-        top = top[np.argsort(-sims[top])]
+        similarity_by_position: dict[int, float] = {}
+        if candidate_ids:
+            candidate_set = set(candidate_ids)
+            positions = [index for index, skill_id in enumerate(ids) if skill_id in candidate_set]
+            if positions:
+                candidate_mat = mat[positions]
+                sims = candidate_mat @ q
+                similarity_by_position = {position: float(sim) for position, sim in zip(positions, sims)}
+                k = min(match_count, len(positions))
+                local_top = np.argpartition(-sims, k - 1)[:k]
+                top = np.array([positions[index] for index in local_top], dtype=np.int64)
+                top = top[np.argsort(-sims[local_top])]
+            else:
+                return []
+        else:
+            sims = mat @ q  # both L2-normalized -> cosine similarity
+            k = min(match_count, len(ids))
+            top = np.argpartition(-sims, k - 1)[:k]
+            top = top[np.argsort(-sims[top])]
+            similarity_by_position = {int(index): float(sims[index]) for index in top}
         top_ids = [ids[i] for i in top]
         placeholders = ",".join("?" for _ in top_ids)
         fetched = conn.execute(
@@ -1224,7 +1345,7 @@ def vector_search_skills(query_embedding: list[float], match_count: int = 10) ->
         for i in top:
             d = by_id.get(ids[i])
             if d is not None:
-                d["rank"] = float(sims[i])
+                d["rank"] = similarity_by_position.get(int(i), 0.0)
                 out.append(d)
         return out
     finally:
@@ -1240,7 +1361,19 @@ def hybrid_search_skills(
     rrf_k: int = 20,
 ) -> list[dict]:
     fts = search_skills_fts(query_text, 60)
-    vec = vector_search_skills(query_embedding, 60) if query_embedding else []
+    lexical_ids = [str(row.get("id")) for row in fts if row.get("id")]
+    # Once the lexical cache has produced a useful candidate set, compare the
+    # query vector only against those rows. This preserves semantic ordering
+    # without scanning the entire 60k-vector matrix on every route.
+    vec = (
+        vector_search_skills(
+            query_embedding,
+            60,
+            candidate_ids=lexical_ids if len(lexical_ids) >= 10 else None,
+        )
+        if query_embedding
+        else []
+    )
 
     by_id: dict[str, dict] = {}
     scores: dict[str, float] = {}
