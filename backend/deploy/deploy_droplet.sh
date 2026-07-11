@@ -97,7 +97,7 @@ fi
 # mark its single SQLite lease stale through the still-running local API, then
 # start a fresh worker only after the replacement API has passed readiness.
 echo "==> Draining worker scrape lease"
-if ! $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml rm -sf worker && curl -fsS -X PATCH 'http://127.0.0.1:8000/rest/v1/scrape_runs?status=eq.running' -H 'Content-Type: application/json' --data '{\"status\":\"stale\",\"error\":\"Marked stale during deploy before worker restart.\"}' -o /dev/null"; then
+if ! $SSH "cd ${REMOTE_DIR} && removed=0; for attempt in \$(seq 1 10); do if docker compose -f backend/deploy/docker-compose.yml rm -sf worker; then removed=1; break; fi; sleep 2; done; test \"\$removed\" -eq 1 && curl -fsS -X PATCH 'http://127.0.0.1:8000/rest/v1/scrape_runs?status=eq.running' -H 'Content-Type: application/json' --data '{\"status\":\"stale\",\"error\":\"Marked stale during deploy before worker restart.\"}' -o /dev/null"; then
   echo "FAILED: could not drain the worker lease" >&2
   rollback
   exit 1
