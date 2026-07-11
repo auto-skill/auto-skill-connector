@@ -271,13 +271,13 @@ class AccountsEndpointTests(unittest.TestCase):
         user = local_store.get_or_create_user("busy@example.com", "Busy", None)
         conn = local_store.get_conn()
         try:
-            for i, (tier, latency, outcome) in enumerate(
-                [("full", 100, "used"), ("full", 200, None), ("hint", 50, "dismissed")]
+            for i, (tier, latency, outcome, skill_name) in enumerate(
+                [("full", 100, "used", "skill-a"), ("full", 200, None, "skill-b"), ("hint", 50, "dismissed", "skill-c")]
             ):
                 conn.execute(
-                    "INSERT INTO route_events (id, created_at, user_id, tier, latency_ms, outcome, prompt_text)"
+                    "INSERT INTO route_events (id, created_at, user_id, tier, latency_ms, outcome, skill_name)"
                     " VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    (f"evt-{i}", f"2026-07-0{i + 1}T00:00:00+00:00", user["id"], tier, latency, outcome, f"prompt {i}"),
+                    (f"evt-{i}", f"2026-07-0{i + 1}T00:00:00+00:00", user["id"], tier, latency, outcome, skill_name),
                 )
             conn.commit()
         finally:
@@ -294,7 +294,8 @@ class AccountsEndpointTests(unittest.TestCase):
 
             latest_event = body["recent_events"][0]
             self.assertEqual(latest_event["user_email"], "busy@example.com")
-            self.assertEqual(latest_event["prompt_text"], "prompt 2")
+            self.assertEqual(latest_event["skill_name"], "skill-c")
+            self.assertNotIn("prompt_text", latest_event)
 
     def test_web_login_start_accepts_dashboard_return_url(self) -> None:
         with (

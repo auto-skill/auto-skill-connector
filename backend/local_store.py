@@ -1571,9 +1571,9 @@ def admin_user_stats() -> list[dict]:
 
 def admin_recent_events(limit: int = 100) -> list[dict]:
     """Most recent route_events across every user, joined with the user's
-    email, for the admin dashboard's live feed. Includes prompt_text --
-    admin-only, never exposed on the per-user /runs endpoint's public
-    counterpart differently than it already is."""
+    email, for the admin dashboard's live feed. Route analytics are
+    metadata-only (see ROUTE_EVENT_FORBIDDEN_LEGACY_COLUMNS) -- no raw
+    prompt text to show, only tier/skill/timing/outcome."""
     limit = max(1, min(int(limit), 500))
     conn = get_conn()
     try:

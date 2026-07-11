@@ -307,7 +307,8 @@ async def skills_catalog(
 async def admin_stats(events_limit: int = 100, authorization: str | None = Header(None)):
     """Operator-only rollup: every user's signup/login-provider/tier/outcome/
     token stats, plus a live feed of the most recent route_events across all
-    users (including prompt_text). Gated by ADMIN_EMAILS, not a public
+    users. Metadata-only, same as every other route_events consumer -- see
+    ROUTE_EVENT_FORBIDDEN_LEGACY_COLUMNS. Gated by ADMIN_EMAILS, not a public
     feature -- see _require_admin."""
     _require_admin(authorization)
     return {
