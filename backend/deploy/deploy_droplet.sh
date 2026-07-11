@@ -197,7 +197,11 @@ if [ "$PRIVACY_SCRUBBED" -eq 1 ]; then
   $SSH "touch '${PRIVACY_MARKER}' && chown 10001:10001 '${PRIVACY_MARKER}'"
 elif [ "$LITESTREAM_HASH_BEFORE" != "$LITESTREAM_HASH_AFTER" ]; then
   echo "==> litestream.yml changed -- restarting Litestream"
-  $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml up -d --force-recreate litestream"
+  if ! $SSH "cd ${REMOTE_DIR} && started=0; for attempt in \$(seq 1 8); do if docker compose -f backend/deploy/docker-compose.yml up -d --force-recreate litestream; then started=1; break; fi; sleep 2; done; test \"\$started\" -eq 1"; then
+    echo "FAILED: Litestream restart did not stabilize" >&2
+    rollback
+    exit 1
+  fi
 fi
 
 if [ "$LIBRARY_BACKUP_HASH_BEFORE" != "$LIBRARY_BACKUP_HASH_AFTER" ]; then
