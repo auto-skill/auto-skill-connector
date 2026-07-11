@@ -9,6 +9,7 @@ packed float32 BLOBs; vector search is brute-force numpy (fine at the scale
 a single scraper accumulates going forward).
 """
 import json
+import heapq
 import os
 import re
 import sqlite3
@@ -1060,7 +1061,15 @@ def _search_skills_lexical_memory(query: str, max_results: int) -> list[dict]:
             scores[skill_id] += 1.0
     if not scores:
         return []
-    top_ids = [skill_id for skill_id, _score in sorted(scores.items(), key=lambda item: (-item[1], item[0]))[: max(max_results * 3, max_results)]]
+    top_count = max(max_results * 3, max_results)
+    top_ids = [
+        skill_id
+        for skill_id, _score in heapq.nlargest(
+            top_count,
+            scores.items(),
+            key=lambda item: (item[1], item[0]),
+        )
+    ]
     placeholders = ",".join("?" for _ in top_ids)
     conn = get_conn()
     try:
