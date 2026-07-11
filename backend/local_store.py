@@ -1061,7 +1061,10 @@ def _search_skills_lexical_memory(query: str, max_results: int) -> list[dict]:
             scores[skill_id] += 1.0
     if not scores:
         return []
-    top_count = max(max_results * 3, max_results)
+    # Keep the in-memory path bounded: near-duplicate comparison is quadratic
+    # in candidate count, and the router only needs a small recall set before
+    # deterministic reranking trims it to the requested limit.
+    top_count = max(1, max_results)
     top_ids = [
         skill_id
         for skill_id, _score in heapq.nlargest(
