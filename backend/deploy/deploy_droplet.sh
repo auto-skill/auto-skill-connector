@@ -145,7 +145,7 @@ if ! $SSH "test -f '${PRIVACY_MARKER}'"; then
 fi
 
 echo "==> Recreating API"
-if ! $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml rm -sf api mcp && docker compose -f backend/deploy/docker-compose.yml up -d --no-build api"; then
+if ! $SSH "cd ${REMOTE_DIR} && removed=0; for attempt in \$(seq 1 15); do docker compose -f backend/deploy/docker-compose.yml rm -sf api mcp >/dev/null 2>&1 || true; docker rm -f deploy-api-1 deploy-mcp-1 >/dev/null 2>&1 || true; if test -z \"\$(docker ps -aq --filter name=^deploy-api-1$)\" && test -z \"\$(docker ps -aq --filter name=^deploy-mcp-1$)\"; then removed=1; break; fi; sleep 2; done; test \"\$removed\" -eq 1 && docker compose -f backend/deploy/docker-compose.yml up -d --no-build api"; then
   echo "FAILED: API recreate failed" >&2
   rollback
   exit 1

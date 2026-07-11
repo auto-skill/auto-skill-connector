@@ -291,6 +291,8 @@ class AccountsEndpointTests(unittest.TestCase):
             self.assertEqual(row["tiers"], {"full": 2, "hint": 1})
             self.assertEqual(row["outcomes"], {"used": 1, "dismissed": 1})
             self.assertEqual(row["avg_latency_ms"], round((100 + 200 + 50) / 3))
+            self.assertIn("route_metrics", body)
+            self.assertIn("anonymous_installations", body["route_metrics"])
 
             latest_event = body["recent_events"][0]
             self.assertEqual(latest_event["user_email"], "busy@example.com")

@@ -314,6 +314,10 @@ async def admin_stats(events_limit: int = 100, authorization: str | None = Heade
     return {
         "users": store.admin_user_stats(),
         "recent_events": store.admin_recent_events(events_limit),
+        # Keep anonymous cohort counts behind the existing operator gate. The
+        # response contains only aggregate counts and short installation
+        # prefixes; it never exposes raw IDs or prompt-derived data.
+        "route_metrics": store.route_event_summary(hours=24),
     }
 
 
