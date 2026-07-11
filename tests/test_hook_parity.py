@@ -350,3 +350,38 @@ def test_hook_hint_output_includes_candidates_and_metrics(monkeypatch: pytest.Mo
     assert "spreadsheet-cleanup" in out
     assert "Route metrics: latency=42ms, skill_find=30ms, injected_tokens=0, response_tokens=160" in out
     assert "Choose a candidate only if the fit is obvious" in out
+
+
+def test_hook_injects_bounded_capsule_without_fetching_full_content(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    skill = {
+        "name": "spreadsheet-router",
+        "description": "Create spreadsheet reports.",
+        "url": "https://example.com/spreadsheet",
+        "risk_score": 0,
+        "verification": {
+            "content_hash_verified": True,
+            "static_instruction_only": True,
+        },
+    }
+    capsule = "[Auto-Skill capsule v1]\nName: spreadsheet-router\n## Workflow\nUse formulas and verify outputs."
+    monkeypatch.setattr(
+        hook,
+        "_selfhosted_route",
+        lambda prompt: {
+            "tier": "full",
+            "skill": skill,
+            "context_guard": {"delivery": "capsule", "capsule": capsule, "capsule_chars": len(capsule)},
+        },
+    )
+    monkeypatch.setattr(hook, "_fetch_backend_content", lambda content_url: (_ for _ in ()).throw(AssertionError("capsule must not fetch full content")))
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps({"prompt": "make a spreadsheet report"})))
+
+    hook.main()
+
+    out = capsys.readouterr().out
+    assert "<auto_skill_capsule>" in out
+    assert capsule in out
+    assert "<auto_skill_content>" not in out

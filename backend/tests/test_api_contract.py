@@ -487,6 +487,8 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(body["skill"]["name"], "spreadsheet-reporter")
         self.assertTrue(body["skill"]["verification"]["content_hash_verified"])
         self.assertTrue(body["skill"]["verification"]["static_instruction_only"])
+        self.assertEqual(body["context_guard"]["delivery"], "full")
+        self.assertEqual(body["context_guard"]["policy"], "hybrid-v1")
         self.assertEqual(
             body["skill"]["verification"]["content_digest"],
             hashlib.sha256(VALID_SKILL.encode("utf-8")).hexdigest(),
@@ -514,11 +516,47 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(event["id"], body["route_id"])
         self.assertEqual(event["tier"], "full")
         self.assertEqual(event["skill_name"], "spreadsheet-reporter")
+        self.assertEqual(event["guard_delivery"], "full")
         self.assertEqual(event["query_chars"], len("create an excel report with formulas"))
         self.assertTrue({"prompt_text", "query_hash", "feedback_note"}.isdisjoint(event.keys()))
         self.assertGreaterEqual(event["skill_find_ms"], 0)
         self.assertGreaterEqual(event["injected_tokens"], event["content_tokens"])
         self.assertGreater(event["response_tokens"], 0)
+
+    def test_route_returns_bounded_capsule_for_large_static_content(self) -> None:
+        candidate = {
+            "id": "skill-large",
+            "name": "spreadsheet-reporter",
+            "description": "Build spreadsheet reports with formulas and charts.",
+            "source": "github_skill_file",
+            "url": "https://example.com/large-spreadsheet",
+            "risk_score": 0,
+            "quality_status": "active",
+            "quality_score": 90,
+            "content_hash": content_hash(VALID_SKILL + ("\n## Reference\n" + ("Keep the workbook reproducible. " * 400))),
+            "rank": 1.0,
+            "similarity": 0.95,
+        }
+        large_content = VALID_SKILL + ("\n## Reference\n" + ("Keep the workbook reproducible. " * 400))
+
+        async def fake_retrieve(client, query, limit):
+            del client, query, limit
+            return [candidate]
+
+        class FakeLibrary:
+            def get(self, url: str) -> str:
+                return large_content if url == candidate["url"] else ""
+
+        with patch("recommender.retrieve_skills", fake_retrieve), patch("recommender.LibraryContent", FakeLibrary):
+            response = self.client.post("/route", json={"task": "create an excel report with formulas"})
+
+        body = response.json()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(body["tier"], "full")
+        self.assertEqual(body["context_guard"]["delivery"], "capsule")
+        self.assertIsNone(body["content"])
+        self.assertLessEqual(body["context_guard"]["capsule_chars"], 2400)
+        self.assertIn("Workflow", body["context_guard"]["capsule"])
 
     def test_route_downgrades_capability_bearing_content_to_hint(self) -> None:
         capability_skill = VALID_SKILL + "\nRun scripts/deploy.py and pip install the required package.\n"
@@ -713,8 +751,8 @@ class ApiContractTests(unittest.TestCase):
         self.assertGreaterEqual(metrics["avg_response_tokens"], 1)
         self.assertIn("p95_skill_find_ms", metrics)
         self.assertIn("p95_injected_tokens", metrics)
-        self.assertEqual(metrics["budgets"]["skill_find_ms"], 1200)
-        self.assertEqual(metrics["budgets"]["injected_tokens"], 3000)
+        self.assertEqual(metrics["budgets"]["skill_find_ms"], 500)
+        self.assertEqual(metrics["budgets"]["injected_tokens"], 1000)
         self.assertEqual(metrics["budget_breaches"]["any"], 0)
 
         local_store.insert_route_event(

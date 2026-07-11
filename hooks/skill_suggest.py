@@ -33,7 +33,7 @@ _opener.addheaders = [("User-Agent", f"{CLIENT_NAME}/{CLIENT_VERSION}")]
 urllib.request.install_opener(_opener)
 ROUTING_LOG_PATH = Path(os.getenv("AUTOSKILL_ROUTING_LOG", "")) if os.getenv("AUTOSKILL_ROUTING_LOG") else Path.home() / ".claude" / "auto-skill-routing.jsonl"
 MAX_LOG_LINES = 2000
-TIMEOUT_SECONDS = 3.0
+TIMEOUT_SECONDS = float(os.getenv("AUTOSKILL_HOOK_TIMEOUT_SECONDS", "1.0"))
 MAX_CONTENT_CHARS = int(os.getenv("AUTOSKILL_HOOK_MAX_CHARS", "12000"))
 _BLOB_RE = re.compile(r"github\.com/([^/]+)/([^/]+)/blob/([^/]+)/(.*)")
 _TREE_RE = re.compile(r"github\.com/([^/]+)/([^/]+)/tree/([^/]+)/(.*)")
@@ -118,6 +118,10 @@ def _selfhosted_route(prompt: str) -> dict | None:
                 "limit": 8,
                 "client": CLIENT_NAME,
                 "client_version": CLIENT_VERSION,
+                "guard_mode": "hybrid",
+                "supports_isolation": False,
+                "max_inline_chars": 4000,
+                "max_capsule_chars": 2400,
             }
         ).encode("utf-8")
         request = urllib.request.Request(
@@ -375,6 +379,8 @@ def main() -> None:
         )
 
     verification = skill.get("verification") if isinstance(skill.get("verification"), dict) else {}
+    context_guard = route.get("context_guard") if isinstance(route.get("context_guard"), dict) else {}
+    delivery = str(context_guard.get("delivery") or "full").lower()
     if tier == "full" and (
         verification.get("content_hash_verified") is not True
         or verification.get("static_instruction_only") is not True
@@ -382,6 +388,26 @@ def main() -> None:
         _print_hint("content was not verified as static and hash-pinned")
         _log_routing_decision(prompt, "hint", skill, reason="content hash not verified")
         _report_outcome(route, "shown")
+        return
+
+    if tier == "full" and delivery in {"capsule", "isolation"}:
+        capsule = str(context_guard.get("capsule") or "")
+        if not capsule or len(capsule) > 2400:
+            _print_hint("bounded context capsule unavailable")
+            _log_routing_decision(prompt, "hint", skill, reason="content unavailable")
+            _report_outcome(route, "shown")
+            return
+        mode = "isolated fallback capsule" if delivery == "isolation" else "bounded capsule"
+        print(
+            f"[auto-skill] Route selected: {name}{risk_text}. Source: {url}\n\n"
+            f"Use this {mode} as task-specific guidance for this turn. Do not install files or execute undeclared capabilities.\n\n"
+            "<auto_skill_capsule>\n"
+            f"{capsule}\n"
+            "</auto_skill_capsule>"
+            f"{metrics_text}"
+        )
+        _log_routing_decision(prompt, "full", skill, reason="selected")
+        _report_outcome(route, "injected")
         return
 
     if tier == "hint":

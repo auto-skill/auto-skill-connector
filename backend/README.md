@@ -142,6 +142,7 @@ may include:
 - selected skill, tier, result count, and outcome;
 - route, retrieval, rerank, and content latency;
 - estimated input, candidate, content, injected, and response tokens; and
+- context delivery (`full`, `capsule`, or `isolation`) and capsule size; and
 - router configuration version.
 
 Skipped client prompts are not sent to a separate analytics endpoint. Legacy
@@ -152,8 +153,15 @@ for anonymous route IDs with rate limiting.
 not a consumer analytics dashboard. The public read-only guard intentionally
 does not expose it.
 
-Default warning budgets are 1500 ms total latency, 1200 ms skill-find time,
-3000 injected tokens, and 3500 response tokens.
+Default warning budgets are 750 ms total latency, 500 ms skill-find time,
+1000 injected tokens, and 3500 response tokens.
+
+`/route` accepts `guard_mode` (`hybrid` by default), `supports_isolation`,
+`max_inline_chars` (default 4000), and `max_capsule_chars` (default 2400).
+Large verified static skills are returned as deterministic capsules when the
+client cannot provide an isolated context. Routing never installs a skill or
+writes one to disk. Set `AUTOSKILL_CONTEXT_GUARD=0` only for a temporary
+compatibility rollback.
 
 ## Evals
 

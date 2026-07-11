@@ -8,9 +8,9 @@ param(
     [int]$MinFreeDiskGb = 5,
     [string]$DirectTask = "create an excel spreadsheet report with formulas and charts",
     [string]$TrapTask = "build a landing page for an AI automation agency",
-    [int]$MaxRouteLatencyMs = 1500,
-    [int]$MaxRouteSkillFindMs = 1200,
-    [int]$MaxRouteInjectedTokens = 3000,
+    [int]$MaxRouteLatencyMs = 750,
+    [int]$MaxRouteSkillFindMs = 500,
+    [int]$MaxRouteInjectedTokens = 1000,
     [int]$MaxRouteResponseTokens = 3500
 )
 

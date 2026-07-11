@@ -43,6 +43,9 @@ CREATE TABLE IF NOT EXISTS skills (
     quality_status TEXT DEFAULT 'pending',
     quality_reasons TEXT DEFAULT '[]',
     quality_score INTEGER DEFAULT 0,
+    prominence_score REAL DEFAULT 0,
+    provenance_score REAL DEFAULT 0.25,
+    meaningfulness_score REAL DEFAULT 0,
     platforms TEXT DEFAULT '[]',
     category TEXT,
     embedding BLOB,
@@ -111,6 +114,9 @@ CREATE TABLE IF NOT EXISTS route_events (
     content_tokens INTEGER,
     injected_tokens INTEGER,
     response_tokens INTEGER,
+    guard_delivery TEXT,
+    capsule_chars INTEGER,
+    meaningfulness_score REAL,
     config_version TEXT,
     outcome TEXT,
     outcome_at TEXT,
@@ -217,6 +223,9 @@ SKILL_COLUMN_DEFAULTS = {
     "quality_status": "TEXT DEFAULT 'pending'",
     "quality_reasons": "TEXT DEFAULT '[]'",
     "quality_score": "INTEGER DEFAULT 0",
+    "prominence_score": "REAL DEFAULT 0",
+    "provenance_score": "REAL DEFAULT 0.25",
+    "meaningfulness_score": "REAL DEFAULT 0",
     "platforms": "TEXT DEFAULT '[]'",
     "category": "TEXT",
     "feedback_score": "REAL",
@@ -230,6 +239,9 @@ ROUTE_EVENT_COLUMN_DEFAULTS = {
     "rerank_ms": "INTEGER",
     "candidate_tokens": "INTEGER",
     "injected_tokens": "INTEGER",
+    "guard_delivery": "TEXT",
+    "capsule_chars": "INTEGER",
+    "meaningfulness_score": "REAL",
     "user_id": "TEXT",
     "skip_reason": "TEXT",
 }
@@ -261,6 +273,9 @@ ROUTE_EVENT_WRITE_COLUMNS = frozenset(
         "content_tokens",
         "injected_tokens",
         "response_tokens",
+        "guard_delivery",
+        "capsule_chars",
+        "meaningfulness_score",
         "config_version",
         "outcome",
         "outcome_at",
@@ -276,6 +291,7 @@ ROUTE_EVENT_OUTCOMES = frozenset(
     {"used", "skipped", "installed", "failed", "dismissed", "shown", "injected"}
 )
 ROUTE_EVENT_TIERS = frozenset({"full", "hint", "none", "skipped"})
+ROUTE_GUARD_DELIVERIES = frozenset({"full", "capsule", "isolation", "hint", "none"})
 SAFE_ROUTE_SKIP_REASONS = frozenset(
     {
         "empty prompt",
@@ -644,6 +660,8 @@ def insert_route_event(event: dict) -> None:
                 row[key] = _safe_route_identifier(row[key]) or None
         if row.get("tier") not in ROUTE_EVENT_TIERS:
             row["tier"] = None
+        if row.get("guard_delivery") not in ROUTE_GUARD_DELIVERIES:
+            row["guard_delivery"] = None
         if row.get("outcome") not in ROUTE_EVENT_OUTCOMES:
             row["outcome"] = None
         if row.get("skip_reason") not in SAFE_ROUTE_SKIP_REASONS:
@@ -672,9 +690,9 @@ def route_event_summary(
     hours: int = 24,
     *,
     config_version: str | None = None,
-    max_latency_ms: int = 1500,
-    max_skill_find_ms: int = 1200,
-    max_injected_tokens: int = 3000,
+    max_latency_ms: int = 750,
+    max_skill_find_ms: int = 500,
+    max_injected_tokens: int = 1000,
     max_response_tokens: int = 3500,
 ) -> dict:
     """Aggregate recent route events for local ops/product checks."""
@@ -699,6 +717,13 @@ def route_event_summary(
             row["outcome"] or "pending": row["count"]
             for row in conn.execute(
                 f"SELECT outcome, COUNT(*) AS count FROM route_events WHERE {where} GROUP BY outcome",
+                params,
+            ).fetchall()
+        }
+        guard_deliveries = {
+            row["guard_delivery"] or "none": row["count"]
+            for row in conn.execute(
+                f"SELECT guard_delivery, COUNT(*) AS count FROM route_events WHERE {where} GROUP BY guard_delivery",
                 params,
             ).fetchall()
         }
@@ -756,7 +781,8 @@ def route_event_summary(
                 """
                 SELECT created_at, client, tier, skill_name, latency_ms, skill_find_ms,
                        retrieval_ms, rerank_ms, content_ms, injected_tokens,
-                       response_tokens, warnings
+                       response_tokens, guard_delivery, capsule_chars,
+                       meaningfulness_score, warnings
                 FROM route_events
                 WHERE {where}
                 ORDER BY latency_ms DESC
@@ -812,6 +838,7 @@ def route_event_summary(
             "total": total,
             "tiers": tiers,
             "outcomes": outcomes,
+            "guard_deliveries": guard_deliveries,
             "top_skills": top_skills,
             "top_used_skills": top_used_skills[:10],
             "vector_index": vector_index_stats(),
@@ -1245,12 +1272,13 @@ def hybrid_search_skills(
     out = []
     for row in fused_rows[:match_count]:
         score = row.pop("_fuse_score")
-        stars = row.get("stars") or 0
         risk = row.get("risk_score") or 0
-        qual = max(0, min(int(row.get("quality_score") or 50), 100)) / 100
-        star_bonus = 0.003 * min(np.log1p(max(stars, 0)), 6) / 6
+        components = quality.meaningfulness_components(row)
+        row["prominence_score"] = components["prominence"]
+        row["provenance_score"] = components["provenance"]
+        row["meaningfulness_score"] = components["meaningfulness"]
         risk_penalty = 0.01 * min(risk, 2)
-        row["rank"] = float(score + star_bonus + (0.004 * qual) - risk_penalty)
+        row["rank"] = float(score + (0.006 * float(components["meaningfulness"])) - risk_penalty)
         out.append(row)
     out.sort(key=lambda r: r["rank"], reverse=True)
     return out
@@ -1481,7 +1509,8 @@ def list_route_events_for_user(user_id: str, limit: int = 100) -> list[dict]:
                    skill_id, skill_name, skill_url, latency_ms, skill_find_ms,
                    retrieval_ms, rerank_ms, content_ms, result_count,
                    input_tokens, hint_tokens, candidate_tokens, content_tokens,
-                   injected_tokens, response_tokens, config_version, outcome,
+                   injected_tokens, response_tokens, guard_delivery, capsule_chars,
+                   meaningfulness_score, config_version, outcome,
                    outcome_at, feedback_source, warnings, skip_reason
             FROM route_events
             WHERE user_id=?
