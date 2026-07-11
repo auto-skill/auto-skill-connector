@@ -9,6 +9,7 @@ services:
       AUTO_START_SCRAPER: "0"
       AUTO_START_EMBEDDER: "0"
       ENABLE_OLLAMA_CHAT: "0"
+      AUTOSKILL_CONTEXT_GUARD: ${AUTOSKILL_CONTEXT_GUARD:-1}
       STALE_SCRAPE_RUN_SECONDS: ${STALE_SCRAPE_RUN_SECONDS:-7200}
       BACKEND_BASE_URL: ${BACKEND_BASE_URL:-https://skills.autoskill.dev}
       AUTO_SKILL_DASHBOARD_ORIGINS: ${AUTO_SKILL_DASHBOARD_ORIGINS:-https://autoskill.dev,https://www.autoskill.dev,https://skills.autoskill.dev}

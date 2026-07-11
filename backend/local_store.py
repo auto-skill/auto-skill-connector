@@ -1608,7 +1608,16 @@ def admin_recent_events(limit: int = 100) -> list[dict]:
     try:
         rows = conn.execute(
             """
-            SELECT r.*, u.email AS user_email
+            SELECT r.id, r.created_at, r.client, r.client_version,
+                   r.query_chars, r.tier, r.skill_id, r.skill_name,
+                   r.skill_url, r.latency_ms, r.skill_find_ms,
+                   r.retrieval_ms, r.rerank_ms, r.content_ms,
+                   r.result_count, r.input_tokens, r.hint_tokens,
+                   r.candidate_tokens, r.content_tokens, r.injected_tokens,
+                   r.response_tokens, r.guard_delivery, r.capsule_chars,
+                   r.meaningfulness_score, r.config_version, r.outcome,
+                   r.outcome_at, r.feedback_source, r.warnings,
+                   u.email AS user_email
             FROM route_events r
             LEFT JOIN users u ON u.id = r.user_id
             ORDER BY r.created_at DESC
