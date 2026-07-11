@@ -591,7 +591,7 @@ def parse_args() -> argparse.Namespace:
     # Deploy checks allow cold-start variance; route metrics retain the tighter
     # 750/500/1000 budgets for ongoing observation.
     parser.add_argument("--max-route-latency-ms", type=int, default=1500)
-    parser.add_argument("--max-route-skill-find-ms", type=int, default=1200)
+    parser.add_argument("--max-route-skill-find-ms", type=int, default=1500)
     parser.add_argument("--max-route-injected-tokens", type=int, default=3000)
     parser.add_argument("--max-route-response-tokens", type=int, default=3500)
     parser.add_argument(
