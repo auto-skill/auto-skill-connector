@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import sqlite3
 import tempfile
 import unittest
+import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
@@ -480,8 +482,12 @@ class ApiContractTests(unittest.TestCase):
                 self_url = "https://example.com/spreadsheet"
                 return VALID_SKILL if url == self_url else ""
 
+        anonymous_id = str(uuid.uuid4())
         with patch("recommender.retrieve_skills", fake_retrieve), patch("recommender.LibraryContent", FakeLibrary):
-            response = self.client.post("/route", json={"task": "create an excel report with formulas"})
+            response = self.client.post(
+                "/route",
+                json={"task": "create an excel report with formulas", "anonymous_id": anonymous_id},
+            )
 
         self.assertEqual(response.status_code, 200)
         body = response.json()
@@ -519,6 +525,11 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(event["tier"], "full")
         self.assertEqual(event["skill_name"], "spreadsheet-reporter")
         self.assertEqual(event["guard_delivery"], "full")
+        expected_anonymous_hash = hashlib.sha256(
+            f"autoskill-anonymous-installation-v1:{anonymous_id}".encode("ascii")
+        ).hexdigest()
+        self.assertEqual(event["anonymous_id_hash"], expected_anonymous_hash)
+        self.assertNotIn(anonymous_id, json.dumps(body))
         self.assertEqual(event["query_chars"], len("create an excel report with formulas"))
         self.assertTrue({"prompt_text", "query_hash", "feedback_note"}.isdisjoint(event.keys()))
         self.assertGreaterEqual(event["skill_find_ms"], 0)

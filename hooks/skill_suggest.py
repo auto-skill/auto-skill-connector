@@ -15,9 +15,11 @@ import json
 import hashlib
 import os
 import re
+import stat
 import sys
 import time
 import urllib.request
+import uuid
 from pathlib import Path
 
 AUTOSKILL_URL = os.getenv("AUTOSKILL_URL", "https://skills.autoskill.dev").rstrip("/")
@@ -75,6 +77,33 @@ def _auth_headers() -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"} if token else {}
 
 
+def _anonymous_installation_id() -> str | None:
+    """Return a local opaque ID only when anonymous analytics is opted in."""
+    if os.getenv("AUTOSKILL_ANONYMOUS_ANALYTICS", "").strip().lower() not in _TRUTHY_VALUES:
+        return None
+    override = os.getenv("AUTOSKILL_INSTALLATION_ID_PATH")
+    path = Path(override) if override else Path.home() / ".autoskill" / "installation.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        value = str(uuid.UUID(str(data.get("anonymous_id"))))
+        return value
+    except (OSError, ValueError, TypeError, AttributeError, json.JSONDecodeError):
+        value = str(uuid.uuid4())
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temp = path.with_suffix(path.suffix + ".tmp")
+        temp.write_text(json.dumps({"anonymous_id": value}) + "\n", encoding="utf-8")
+        try:
+            os.chmod(temp, stat.S_IRUSR | stat.S_IWUSR)
+        except OSError:
+            pass
+        temp.replace(path)
+    except OSError:
+        # Routing remains fail-open if the local profile is read-only.
+        pass
+    return value
+
+
 def _should_route(prompt: str) -> tuple[bool, str]:
     text = " ".join(prompt.split())
     lowered = text.lower()
@@ -112,22 +141,28 @@ def _selfhosted_route(prompt: str) -> dict | None:
     if not AUTOSKILL_URL:
         return None
     try:
+        headers = _auth_headers()
+        body_data = {
+            "task": prompt[:500],
+            "limit": 8,
+            "client": CLIENT_NAME,
+            "client_version": CLIENT_VERSION,
+            "guard_mode": "hybrid",
+            "supports_isolation": False,
+            "max_inline_chars": 4000,
+            "max_capsule_chars": 2400,
+        }
+        if not headers:
+            anonymous_id = _anonymous_installation_id()
+            if anonymous_id:
+                body_data["anonymous_id"] = anonymous_id
         body = json.dumps(
-            {
-                "task": prompt[:500],
-                "limit": 8,
-                "client": CLIENT_NAME,
-                "client_version": CLIENT_VERSION,
-                "guard_mode": "hybrid",
-                "supports_isolation": False,
-                "max_inline_chars": 4000,
-                "max_capsule_chars": 2400,
-            }
+            body_data
         ).encode("utf-8")
         request = urllib.request.Request(
             f"{AUTOSKILL_URL}/route",
             data=body,
-            headers={"Content-Type": "application/json", **_auth_headers()},
+            headers={"Content-Type": "application/json", **headers},
             method="POST",
         )
         with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as r:

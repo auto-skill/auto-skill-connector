@@ -169,6 +169,67 @@ def test_hook_main_eligible_prompt_uses_only_post_route(
     assert json.loads(request.data.decode("utf-8"))["task"] == prompt
 
 
+def test_hook_anonymous_identity_is_opt_in_and_stable(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    requests = []
+
+    class JsonResponse(io.BytesIO):
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            self.close()
+
+    def fake_urlopen(request, timeout=None):
+        requests.append(json.loads(request.data.decode("utf-8")))
+        return JsonResponse(json.dumps({"tier": "none"}).encode("utf-8"))
+
+    monkeypatch.setenv("AUTOSKILL_ANONYMOUS_ANALYTICS", "true")
+    monkeypatch.setenv("AUTOSKILL_INSTALLATION_ID_PATH", str(tmp_path / "installation.json"))
+    monkeypatch.setattr(hook, "AUTOSKILL_URL", "https://skills.example")
+    monkeypatch.setattr(hook, "_auth_headers", lambda: {})
+    monkeypatch.setattr(hook.urllib.request, "urlopen", fake_urlopen)
+
+    prompt = "create a spreadsheet with formulas for my monthly budget"
+    assert hook._selfhosted_route(prompt) == {"tier": "none"}
+    assert hook._selfhosted_route(prompt) == {"tier": "none"}
+
+    assert requests[0]["anonymous_id"] == requests[1]["anonymous_id"]
+    assert len(requests[0]["anonymous_id"]) == 36
+    assert requests[0]["task"] == prompt
+
+
+def test_hook_does_not_send_anonymous_identity_with_auth(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    requests = []
+
+    class JsonResponse(io.BytesIO):
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            self.close()
+
+    def fake_urlopen(request, timeout=None):
+        requests.append(json.loads(request.data.decode("utf-8")))
+        return JsonResponse(json.dumps({"tier": "none"}).encode("utf-8"))
+
+    monkeypatch.setenv("AUTOSKILL_ANONYMOUS_ANALYTICS", "1")
+    monkeypatch.setenv("AUTOSKILL_INSTALLATION_ID_PATH", str(tmp_path / "installation.json"))
+    monkeypatch.setattr(hook, "AUTOSKILL_URL", "https://skills.example")
+    monkeypatch.setattr(hook, "_auth_headers", lambda: {"Authorization": "Bearer account-token"})
+    monkeypatch.setattr(hook.urllib.request, "urlopen", fake_urlopen)
+
+    hook._selfhosted_route("create a spreadsheet with formulas")
+    assert "anonymous_id" not in requests[0]
+
+
 def test_hook_main_diagnostics_are_off_by_default(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

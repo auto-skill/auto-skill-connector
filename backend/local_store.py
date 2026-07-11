@@ -123,6 +123,7 @@ CREATE TABLE IF NOT EXISTS route_events (
     outcome TEXT,
     outcome_at TEXT,
     feedback_source TEXT,
+    anonymous_id_hash TEXT,
     warnings TEXT DEFAULT '[]'
 );
 
@@ -244,6 +245,7 @@ ROUTE_EVENT_COLUMN_DEFAULTS = {
     "guard_delivery": "TEXT",
     "capsule_chars": "INTEGER",
     "meaningfulness_score": "REAL",
+    "anonymous_id_hash": "TEXT",
     "user_id": "TEXT",
     "skip_reason": "TEXT",
 }
@@ -278,6 +280,7 @@ ROUTE_EVENT_WRITE_COLUMNS = frozenset(
         "guard_delivery",
         "capsule_chars",
         "meaningfulness_score",
+        "anonymous_id_hash",
         "config_version",
         "outcome",
         "outcome_at",
@@ -308,8 +311,10 @@ SAFE_ROUTE_SKIP_REASONS = frozenset(
     }
 )
 _SAFE_ROUTE_IDENTIFIER_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/+@-]*\Z")
+_ANONYMOUS_HASH_RE = re.compile(r"^[a-f0-9]{64}$")
 
 CLI_TOKEN_TTL_SECONDS = 90 * 24 * 60 * 60  # 90 days, sliding forward on each use
+ANONYMOUS_ID_RETENTION_DAYS = max(1, int(os.getenv("AUTOSKILL_ANONYMOUS_ID_RETENTION_DAYS", "90")))
 
 CLI_TOKEN_COLUMN_DEFAULTS = {
     "expires_at": "TEXT",
@@ -437,6 +442,7 @@ def init_db() -> None:
         for col, spec in ROUTE_EVENT_COLUMN_DEFAULTS.items():
             if col not in route_existing:
                 conn.execute(f"ALTER TABLE route_events ADD COLUMN {col} {spec}")
+        conn.execute("CREATE INDEX IF NOT EXISTS route_events_anonymous_id_idx ON route_events(anonymous_id_hash)")
         _scrub_route_event_privacy(conn)
         cli_token_existing = {row["name"] for row in conn.execute("PRAGMA table_info(cli_tokens)").fetchall()}
         for col, spec in CLI_TOKEN_COLUMN_DEFAULTS.items():
@@ -660,6 +666,15 @@ def insert_route_event(event: dict) -> None:
         for key in ("client", "client_version", "config_version", "feedback_source"):
             if key in row:
                 row[key] = _safe_route_identifier(row[key]) or None
+        if row.get("anonymous_id_hash") and not _ANONYMOUS_HASH_RE.fullmatch(str(row["anonymous_id_hash"])):
+            row["anonymous_id_hash"] = None
+        if row.get("anonymous_id_hash"):
+            cutoff = (datetime.now(timezone.utc) - timedelta(days=ANONYMOUS_ID_RETENTION_DAYS)).isoformat()
+            conn.execute(
+                "UPDATE route_events SET anonymous_id_hash=NULL "
+                "WHERE anonymous_id_hash IS NOT NULL AND created_at < ?",
+                (cutoff,),
+            )
         if row.get("tier") not in ROUTE_EVENT_TIERS:
             row["tier"] = None
         if row.get("guard_delivery") not in ROUTE_GUARD_DELIVERIES:
@@ -708,6 +723,17 @@ def route_event_summary(
             where += " AND config_version = ?"
             params.append(config_version)
         total = conn.execute(f"SELECT COUNT(*) FROM route_events WHERE {where}", params).fetchone()[0]
+        identity_counts = conn.execute(
+            f"""
+            SELECT
+              SUM(CASE WHEN user_id IS NOT NULL THEN 1 ELSE 0 END) AS authenticated,
+              SUM(CASE WHEN user_id IS NULL AND anonymous_id_hash IS NOT NULL THEN 1 ELSE 0 END) AS anonymous,
+              COUNT(DISTINCT CASE WHEN user_id IS NULL THEN anonymous_id_hash END) AS anonymous_installations
+            FROM route_events
+            WHERE {where}
+            """,
+            params,
+        ).fetchone()
         tiers = {
             row["tier"]: row["count"]
             for row in conn.execute(
@@ -838,6 +864,9 @@ def route_event_summary(
             "window_hours": hours,
             "metrics_config_version": config_version or "all",
             "total": total,
+            "authenticated_events": int(identity_counts["authenticated"] or 0),
+            "anonymous_events": int(identity_counts["anonymous"] or 0),
+            "anonymous_installations": int(identity_counts["anonymous_installations"] or 0),
             "tiers": tiers,
             "outcomes": outcomes,
             "guard_deliveries": guard_deliveries,
@@ -1762,6 +1791,8 @@ def admin_recent_events(limit: int = 100) -> list[dict]:
                    r.response_tokens, r.guard_delivery, r.capsule_chars,
                    r.meaningfulness_score, r.config_version, r.outcome,
                    r.outcome_at, r.feedback_source, r.warnings,
+                   CASE WHEN r.anonymous_id_hash IS NOT NULL
+                        THEN substr(r.anonymous_id_hash, 1, 12) END AS anonymous_installation,
                    u.email AS user_email
             FROM route_events r
             LEFT JOIN users u ON u.id = r.user_id

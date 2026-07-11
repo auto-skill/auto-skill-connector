@@ -11,6 +11,7 @@ from typing import Any
 import httpx
 
 from auto_skill_auth import auth_headers
+from auto_skill_identity import get_anonymous_installation_id
 
 DEFAULT_AUTOSKILL_URL = "https://skills.autoskill.dev"
 CLIENT_NAME = "auto-skill-connector"
@@ -683,20 +684,29 @@ async def _route_selfhosted(
     if not url:
         return None
 
+    headers = auth_header if auth_header is not None else auth_headers()
+    route_body = {
+        "task": task,
+        "limit": 8,
+        "client": CLIENT_NAME,
+        "client_version": CLIENT_VERSION,
+        "guard_mode": "hybrid",
+        "supports_isolation": False,
+        "max_inline_chars": 4000,
+        "max_capsule_chars": 2400,
+    }
+    # A hosted MCP process can serve many remote callers; never attribute an
+    # operator's local installation ID to those callers. Local CLI/connectors
+    # may opt into an opaque installation ID, but account auth takes priority.
+    if auth_header is None and not any(key.lower() == "authorization" for key in headers):
+        anonymous_id = get_anonymous_installation_id()
+        if anonymous_id:
+            route_body["anonymous_id"] = anonymous_id
     try:
         r = await client.post(
             f"{url}/route",
-            json={
-                "task": task,
-                "limit": 8,
-                "client": CLIENT_NAME,
-                "client_version": CLIENT_VERSION,
-                "guard_mode": "hybrid",
-                "supports_isolation": False,
-                "max_inline_chars": 4000,
-                "max_capsule_chars": 2400,
-            },
-            headers=auth_header if auth_header is not None else auth_headers(),
+            json=route_body,
+            headers=headers,
             timeout=10,
         )
     except Exception:

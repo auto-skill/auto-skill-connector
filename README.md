@@ -338,6 +338,14 @@ you need a metadata-only routing log for troubleshooting. The current hook
 removes legacy prompt fields from an older routing log on its next run; if you
 have not upgraded the hook, delete `~/.claude/auto-skill-routing.jsonl`.
 
+Anonymous usage analytics are also off by default. If you explicitly opt in by
+setting `AUTOSKILL_ANONYMOUS_ANALYTICS=1`, the local adapter creates one random
+installation UUID in `~/.autoskill/installation.json` and sends it with routes.
+The backend stores only a one-way hash of that UUID, never the UUID, prompt,
+IP address, or a machine fingerprint. Remove the file (or unset the variable)
+to reset/stop anonymous tracking. Account authentication always takes priority
+over the anonymous ID.
+
 Disable the adapter at any time:
 
 ```bash

@@ -17,6 +17,7 @@ Also runs a background loop that embeds any skills rows missing embeddings,
 so freshly scraped skills become semantically searchable within minutes.
 """
 import asyncio
+import hashlib
 import json
 import os
 import re
@@ -438,6 +439,7 @@ class RouteRequest(BaseModel):
     supports_isolation: bool = False
     max_inline_chars: int = DEFAULT_INLINE_CHARS
     max_capsule_chars: int = DEFAULT_CAPSULE_CHARS
+    anonymous_id: str | None = None
 
 
 class SemanticSearchRequest(BaseModel):
@@ -753,6 +755,19 @@ async def _record_route_event(event: dict) -> None:
         print(f"[recommender] route event logging failed: {exc}")
 
 
+def _anonymous_id_hash(value: str | None) -> str | None:
+    """Hash a client-generated UUID before it reaches retained analytics."""
+    if not value:
+        return None
+    try:
+        normalized = str(uuid.UUID(str(value)))
+    except (ValueError, TypeError, AttributeError):
+        return None
+    if normalized == str(uuid.UUID(int=0)):
+        return None
+    return hashlib.sha256(f"autoskill-anonymous-installation-v1:{normalized}".encode("ascii")).hexdigest()
+
+
 def _none_route_payload(reason: str, start: float, route_id: str | None = None) -> dict:
     metrics = {
         "latency_ms": int((time.monotonic() - start) * 1000),
@@ -807,6 +822,7 @@ async def route(body: RouteRequest, authorization: str | None = Header(None)):
     """Deterministic backend-owned route contract for connectors."""
     start = time.monotonic()
     user = auth.user_from_authorization_header(authorization)
+    anonymous_id_hash = None if user else _anonymous_id_hash(body.anonymous_id)
     query = (body.task or body.prompt or "").strip()
     if not query:
         return _none_route_payload("empty-query", start)
@@ -820,6 +836,7 @@ async def route(body: RouteRequest, authorization: str | None = Header(None)):
                 "client_version": body.client_version[:80],
                 "id": route_id,
                 "user_id": user["id"] if user else None,
+                "anonymous_id_hash": anonymous_id_hash,
                 "query_chars": len(query),
                 "tier": "none",
                 "config_version": CONFIG_VERSION,
@@ -999,6 +1016,7 @@ async def route(body: RouteRequest, authorization: str | None = Header(None)):
             "client_version": body.client_version[:80],
             "id": route_id,
             "user_id": user["id"] if user else None,
+            "anonymous_id_hash": anonymous_id_hash,
             "query_chars": len(query),
             "tier": tier,
             "skill_id": skill.get("id") if skill else None,
