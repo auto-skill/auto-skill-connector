@@ -263,6 +263,9 @@ async def healthz():
 async def readyz():
     def _probe():
         counts = store.readiness_stats()
+        # Startup also warms the local index. warm_vector_index() is guarded by
+        # local_store's rebuild lock, so a health-check race waits for and then
+        # reuses the same published matrix instead of rebuilding concurrently.
         if counts["vector_index"]["valid_vectors"] and not counts["vector_index"]["cache_ready"]:
             counts["vector_index"] = store.warm_vector_index()
         counts["scraper"] = store.scrape_run_summary(STALE_SCRAPE_RUN_SECONDS)
