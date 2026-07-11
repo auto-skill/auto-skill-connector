@@ -1,7 +1,7 @@
 # Auto-Skill
 
 Trusted, compatible skill discovery and lifecycle foundations for Claude Code,
-Codex, and Cursor.
+Codex, Cursor, and GitHub Copilot.
 
 Auto-Skill finds portable Agent Skills, checks their structure and provenance,
 routes an explicit task to a compatible `SKILL.md`, and supports careful local
@@ -19,7 +19,8 @@ What ships now:
 - Full in-turn use only for high-confidence, risk-0 public content whose
   canonical hash and returned raw digest verify; ambiguous matches return hints.
 - Explicit search, route, preview, and manual persistent install commands.
-- Native `SKILL.md` install targets for Claude Code, Codex, and Cursor.
+- Native `SKILL.md` install targets for Claude Code, Codex, Cursor, and
+  GitHub Copilot.
 - An optional Claude Code prompt adapter for users who deliberately enable Auto
   Mode.
 - A hosted MCP connector with no skill/filesystem writes; optional enum-only
@@ -45,24 +46,27 @@ Not shipped yet:
 
 ## Client Compatibility
 
-Claude Code, Codex, and Cursor all support Agent Skills built around
-`SKILL.md`. Their native discovery locations differ:
+Claude Code, Codex, Cursor, and GitHub Copilot all support Agent Skills built
+around `SKILL.md`. Their native discovery locations differ:
 
 | Client | Auto-Skill default user location | Launch behavior |
 | --- | --- | --- |
 | Claude Code | `~/.claude/skills` | Manual install; optional opt-in prompt adapter |
 | Codex | `~/.agents/skills` | Manual install and explicit MCP/CLI routing |
 | Cursor | `~/.agents/skills` | Manual install and explicit MCP/CLI routing |
+| GitHub Copilot | `~/.agents/skills` | Manual install and explicit MCP routing |
 
-Cursor also recognizes `~/.cursor/skills`. Auto-Skill uses the portable
-`~/.agents/skills` location by default for Codex and Cursor. `SKILLS_HOME` can
-override the selected destination.
+Cursor also recognizes `~/.cursor/skills`, and Copilot also recognizes
+`~/.copilot/skills`. Auto-Skill uses the portable `~/.agents/skills` location
+by default for Codex, Cursor, and Copilot, so one installed copy serves all
+three. `SKILLS_HOME` can override the selected destination.
 
 Vendor references:
 
 - [Claude Code skills](https://code.claude.com/docs/en/skills)
 - [Codex skills](https://developers.openai.com/codex/skills)
 - [Cursor Agent Skills](https://cursor.com/docs/skills)
+- [Copilot agent skills](https://docs.github.com/en/copilot/concepts/agents/about-agent-skills)
 
 ## Routing Modes
 

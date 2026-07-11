@@ -777,7 +777,7 @@ async def _command_doctor(args: argparse.Namespace) -> int:
         print(f"mcp: unavailable ({exc})")
         ok = False
     print("skill install targets:")
-    for target in ("claude", "codex", "cursor"):
+    for target in ("claude", "codex", "cursor", "copilot"):
         print(f"  {target}: {get_skills_home(target)}")
 
     profile = await whoami()
@@ -831,7 +831,7 @@ def build_parser() -> argparse.ArgumentParser:
     install.add_argument("source", nargs="+", help="Skill URL or task description.")
     install.add_argument(
         "--target",
-        choices=["claude", "codex", "cursor"],
+        choices=["claude", "codex", "cursor", "copilot"],
         default="claude",
         help="Local Agent Skills target.",
     )

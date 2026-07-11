@@ -565,7 +565,7 @@ def test_dry_run_reports_existing_skill_without_force(tmp_path: Path) -> None:
     assert result["dry_run"] is True
 
 
-@pytest.mark.parametrize("target", ["claude", "codex", "cursor"])
+@pytest.mark.parametrize("target", ["claude", "codex", "cursor", "copilot"])
 def test_portable_install_targets_write_skill_md(tmp_path: Path, target: str) -> None:
     result = core.install_skill_from_content(
         "name: demo\n\nUse care.",

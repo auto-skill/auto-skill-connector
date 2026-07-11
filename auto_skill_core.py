@@ -143,14 +143,16 @@ def get_skills_home(target: str = "claude") -> Path:
     defaults = {
         "claude": Path.home() / ".claude" / "skills",
         # Codex's current canonical user-level Agent Skills location. Cursor
-        # also discovers this open-standard location, so using it for Cursor
-        # keeps one portable copy available to both clients.
+        # and GitHub Copilot also discover this open-standard location, so
+        # using it for all three keeps one portable copy available to every
+        # non-Claude client.
         "codex": Path.home() / ".agents" / "skills",
         "cursor": Path.home() / ".agents" / "skills",
+        "copilot": Path.home() / ".agents" / "skills",
     }
     if target not in defaults:
         raise UnsupportedTargetError(
-            f"Unsupported skill target {target!r}; choose claude, codex, or cursor."
+            f"Unsupported skill target {target!r}; choose claude, codex, cursor, or copilot."
         )
     override = os.getenv(f"AUTOSKILL_{target.upper()}_SKILLS_HOME") or os.getenv("SKILLS_HOME")
     return Path(override).expanduser() if override else defaults[target]
@@ -1142,9 +1144,9 @@ def install_skill_from_content(
     """Install fetched skill content into the requested target."""
     target = (target or "").strip().lower()
     # Validate the target even when tests/callers provide an explicit home.
-    if target not in {"claude", "codex", "cursor"}:
+    if target not in {"claude", "codex", "cursor", "copilot"}:
         raise UnsupportedTargetError(
-            f"Unsupported skill target {target!r}; choose claude, codex, or cursor."
+            f"Unsupported skill target {target!r}; choose claude, codex, cursor, or copilot."
         )
     slug = _slugify(name or _extract_skill_name(content) or source_url.rstrip("/").split("/")[-1])
     home = Path(skills_home) if skills_home is not None else get_skills_home(target)
