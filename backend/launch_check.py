@@ -410,6 +410,11 @@ def check_http(
     if status == 200 and body.get("ok") is True and body.get("active_skills", 0) > 0 and body.get("embedded_skills", 0) > 0:
         reporter.pass_("http readyz", json.dumps(body, sort_keys=True)[:220])
         _check_scraper_summary(reporter, "readyz scraper", body.get("scraper") or {})
+        route_privacy = body.get("route_privacy") or {}
+        if route_privacy.get("ok") is True and int(route_privacy.get("violations") or 0) == 0:
+            reporter.pass_("route privacy", "retained_prompt_fields=0")
+        else:
+            reporter.fail("route privacy", f"privacy status not clean: {json.dumps(route_privacy, sort_keys=True)}")
     else:
         detail = _bad_gateway_detail(status, body) or _empty_runtime_detail(body)
         reporter.fail("http readyz", detail or f"status={status}, body={body}")
@@ -433,6 +438,12 @@ def check_http(
     if status == 200 and body.get("tier") in {"full", "hint"} and body.get("skill"):
         skill = body.get("skill") or {}
         reporter.pass_("route direct", f"tier={body.get('tier')}, skill={skill.get('name') or skill.get('slug')}")
+        verification = skill.get("verification") or {}
+        if body.get("tier") == "full" and not (
+            verification.get("content_hash_verified")
+            and verification.get("static_instruction_only")
+        ):
+            reporter.fail("route verification", "full route was not verified as static and content-hash pinned")
         _check_route_budget(
             reporter,
             "route direct budget",
@@ -493,7 +504,7 @@ def check_http(
         ("GET", "/library", None),
         ("GET", "/library/files/example.md", None),
         ("GET", "/route-metrics", None),
-        ("POST", "/route-feedback", {"route_id": "launch-check", "outcome": "used"}),
+        ("GET", "/find-semantic", None),
         ("GET", "/rest/v1/skills?select=id", None),
         ("POST", "/rest/v1/rpc/search_skills", {"query": "spreadsheet", "max_results": 3}),
         ("POST", "/rest/v1/rpc/vector_search_skills", {"query_embedding": [0.0] * 384, "match_count": 3}),
@@ -511,12 +522,31 @@ def check_http(
             payload,
             headers={"x-forwarded-for": "203.0.113.10"},
         )
-        if status != 403:
+        if status not in {401, 403}:
             guard_failures.append(f"{method} {path} -> status={status}, body={body}")
     if guard_failures:
         reporter.fail("public write/admin guard", "; ".join(guard_failures)[:1200])
     else:
         reporter.pass_("public write/admin guard", f"{len(guarded_paths)} forwarded admin/write probes returned 403")
+
+    for method, path, payload in (
+        ("POST", "/route-skip", {"prompt": "legacy", "reason": "test"}),
+        ("POST", "/route-feedback", {"route_id": "launch-check", "outcome": "used"}),
+    ):
+        status, body = _json_request(
+            base_url,
+            method,
+            path,
+            payload,
+            headers={"x-forwarded-for": "203.0.113.10"},
+        )
+        # /route-feedback is public for enum-only outcome metadata, so an
+        # unknown synthetic route id correctly returns 404. /route-skip is
+        # retired and may return 401/403/410 depending on middleware order.
+        if status not in {401, 403, 404, 410}:
+            reporter.fail("protected route metadata", f"{method} {path} -> status={status}, body={body}")
+        else:
+            reporter.pass_("protected route metadata", f"{method} {path} -> {status}")
 
 
 def check_mcp_health(reporter: Reporter, health_url: str) -> None:

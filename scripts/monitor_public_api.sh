@@ -10,9 +10,13 @@ BASE_URL="${MONITOR_BASE_URL:-https://skills.autoskill.dev}"
 failed=0
 
 check() {
-  local method="$1" path="$2" want="$3"
+  local method="$1" path="$2" want="$3" data="${4:-}"
   local status
-  status=$(curl -s -o /dev/null -w "%{http_code}" -X "$method" "${BASE_URL}${path}" --max-time 15)
+  if [ -n "$data" ]; then
+    status=$(curl -s -o /dev/null -w "%{http_code}" -X "$method" "${BASE_URL}${path}" -H 'Content-Type: application/json' --data "$data" --max-time 15)
+  else
+    status=$(curl -s -o /dev/null -w "%{http_code}" -X "$method" "${BASE_URL}${path}" --max-time 15)
+  fi
   if [ "$status" = "$want" ]; then
     echo "OK: $method $path -> $status"
   else
@@ -22,11 +26,9 @@ check() {
 }
 
 check GET /healthz 200
-# All three require a bearer token; without one they should 401 (proves the
-# route and its account guard are alive and correctly wired) -- a 403
-# "read-only public API" or a 5xx here means something regressed, same class
-# of bug that caused the /skills-catalog outage.
-check GET /find-semantic?q=test 401
+# Public discovery/routing are anonymous; account-only surfaces below should
+# still return 401 without a bearer token.
+check POST /find-semantic 200 '{"q":"create a spreadsheet report","limit":2}'
 check GET /skills-catalog 401
 check GET /auth/whoami 401
 

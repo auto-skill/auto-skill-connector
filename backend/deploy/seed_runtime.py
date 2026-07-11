@@ -46,6 +46,9 @@ def replace_db(source: Path, target: Path, force: bool) -> None:
     if target.exists():
         target.unlink()
     shutil.copy2(source, target)
+    marker = target.parent / ".route-privacy-scrub-v1.complete"
+    if marker.exists():
+        marker.unlink()
 
 
 def replace_library(source: Path, target: Path, force: bool) -> None:

@@ -1,7 +1,7 @@
 [project]
 name = "auto-skill-connector"
 version = "0.1.0"
-description = "Find, preview, and safely install reusable AI agent skills"
+description = "Trusted Agent Skill discovery and compatibility for Claude Code, Codex, and Cursor"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }

@@ -1,5 +1,28 @@
 # Auto-Skill Backend Runbook
 
+## Route Privacy Migration
+
+The droplet deploy performs a one-time physical scrub before creating
+`backend/data/.route-privacy-scrub-v1.complete`. It stops API, MCP, worker, and
+Litestream database access; enables SQLite secure deletion; truncates the WAL;
+runs a disk-preflighted `VACUUM`; verifies integrity and zero retained route
+fields; scrubs/removes local database backup copies; purges both the Litestream
+and legacy database-backup R2 prefixes; then starts
+and verifies a fresh sanitized Litestream generation.
+
+Do not restore an image or database backup from before this marker. If the
+automated migration stops, leave the privacy-fixed images in place, resolve the
+reported disk/R2 problem, and rerun the deploy. Public `/readyz` must report
+`route_privacy.ok=true` and `route_privacy.violations=0`.
+
+For a stopped local database, the equivalent count-only audit and physical
+scrub are:
+
+```powershell
+python scrub_route_privacy.py --db-path data\local_skills.db
+python scrub_route_privacy.py --db-path data\local_skills.db --apply --timeout-seconds 30
+```
+
 ## Alpha Launch Checklist
 
 1. Back up the current `local_skills.db` and `skills_library/`:

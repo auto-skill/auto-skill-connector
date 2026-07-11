@@ -25,7 +25,9 @@ def test_doctor_outputs_setup(
     out = capsys.readouterr().out
     assert result == 0
     assert "auto-skill doctor" in out
-    assert "codex permanent skill install: unsupported" in out
+    assert "skill install targets:" in out
+    assert "codex:" in out
+    assert ".agents" in out
 
 
 def test_route_outputs_selected_skill(
@@ -328,7 +330,25 @@ def test_install_dry_run_does_not_write(
     out = capsys.readouterr().out
     assert result == 0
     assert "dry run: no files written" in out
+    assert "publisher identity: unverified" in out
+    assert "content sha256:" in out
     assert not (tmp_path / "demo" / "SKILL.md").exists()
+
+
+def test_install_capability_warnings_cover_non_static_skills() -> None:
+    content = """---
+name: connected-skill
+description: Run a connected workflow with bundled tools.
+allowed-tools: Bash
+---
+
+Run scripts/deploy.py, then pip install a dependency and call https://example.com.
+"""
+    warnings = cli._install_capability_warnings(content)
+    assert "declares agent tool permissions" in warnings
+    assert "references bundled scripts" in warnings
+    assert "mentions network access" in warnings
+    assert "installs external dependencies" in warnings
 
 
 def test_install_requires_yes_when_noninteractive(
@@ -374,8 +394,23 @@ def test_install_with_yes_writes_file(
     assert (tmp_path / "demo" / "SKILL.md").read_text(encoding="utf-8") == "name: demo\n\nInstructions."
 
 
-def test_codex_install_is_honest(capsys: pytest.CaptureFixture[str]) -> None:
+def test_codex_install_uses_native_agent_skills_path(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    async def fake_resolve(source: str) -> dict:
+        return {
+            "content": "name: demo\n\nInstructions.",
+            "source_url": source,
+            "metadata": {"url": source},
+            "warnings": [],
+        }
+
+    monkeypatch.setattr(cli, "_resolve_cli_skill", fake_resolve)
+    monkeypatch.setenv("AUTOSKILL_CODEX_SKILLS_HOME", str(tmp_path / ".agents" / "skills"))
     result = cli.main(["install", "https://example.com/demo/SKILL.md", "--target", "codex", "--dry-run"])
     captured = capsys.readouterr()
-    assert result == 2
-    assert "Codex does not currently support permanent Claude SKILL.md installs" in captured.err
+    assert result == 0
+    assert str(tmp_path / ".agents" / "skills" / "demo" / "SKILL.md") in captured.out
+    assert "explicit local install" in captured.out

@@ -1,125 +1,187 @@
-# Security
+# Security and Privacy
 
-`auto-skill` helps agents discover and install reusable instructions. Treat
-skills like code: read them before trusting them.
+Auto-Skill discovers and applies reusable agent instructions. Treat a skill as
+code: provenance and integrity checks reduce risk, but they do not make unknown
+instructions trustworthy.
 
-## Remote Search
+## Default Behavior
 
-Search and route queries are sent to the configured search backend:
-`AUTOSKILL_URL`, defaulting to `https://skills.autoskill.dev`. There is no
-fallback backend -- if this is unreachable, search reports no route found
-rather than silently querying a second, possibly stale service.
+Auto-Skill is on-demand by default. Installing the CLI or MCP server does not
+intercept prompts and does not make a route call automatically. Prompt text is
+sent to a route service only when:
 
-The optional Claude Code prompt hook sends a truncated copy of each eligible
-prompt to the search backend. Do not enable the hook for conversations that may
-contain secrets, private customer data, credentials, or sensitive source code.
+- a user or agent explicitly calls a search or routing command/tool; or
+- the user has deliberately enabled a client-specific Auto Mode adapter.
 
-**The backend retains the full raw prompt text of every message it evaluates
-for routing** -- not just a hash or truncated snippet -- regardless of
-whether you're logged in. If you are logged in (`auto-skill login`), that
-retained text is additionally tied to your account so you can review exactly
-what was (or wasn't) routed and why via your account's run history;
-logged-out calls retain the same raw text without a user attached to it.
-This matches what the site's trust section discloses; if you don't want
-prompt text retained server-side at all, self-host your own backend (see
-below) rather than pointing at the hosted one.
+An MCP server cannot intercept every client prompt by itself.
 
-To disable self-hosted search entirely, set:
+## Prompt Handling
+
+Search and route requests go to `AUTOSKILL_URL`, which defaults to
+`https://skills.autoskill.dev`. The service needs the submitted task text long
+enough to rank candidates, but it does not retain raw prompt text or prompt
+snippets.
+
+Route events retain only operational metadata needed to evaluate the router,
+such as:
+
+- account or caller identifier when authentication is in use;
+- prompt length;
+- selected skill identifier, source, and route tier;
+- latency and token-size estimates;
+- client name/version and enum outcome.
+
+Feedback notes are accepted only for old-client compatibility and are ignored;
+they are never retained. There is no hosted raw-prompt diagnostics mode.
+
+The optional Claude Code adapter filters acknowledgements, commands,
+meta/status prompts, and pasted context locally. Skipped prompts are not sent
+to `/route` or a separate skip-analytics endpoint. Its local routing log also
+contains metadata only: no prompt body and no prompt snippet.
+
+To disable remote routing entirely:
 
 ```bash
 AUTOSKILL_URL=
 ```
 
-## What `risk_score` Actually Checks (and Doesn't)
+## Auto Mode Is Explicit Opt-in
 
-`risk_score` is produced by pattern-based heuristics scanning a skill's
-declared metadata and fetched content for known-bad indicators (e.g. obvious
-exfiltration patterns, obfuscated payloads). **It is not a malware guarantee**,
-and it does not evaluate whether a skill's instructions are something you'd
-actually want auto-applied. Concretely, it does not currently catch:
+Auto Mode is a client adapter that sees eligible prompt text before the model
+answers. Enabling it has privacy and latency consequences, so it requires an
+explicit user action and confirmation.
 
-- A skill that takes a real, hard-to-reverse action (sending a message,
-  deleting something, calling a paid API) while explicitly instructing the
-  agent not to confirm first. This happened during development: a
-  `risk_score=0` skill read a bot token from a secrets file and said "send
-  the message immediately -- do NOT ask for confirmation." A separate,
-  narrower heuristic now demotes content matching an action-verb +
-  no-confirmation pattern to hint-only (name/url, never auto-applied
-  instructions) regardless of `risk_score` -- see
-  `_is_unconfirmed_action_content` in `auto_skill_core.py` and
-  `hooks/skill_suggest.py`. This is a stopgap pattern match, not a semantic
-  understanding of what a skill does; a skill worded differently could still
-  slip through.
-- Whether a skill's instructions are simply bad advice, out of date, or a
-  poor fit for your task -- that's still on you to judge before applying it.
+The launch build includes a Claude Code adapter only. Codex and Cursor can use
+explicit CLI/MCP routing, but no Auto Mode adapter is claimed for those clients
+yet. MCP availability alone does not make routing automatic.
 
-## Injection Tiers
+Auto Mode applies only to the current task. It never installs a skill
+persistently.
 
-Automatic routing (the hook, `route_prompt`, `route_task`) decides how much
-of a matched skill to hand back:
+## What Content-hash Verification Means
 
-- **full** -- the whole `SKILL.md` content, meant to be applied immediately.
-  Only reached if the match clears the similarity floor, isn't a stub/HTML
-  fetch, and doesn't match the unconfirmed-action pattern above.
-- **hint** -- just the skill's name, description, and URL. Used when the
-  content-quality gates above catch something. Nothing here is auto-applied;
-  a human or a subsequent explicit preview decides.
-- **none** -- nothing cleared the similarity floor; no suggestion at all.
+At ingest, Auto-Skill normalizes valid public `SKILL.md` content and records a
+canonical SHA-256 hash. Before a public full route, the local indexed snapshot
+must match that canonical hash, and the response includes a separate raw
+SHA-256 digest for the served bytes. This detects missing or stale local cache
+content; it does not check the current upstream revision.
 
-`recommend_skill` is a legacy direct MCP preview tool, not the normal routing
-surface. It either returns full content that passed every gate, or reports
-nothing found. Treat returned content as retrieved reference material that
-still needs inspection; agents should prefer `route_task` because it can
-return full, hint, or none.
+It does not establish:
 
-## Routing Provenance Log
+- who controls the publisher account;
+- whether a repository or release was compromised before indexing;
+- whether the instructions are correct, current, or appropriate;
+- whether referenced scripts, packages, APIs, or assets are safe; or
+- whether two different skills with different hashes are semantically safe.
 
-Every routing decision the hook makes (full, hint, or none) is appended to a
-local JSONL log so a derailed session can be diagnosed after the fact --
-see `~/.claude/auto-skill-routing.jsonl`. Each line records a timestamp, the
-prompt's length and a truncated snippet, the tier, and the matched skill's
-name/url/risk_score when applicable. This file is local-only, never
-transmitted anywhere, and safe to delete; it exists purely so you (or a
-future debugging session) can answer "what did auto-skill inject, and why"
-without having to reproduce the exact prompt.
+Publisher verification, signed releases, and managed trust policy are P1.
 
-## Installing Skills
+## Risk and Quality Gates
 
-The CLI is intentionally conservative:
+`risk_score` is produced by pattern-based heuristics over metadata and fetched
+content. It can catch indicators such as obvious exfiltration language or
+obfuscated payloads. A score of zero is not a security audit or malware
+guarantee.
 
-- It previews source and destination before install.
-- It refuses non-interactive installs without `--yes`.
-- It refuses to overwrite existing skills without `--force`.
-- It supports permanent installs only for Claude-style skills today.
+The router uses three tiers:
 
-The MCP `install_skill` tool is also conservative: when the server runs as a
-streamable HTTP connector, installs are disabled by default because that URL
-may be reachable from outside your machine. Enable public installs only behind
-your own access control by setting `AUTO_SKILL_ENABLE_PUBLIC_INSTALL=1`.
+- **full**: current-task instructions only. Requires high routing confidence,
+  `risk_score=0`, valid quality-gated `SKILL.md` content, and a matching indexed
+  content hash. Static checks also reject explicit tool declarations, bundled
+  scripts, dependency installation, network commands, and dangerous shell
+  patterns from this tier.
+- **hint**: metadata and up to three candidates. Used for ambiguous,
+  unverified, risky, incomplete, platform-mismatched, or capability-bearing
+  content. No skill body is treated as active instructions.
+- **none**: nothing cleared the routing gates.
 
-Before installing a skill, review:
+Static checks cannot understand every wording or indirect instruction. A full
+route grants no tool, network, secret, permission, or side-effect capability;
+the user and client permission system remain the final boundary.
 
-- Source URL
-- Skill instructions
-- Risk score, when provided by the index
-- Any scripts, references, or commands the skill asks the agent to run
+## Prompt Injection and Side Effects
 
-## Routing And Content Quality
+A skill is untrusted input, even when its content hash matches. A malicious or
+poorly written skill can try to override the user's request, obtain secrets, or
+cause side effects.
 
-Auto-Skill filters out high-risk indexed entries, obvious HTML fetches, tiny
-stub files, and path/link-only content before injecting skill instructions. It
-also uses confidence tiers: high-confidence matches can inject full content,
-medium-confidence matches produce a hint, and low-confidence matches stay
-silent.
+Before following unfamiliar instructions, check:
 
-These checks are heuristics, not a malware guarantee. Review unfamiliar skills
-before installing them permanently or letting an agent run commands from them.
+- the original source and publisher;
+- the source snapshot, canonical hash, and served-byte digest;
+- requested tools, scripts, dependencies, files, and network destinations;
+- whether the skill asks the agent to bypass confirmation or permissions; and
+- whether the action is reversible.
+
+Client sandbox, permission, and approval controls still apply. Auto-Skill must
+not weaken them.
+
+## Manual Persistent Installation
+
+Persistent installation is CLI-only in the launch scope. Default user paths
+are:
+
+- Claude Code: `~/.claude/skills`
+- Codex: `~/.agents/skills`
+- Cursor: `~/.agents/skills` (Cursor also recognizes `~/.cursor/skills`)
+
+The CLI:
+
+- displays source and destination before writing;
+- supports a no-write `--dry-run` preview;
+- asks interactively unless the user explicitly passes `--yes`; and
+- refuses to overwrite an existing skill unless the user explicitly passes
+  `--force`.
+
+The launch installer handles static, instruction-only `SKILL.md` content. It
+does not promise to fetch or verify a complete bundle of scripts, references,
+assets, packages, or dependencies. Do not install a skill that depends on
+those files as though the single `SKILL.md` were complete.
+
+Automatic persistent install, one-time trust policies, managed updates, and
+rollback are not implemented. Back up an existing skill before using
+`--force`.
+
+## Remote MCP
+
+The hosted streamable-HTTP MCP connector is authenticated and exposes no
+skill/filesystem write tool. It
+can return route and preview information, but it cannot install files onto a
+caller device or write skills on the server host. Public remote installation
+is not a supported launch configuration.
+
+Self-hosters should keep the same boundary. Exposing a streamable-HTTP MCP
+endpoint requires HTTPS, authentication, host allowlisting, and normal network
+hardening.
+
+## Accounts and Private Data
+
+Public discovery and routing must not require an individual account solely for
+tracking. Authentication is appropriate for private skills, favorites,
+caller-specific history, and hosted MCP identity. Authenticated route metadata
+may be associated with the caller, but raw prompt text is never retained.
+
+## Local Files
+
+Local diagnostics are off by default. With `AUTOSKILL_DIAGNOSTICS=1`, the
+optional Claude adapter can create a metadata-only routing log at
+`~/.claude/auto-skill-routing.jsonl`. It is safe to delete. Protect the parent
+directory with normal user-file permissions. On its next invocation, the
+current hook also rewrites an older log to remove legacy prompt snippets and
+prompt hashes. Users who have not upgraded the hook should delete that file
+manually.
+
+CLI authentication credentials live under the user's Auto-Skill configuration
+directory. Do not copy credential files into a repository, support ticket, or
+bug report.
 
 ## Reporting Issues
 
-Please report security issues privately to the project maintainers before
-opening a public issue. Include:
+Report security issues privately to the maintainers before opening a public
+issue. Include:
 
-- The affected skill URL or command
-- The observed behavior
-- Whether a prompt hook, MCP call, or CLI command was involved
+- the affected skill URL or content hash;
+- the observed behavior;
+- whether CLI, MCP, or an opt-in adapter was involved;
+- client and Auto-Skill versions; and
+- a reproduction with prompts, credentials, and customer data removed.

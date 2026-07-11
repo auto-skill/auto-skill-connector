@@ -4,20 +4,21 @@ The hook preflights each eligible prompt, calls the configured self-hosted
 router, fetches high-confidence SKILL.md content, and prints injectable
 context. It fails open: errors and timeouts never block a chat.
 
-Security note: eligible prompt snippets are sent to the configured search
-backend. Do not enable this hook for sensitive conversations.
+Security note: eligible prompts are sent to the configured routing backend.
+Local diagnostics are disabled by default and never include prompt content.
+Do not enable remote routing for sensitive conversations.
 """
 
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import re
 import sys
 import time
 import urllib.request
 from pathlib import Path
-from urllib.parse import quote
 
 AUTOSKILL_URL = os.getenv("AUTOSKILL_URL", "https://skills.autoskill.dev").rstrip("/")
 CLIENT_NAME = "auto-skill-hook"
@@ -37,7 +38,28 @@ MAX_CONTENT_CHARS = int(os.getenv("AUTOSKILL_HOOK_MAX_CHARS", "12000"))
 _BLOB_RE = re.compile(r"github\.com/([^/]+)/([^/]+)/blob/([^/]+)/(.*)")
 _TREE_RE = re.compile(r"github\.com/([^/]+)/([^/]+)/tree/([^/]+)/(.*)")
 _ACK_PROMPTS = {"ok", "okay", "yes", "no", "thanks", "thank you", "continue", "go on", "do it", "sounds good"}
-_META_PATTERNS = ("what did you", "what are you", "what is the current state", "current state", "explain this", "summarize", "status", "whats the", "what's the", "why is", "why did", "remember th", "sounds good", "that worked", "looks good", "can you explain", "what you just")
+_META_PATTERNS = ("what did you", "what are you", "what is the current state", "current state", "whats the", "what's the", "why is", "why did", "remember th", "sounds good", "that worked", "looks good", "can you explain", "what you just")
+_META_EXACT = {"status", "summarize", "explain this"}
+_TRUTHY_VALUES = {"1", "true", "yes", "on"}
+_GENERIC_DIAGNOSTIC_REASONS = {
+    "empty prompt",
+    "command prompt",
+    "too short",
+    "too long",
+    "acknowledgement",
+    "meta prompt",
+    "route unavailable",
+    "backend route none",
+    "multiple candidates plausible",
+    "content unavailable",
+    "unsafe action downgrade",
+    "content hash not verified",
+    "selected",
+}
+
+
+def _served_content_digest(text: str) -> str:
+    return hashlib.sha256((text or "").encode("utf-8")).hexdigest() if text else ""
 
 
 def _auth_headers() -> dict[str, str]:
@@ -66,7 +88,7 @@ def _should_route(prompt: str) -> tuple[bool, str]:
         return False, "too long"
     if lowered in _ACK_PROMPTS:
         return False, "acknowledgement"
-    if any(pattern in lowered for pattern in _META_PATTERNS) and len(text) < 180:
+    if lowered in _META_EXACT or (any(pattern in lowered for pattern in _META_PATTERNS) and len(text) < 180):
         return False, "meta prompt"
     return True, "skill-shaped prompt"
 
@@ -85,25 +107,8 @@ def _safe_dedupe(skills: list[dict]) -> list[dict]:
     return result
 
 
-def _selfhosted_matches(prompt: str) -> tuple[list[dict], str] | None:
-    """Returns (matches, tier) where tier is "full" (inject the whole skill),
-    "hint" (name/url only -- several candidates are plausible), or "none"."""
-    if not AUTOSKILL_URL:
-        return None
-    try:
-        request = urllib.request.Request(
-            f"{AUTOSKILL_URL}/find-semantic?q={quote(prompt[:500])}&limit=8",
-            headers=_auth_headers(),
-        )
-        with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as r:
-            body = json.load(r)
-            return _safe_dedupe(body.get("results") or []), body.get("tier", "none")
-    except Exception:
-        return None
-
-
 def _selfhosted_route(prompt: str) -> dict | None:
-    """Call the backend-owned route contract. None means try legacy fallback."""
+    """Call the sole backend routing contract. Fail open on any error."""
     if not AUTOSKILL_URL:
         return None
     try:
@@ -219,7 +224,7 @@ def _fetch_backend_content(content_url: str) -> str:
     return ""
 
 
-def _report_outcome(route: dict | None, outcome: str, note: str) -> None:
+def _report_outcome(route: dict | None, outcome: str) -> None:
     """Attach this hook's local application decision (was a match actually
     shown/applied, downgraded, or rejected) to the route_events row /route
     already created for this call -- reuses the existing route-feedback
@@ -230,7 +235,7 @@ def _report_outcome(route: dict | None, outcome: str, note: str) -> None:
         return
     try:
         body = json.dumps(
-            {"route_id": route_id, "outcome": outcome, "source": CLIENT_NAME, "note": note[:300]}
+            {"route_id": route_id, "outcome": outcome, "source": CLIENT_NAME}
         ).encode("utf-8")
         request = urllib.request.Request(
             f"{AUTOSKILL_URL}/route-feedback",
@@ -243,28 +248,54 @@ def _report_outcome(route: dict | None, outcome: str, note: str) -> None:
         pass
 
 
-def _log_routing_decision(prompt: str, tier: str, skill: dict | None = None, reason: str = "") -> None:
-    """Append one JSONL record so a derailed session can be diagnosed later
-    without needing to reproduce the exact prompt. Local-only, never
-    transmitted; best-effort and never allowed to break routing itself.
+def _diagnostics_enabled() -> bool:
+    return os.getenv("AUTOSKILL_DIAGNOSTICS", "").strip().lower() in _TRUTHY_VALUES
 
-    The prompt text itself is also stored server-side, in the route_events
-    row /route already created for this call (see recommender.py) -- that
-    part is intentionally not local-only, so "why didn't this trigger" has
-    an actual record to answer from. This JSONL file is a redundant local
-    copy for offline/no-network debugging, not the only place it lives.
+
+def _scrub_legacy_diagnostics() -> None:
+    """Best-effort removal of prompt fields written by pre-privacy hooks."""
+    try:
+        if not ROUTING_LOG_PATH.is_file():
+            return
+        raw = ROUTING_LOG_PATH.read_text(encoding="utf-8", errors="replace")
+        forbidden = ("prompt_snippet", "prompt_text", "query_hash", "prompt")
+        if not any(f'"{key}"' in raw for key in forbidden):
+            return
+        cleaned: list[str] = []
+        for line in raw.splitlines()[-MAX_LOG_LINES:]:
+            try:
+                record = json.loads(line)
+            except (TypeError, ValueError):
+                continue
+            if not isinstance(record, dict):
+                continue
+            for key in forbidden:
+                record.pop(key, None)
+            cleaned.append(json.dumps(record, ensure_ascii=False))
+        temp_path = ROUTING_LOG_PATH.with_suffix(ROUTING_LOG_PATH.suffix + ".tmp")
+        temp_path.write_text("\n".join(cleaned) + ("\n" if cleaned else ""), encoding="utf-8")
+        temp_path.replace(ROUTING_LOG_PATH)
+    except Exception:
+        pass
+
+
+def _log_routing_decision(prompt: str, tier: str, skill: dict | None = None, reason: str = "") -> None:
+    """Append a metadata-only local diagnostic record when explicitly enabled.
+
+    Prompt content and prompt-derived hashes are never written. Logging is
+    best-effort and must never affect routing.
     """
+    if not _diagnostics_enabled():
+        return
     try:
         record = {
-            "at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
             "tier": tier,
             "prompt_len": len(prompt),
-            "prompt_snippet": prompt[:120],
+            "reason": reason if reason in _GENERIC_DIAGNOSTIC_REASONS else "routing decision",
         }
-        if reason:
-            record["reason"] = reason
         if skill:
-            record["skill"] = {
+            record["selected_skill"] = {
                 "name": skill.get("name"),
                 "url": skill.get("url"),
                 "risk_score": skill.get("risk_score"),
@@ -282,7 +313,10 @@ def _log_routing_decision(prompt: str, tier: str, skill: dict | None = None, rea
 def main() -> None:
     payload = json.load(sys.stdin)
     prompt = (payload.get("prompt") or "").strip()
-    if not prompt:
+    _scrub_legacy_diagnostics()
+    should_route, gate_reason = _should_route(prompt)
+    if not should_route:
+        _log_routing_decision(prompt, "skipped", reason=gate_reason)
         return
 
     # No Supabase fallback: it was frozen since 2026-07-05 (storage moved
@@ -291,19 +325,14 @@ def main() -> None:
     # open by design -- an unreachable self-hosted server just means no
     # suggestion, not a stale one.
     route = _selfhosted_route(prompt)
-    if route is not None:
-        tier = str(route.get("tier") or "none").lower()
-        skill = route.get("skill") or {}
-        candidates = route.get("candidates") if isinstance(route.get("candidates"), list) else []
-        matches = _safe_dedupe(([skill] if skill else []) + [c for c in candidates if isinstance(c, dict)])
-    else:
-        found = _selfhosted_matches(prompt)
-        if found is None:
-            return
-        matches, tier = found
-        if not matches:
-            return
-        skill = matches[0]
+    if route is None:
+        _log_routing_decision(prompt, "none", reason="route unavailable")
+        return
+
+    tier = str(route.get("tier") or "none").lower()
+    skill = route.get("skill") or {}
+    candidates = route.get("candidates") if isinstance(route.get("candidates"), list) else []
+    matches = _safe_dedupe(([skill] if skill else []) + [c for c in candidates if isinstance(c, dict)])
 
     if not matches or tier == "none":
         _log_routing_decision(prompt, "none", None, reason="backend route none")
@@ -345,25 +374,37 @@ def main() -> None:
             f"{options_text}"
         )
 
+    verification = skill.get("verification") if isinstance(skill.get("verification"), dict) else {}
+    if tier == "full" and (
+        verification.get("content_hash_verified") is not True
+        or verification.get("static_instruction_only") is not True
+    ):
+        _print_hint("content was not verified as static and hash-pinned")
+        _log_routing_decision(prompt, "hint", skill, reason="content hash not verified")
+        _report_outcome(route, "shown")
+        return
+
     if tier == "hint":
         # Several candidates are plausible -- name the option instead of
         # committing to one skill's content, which would bias toward
         # whichever happened to rank first among near-ties.
         _print_hint("multiple candidates plausible")
         _log_routing_decision(prompt, "hint", skill, reason="multiple candidates plausible")
-        _report_outcome(route, "shown", "multiple candidates plausible; shown as hint, not auto-applied")
+        _report_outcome(route, "shown")
         return
 
-    content = ""
-    if route is not None:
-        content = route.get("content") or ""
-        if not content and route.get("content_url"):
-            content = _fetch_backend_content(str(route.get("content_url")))
-    else:
-        content = _fetch_content(url)
+    content = route.get("content") or ""
+    if not content and route.get("content_url"):
+        content = _fetch_backend_content(str(route.get("content_url")))
     if not content:
-        _log_routing_decision(prompt, "none", skill, reason="content fetch failed or rejected (HTML/stub)")
-        _report_outcome(route, "failed", "content fetch failed or rejected (HTML/stub)")
+        _log_routing_decision(prompt, "none", skill, reason="content unavailable")
+        _report_outcome(route, "failed")
+        return
+    expected_digest = verification.get("content_digest")
+    if expected_digest and _served_content_digest(content) != expected_digest:
+        _print_hint("served content digest mismatch")
+        _log_routing_decision(prompt, "hint", skill, reason="content digest mismatch")
+        _report_outcome(route, "shown")
         return
     if _is_unconfirmed_action_content(content):
         # Stopgap: this skill's body pairs an action verb (send/post/delete/...)
@@ -371,8 +412,8 @@ def main() -> None:
         # this, so never silently inject it as active instructions -- surface
         # it as a hint and let a human/Claude decide with eyes open.
         _print_hint("looks like it takes an action without asking for confirmation")
-        _log_routing_decision(prompt, "hint", skill, reason="unconfirmed-action content downgrade")
-        _report_outcome(route, "shown", "unconfirmed-action content downgrade; shown as hint only")
+        _log_routing_decision(prompt, "hint", skill, reason="unsafe action downgrade")
+        _report_outcome(route, "shown")
         return
     if len(content) > MAX_CONTENT_CHARS:
         content = f"{content[:MAX_CONTENT_CHARS]}\n\n[auto-skill: truncated]"
@@ -385,8 +426,8 @@ def main() -> None:
         f"{content}\n"
         "</auto_skill_content>"
     )
-    _log_routing_decision(prompt, "full", skill)
-    _report_outcome(route, "injected", "injected as active task instructions")
+    _log_routing_decision(prompt, "full", skill, reason="selected")
+    _report_outcome(route, "injected")
 
 
 if __name__ == "__main__":

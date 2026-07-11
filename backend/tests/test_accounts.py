@@ -473,8 +473,9 @@ class AccountsEndpointTests(unittest.TestCase):
             resp_a = self.client.post(
                 "/route", json={"task": "deploy to fly"}, headers={"Authorization": f"Bearer {token_a}"}
             )
-            self.assertEqual(resp_a.json()["tier"], "full")
-            self.assertEqual(resp_a.json()["content"], "FLY INSTRUCTIONS")
+            self.assertEqual(resp_a.json()["tier"], "hint")
+            self.assertEqual(resp_a.json()["content"], None)
+            self.assertEqual(resp_a.json()["skill"]["name"], "deploy-to-fly")
 
             resp_b = self.client.post(
                 "/route", json={"task": "deploy to fly"}, headers={"Authorization": f"Bearer {token_b}"}
@@ -490,11 +491,11 @@ class AccountsEndpointTests(unittest.TestCase):
             return []
 
         with patch("recommender.retrieve_skills", fake_retrieve):
-            anon = self.client.get("/find-semantic", params={"q": "deploy to fly"})
+            anon = self.client.post("/find-semantic", json={"q": "deploy to fly"})
             self.assertEqual(anon.json()["results"], [])
 
-            authed = self.client.get(
-                "/find-semantic", params={"q": "deploy to fly"}, headers={"Authorization": f"Bearer {token_a}"}
+            authed = self.client.post(
+                "/find-semantic", json={"q": "deploy to fly"}, headers={"Authorization": f"Bearer {token_a}"}
             )
             names = [r.get("name") for r in authed.json()["results"]]
             self.assertIn("deploy-to-fly", names)

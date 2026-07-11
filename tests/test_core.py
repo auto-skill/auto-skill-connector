@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 
 import pytest
@@ -40,19 +41,20 @@ class UnreachableClient:
     there is no fallback backend (dropped 2026-07-07: the old Supabase
     fallback was frozen and could only serve stale results silently)."""
 
-    async def get(self, url: str, **kwargs: object) -> FakeResponse:
+    async def post(self, url: str, **kwargs: object) -> FakeResponse:
         del kwargs
         if "find-semantic" in url:
             return FakeResponse(530, {})
         raise AssertionError(f"no fallback should be attempted: {url}")
 
-    async def post(self, url: str, **kwargs: object) -> FakeResponse:
-        raise AssertionError(f"no fallback should be attempted: {url}")
-
 
 class SelfHostedClient:
     async def get(self, url: str, **kwargs: object) -> FakeResponse:
-        del url, kwargs
+        raise AssertionError(f"search text must not be sent in a GET URL: {url} {kwargs}")
+
+    async def post(self, url: str, **kwargs: object) -> FakeResponse:
+        assert url.endswith("/find-semantic")
+        assert kwargs["json"] == {"q": "ambiguous browser task", "limit": 8, "gate": False}
         return FakeResponse(
             200,
             {
@@ -62,10 +64,6 @@ class SelfHostedClient:
                 ]
             },
         )
-
-    async def post(self, url: str, **kwargs: object) -> FakeResponse:
-        raise AssertionError(f"fallback should not be called: {url}")
-
 
 class RouteClient:
     async def get(self, url: str, **kwargs: object) -> FakeResponse:
@@ -89,6 +87,12 @@ class RouteClient:
                     "risk_score": 0,
                     "quality_status": "active",
                     "quality_score": 92,
+                    "verification": {
+                        "content_hash_verified": True,
+                        "static_instruction_only": True,
+                        "source": "indexed-local-copy",
+                        "publisher_verified": False,
+                    },
                 },
                 "content": VALID_SKILL,
                 "route_id": "route-123",
@@ -203,6 +207,8 @@ def test_route_task_payload_returns_router_decision(monkeypatch: pytest.MonkeyPa
     assert result["route_summary"]["metrics"]["skill_find_ms"] == 30
     assert "Generate the workbook" in result["skill_content"]
     assert "apply it immediately" in result["instructions"]
+    assert "task" not in result
+    assert "make a spreadsheet" not in json.dumps(result)
 
 
 def test_route_task_payload_downgrades_oversized_backend_content(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -225,6 +231,7 @@ def test_route_task_payload_downgrades_oversized_backend_content(monkeypatch: py
                         "route_score": 0.92,
                         "similarity": 0.92,
                         "risk_score": 0,
+                        "verification": {"content_hash_verified": True, "static_instruction_only": True},
                     },
                     "content": VALID_SKILL + ("\n- Extra detailed workflow step." * 20),
                     "score_debug": {"tier": "full"},
@@ -330,6 +337,7 @@ def test_route_task_skips_platform_specific_false_positive(monkeypatch: pytest.M
                         "route_score": 0.906,
                         "similarity": 0.906,
                         "risk_score": 0,
+                        "verification": {"content_hash_verified": True, "static_instruction_only": True},
                     },
                     "content": """---
 name: landing-page-architect
@@ -387,7 +395,6 @@ def test_record_route_feedback_posts_privacy_safe_payload(monkeypatch: pytest.Mo
                 "route_id": "route-123",
                 "outcome": "used",
                 "source": core.CLIENT_NAME,
-                "note": "",
             }
             return FakeResponse(200, {"ok": True})
 
@@ -406,65 +413,43 @@ def test_record_route_feedback_fails_closed_for_public_or_invalid(monkeypatch: p
     assert asyncio.run(core.record_route_feedback("route-123", "raw prompt text", client=FeedbackClient())) is False
 
 
-def test_route_task_falls_back_for_legacy_backend_without_route(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_route_task_does_not_fall_back_to_query_string_search() -> None:
     class LegacyClient:
         async def post(self, url: str, **kwargs: object) -> FakeResponse:
             del url, kwargs
             return FakeResponse(403, {"error": "read-only public API"})
 
         async def get(self, url: str, **kwargs: object) -> FakeResponse:
-            if "find-semantic" in url:
-                return FakeResponse(
-                    200,
-                    {
-                        "results": [
-                            {
-                                "name": "spreadsheet-router",
-                                "description": "Create spreadsheet reports.",
-                                "url": "https://github.com/example/skills/tree/main/spreadsheet",
-                                "rank": 10,
-                                "similarity": 0.92,
-                                "risk_score": 0,
-                            }
-                        ]
-                    },
-                )
-            raise AssertionError(f"unexpected get: {url} {kwargs}")
+            raise AssertionError(f"automatic routing must not use GET fallback: {url} {kwargs}")
 
-    async def fake_fetch(client: object, url: str) -> str:
-        del client
-        assert url == "https://github.com/example/skills/tree/main/spreadsheet"
-        return VALID_SKILL
-
-    monkeypatch.setattr(core, "_fetch_content", fake_fetch)
     result = asyncio.run(core.route_task_payload("make a spreadsheet", client=LegacyClient()))
-    assert result["routed"] is True
-    assert result["search_backend"] == "self-hosted"
+    assert result["routed"] is False
+    assert result["search_backend"] is None
 
 
 def test_recommend_skill_payload_is_explicit_preview_only(monkeypatch: pytest.MonkeyPatch) -> None:
     class PreviewClient:
         async def get(self, url: str, **kwargs: object) -> FakeResponse:
-            if "find-semantic" in url:
-                return FakeResponse(
-                    200,
-                    {
-                        "results": [
-                            {
-                                "name": "spreadsheet-router",
-                                "description": "Create spreadsheet reports.",
-                                "url": "https://github.com/example/skills/tree/main/spreadsheet",
-                                "rank": 10,
-                                "similarity": 0.92,
-                                "risk_score": 0,
-                            }
-                        ]
-                    },
-                )
-            raise AssertionError(f"unexpected get: {url} {kwargs}")
+            raise AssertionError(f"search text must not be sent in a GET URL: {url} {kwargs}")
 
         async def post(self, url: str, **kwargs: object) -> FakeResponse:
-            raise AssertionError(f"recommend_skill should not call /route: {url} {kwargs}")
+            assert url.endswith("/find-semantic")
+            assert kwargs["json"]["q"] == "make a spreadsheet"
+            return FakeResponse(
+                200,
+                {
+                    "results": [
+                        {
+                            "name": "spreadsheet-router",
+                            "description": "Create spreadsheet reports.",
+                            "url": "https://github.com/example/skills/tree/main/spreadsheet",
+                            "rank": 10,
+                            "similarity": 0.92,
+                            "risk_score": 0,
+                        }
+                    ]
+                },
+            )
 
     async def fake_fetch(client: object, url: str) -> str:
         del client
@@ -483,47 +468,43 @@ def test_recommend_skill_payload_is_explicit_preview_only(monkeypatch: pytest.Mo
     assert "prefer route_task" in instructions
 
 
-def test_legacy_route_downgrades_oversized_fetched_content(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("AUTOSKILL_MAX_INJECTED_CHARS", "260")
-
-    class LegacyClient:
-        async def post(self, url: str, **kwargs: object) -> FakeResponse:
-            del url, kwargs
-            return FakeResponse(403, {"error": "read-only public API"})
-
+def test_full_route_without_verified_hash_is_downgraded() -> None:
+    class UnverifiedClient:
         async def get(self, url: str, **kwargs: object) -> FakeResponse:
-            if "find-semantic" in url:
-                return FakeResponse(
-                    200,
-                    {
-                        "results": [
-                            {
-                                "name": "spreadsheet-router",
-                                "description": "Create spreadsheet reports.",
-                                "url": "https://github.com/example/skills/tree/main/spreadsheet",
-                                "rank": 10,
-                                "similarity": 0.92,
-                                "risk_score": 0,
-                            }
-                        ]
+            raise AssertionError(f"unverified content must not be fetched: {url} {kwargs}")
+
+        async def post(self, url: str, **kwargs: object) -> FakeResponse:
+            assert url.endswith("/route")
+            return FakeResponse(
+                200,
+                {
+                    "tier": "full",
+                    "skill": {
+                        "name": "spreadsheet-router",
+                        "description": "Create spreadsheet reports.",
+                        "url": "https://github.com/example/skills/tree/main/spreadsheet",
+                        "route_score": 0.92,
+                        "similarity": 0.92,
+                        "risk_score": 0,
                     },
-                )
-            raise AssertionError(f"unexpected get: {url} {kwargs}")
+                    "content": VALID_SKILL,
+                    "score_debug": {"tier": "full"},
+                },
+            )
 
-    async def fake_fetch(client: object, url: str) -> str:
-        del client, url
-        return VALID_SKILL + ("\n- Extra detailed workflow step." * 20)
-
-    monkeypatch.setattr(core, "_fetch_content", fake_fetch)
-    result = asyncio.run(core.route_task_payload("make a spreadsheet", client=LegacyClient()))
+    result = asyncio.run(core.route_task_payload("make a spreadsheet", client=UnverifiedClient()))
     assert result["routed"] is True
     assert result["route_type"] == "hint"
     assert result["skill_content"] == ""
-    assert "injection budget" in result["warnings"][0]
+    assert "verified static content" in result["warnings"][0]
 
 
-def test_route_prompt_payload_skips_without_network() -> None:
-    result = asyncio.run(core.route_prompt_payload("ok", client=RouteClient()))
+@pytest.mark.parametrize(
+    "prompt",
+    ["ok", "/help", "what is the current state?", "PRIVATE PASTED CONTEXT " * 200],
+)
+def test_route_prompt_payload_skips_without_network(prompt: str) -> None:
+    result = asyncio.run(core.route_prompt_payload(prompt, client=RouteClient()))
     assert result["should_route"] is False
     assert result["route"] is None
 
@@ -584,11 +565,24 @@ def test_dry_run_reports_existing_skill_without_force(tmp_path: Path) -> None:
     assert result["dry_run"] is True
 
 
-def test_codex_install_target_is_unsupported(tmp_path: Path) -> None:
+@pytest.mark.parametrize("target", ["claude", "codex", "cursor"])
+def test_portable_install_targets_write_skill_md(tmp_path: Path, target: str) -> None:
+    result = core.install_skill_from_content(
+        "name: demo\n\nUse care.",
+        source_url="https://example.com/demo/SKILL.md",
+        target=target,
+        skills_home=tmp_path / target,
+    )
+    assert result["target"] == target
+    assert result["dest_file"] == tmp_path / target / "demo" / "SKILL.md"
+    assert result["dest_file"].exists()
+
+
+def test_unknown_install_target_is_rejected(tmp_path: Path) -> None:
     with pytest.raises(core.UnsupportedTargetError):
         core.install_skill_from_content(
-            "name: demo\n",
+            "name: demo\n\nUse care.",
             source_url="https://example.com/demo/SKILL.md",
-            target="codex",
+            target="unknown",
             skills_home=tmp_path,
         )

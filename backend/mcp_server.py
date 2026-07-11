@@ -24,9 +24,8 @@ _TREE_RE = re.compile(r"github\.com/([^/]+)/([^/]+)/tree/([^/]+)/(.*)")
 mcp = FastMCP(
     "auto-skill",
     instructions=(
-        "Auto-Skill routes tasks to reusable skills. Prefer the connector repo's "
-        "route_task tool for always-on routing. This backend MCP server is legacy "
-        "and should be used only for explicit local preview flows."
+        "This legacy backend MCP helper is for explicit local preview only. "
+        "It is not an always-on router and has no remote fallback."
     ),
 )
 
@@ -79,9 +78,9 @@ def _slugify(name: str) -> str:
 
 async def _search(client: httpx.AsyncClient, task: str) -> dict:
     try:
-        response = await client.get(
+        response = await client.post(
             f"{LOCAL_DB_URL}/find-semantic",
-            params={"q": task, "limit": 8},
+            json={"q": task, "limit": 8, "gate": True},
             timeout=10,
         )
         if response.status_code == 200:
@@ -100,7 +99,7 @@ async def _search(client: httpx.AsyncClient, task: str) -> dict:
 async def recommend_skill(task: str) -> dict:
     """Find a skill for an explicit local preview flow.
 
-    Prefer route_task in auto-skill-connector for always-on routing. Returned
+    Prefer route_task in auto-skill-connector for explicit routing. Returned
     content is reference material; apply it only when it clearly fits and seems
     safe.
     """

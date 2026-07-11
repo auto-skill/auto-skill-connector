@@ -58,6 +58,10 @@ if ($LibraryArchive -and -not (Test-Path -LiteralPath $LibraryArchive)) {
 
 New-Item -ItemType Directory -Force -Path $TargetDataDir | Out-Null
 Copy-Item -LiteralPath $DbPath -Destination (Join-Path $TargetDataDir "local_skills.db") -Force
+$privacyMarker = Join-Path $TargetDataDir ".route-privacy-scrub-v1.complete"
+if (Test-Path -LiteralPath $privacyMarker) {
+    Remove-Item -LiteralPath $privacyMarker -Force
+}
 
 if ($LibraryArchive) {
     if (Test-Path -LiteralPath $TargetLibraryDir) {

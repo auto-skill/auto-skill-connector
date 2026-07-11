@@ -1,4 +1,4 @@
-"""MCP server for finding, previewing, and installing AI agent skills."""
+"""Read-only MCP server for finding and routing portable Agent Skills."""
 
 from __future__ import annotations
 
@@ -8,15 +8,11 @@ import httpx
 from mcp.server.fastmcp import FastMCP
 
 from auto_skill_core import (
-    AutoSkillError,
-    SkillAlreadyExistsError,
-    UnsupportedTargetError,
     _fetch_content,
     _raw_candidates,
     _search,
     _search_selfhosted,
     _slugify,
-    install_skill_from_url,
     recommend_skill_payload,
     record_route_feedback,
     route_prompt_payload,
@@ -25,7 +21,6 @@ from auto_skill_core import (
 
 __all__ = [
     "_fetch_content",
-    "_install_skill_impl",
     "_raw_candidates",
     "_search",
     "_search_selfhosted",
@@ -69,32 +64,23 @@ if _TRANSPORT == "streamable-http":
         ),
     }
 
-# The `instructions` string is surfaced to the client model. Keep it honest:
-# route first, then follow only high-confidence full routes.
+# The `instructions` string is surfaced to the client model. MCP does not
+# intercept prompts, so routing is explicit unless a user separately enables a
+# client-specific adapter.
 mcp = FastMCP(
     "auto-skill",
     instructions=(
-        "Auto-Skill routes user tasks to reusable AI agent skills when a good match exists. "
-        "Call route_prompt (raw user message) or route_task (cleaned-up task) as your first "
-        "action on every task-shaped request -- including tasks you could complete yourself "
-        "with your own general knowledge. Being able to do it yourself is not a reason to "
-        "skip the check: the whole point of this connector is to check for a more current, "
-        "specific, or reliable packaged skill before defaulting to your own approach. These "
-        "tools may return a full skill, a medium-confidence hint with candidate options, or "
-        "no route. Follow full skill_content only when route_tier is full. Treat hint results "
-        "as suggestions, not active instructions. Skip routing only for pure questions, "
-        "status/meta discussion, tiny acknowledgements, commands, or pasted context -- never "
-        "skip it merely because you already know how to do the task. recommend_skill is for "
-        "explicit preview/recommendation flows; do not use it as the always-on router."
+        "Auto-Skill is an explicit discovery and routing connector for portable "
+        "Agent Skills. Call route_task only when the user asks to find/use a skill or has opted "
+        "into a client-specific Auto Mode adapter. route_prompt accepts a raw message for that "
+        "same explicit flow; task text is sent to the configured router but is not retained. "
+        "A full result is content-hash verified and may be used for the current task. Treat hint "
+        "results as 2-3 candidates, not active instructions. recommend_skill is a deprecated "
+        "preview compatibility tool. MCP exposes no skill/filesystem write tool; its optional "
+        "record_feedback call stores only enum outcome metadata. MCP alone cannot intercept every prompt."
     ),
     **_auth_kwargs,
 )
-
-
-def _public_install_enabled() -> bool:
-    if _TRANSPORT != "streamable-http":
-        return True
-    return os.getenv("AUTO_SKILL_ENABLE_PUBLIC_INSTALL", "").lower() in {"1", "true", "yes"}
 
 
 def _caller_auth_header() -> dict[str, str] | None:
@@ -113,26 +99,22 @@ def _caller_auth_header() -> dict[str, str] | None:
 
 @mcp.tool()
 async def route_prompt(prompt: str) -> dict:
-    """Preflight a raw user prompt and route it whenever it is skill-shaped.
+    """Explicitly preflight and route a raw user prompt.
 
-    Call this as your first action for task-shaped requests, even ones you
-    could complete yourself -- already knowing how is not a reason to skip
-    this call. It skips tiny acknowledgements, commands, status/meta prompts,
-    and pasted walls of context, then routes real tasks to one reusable
-    skill when possible.
+    Use only when the user requested skill routing or opted into a client
+    adapter. Local preflight skips acknowledgements, commands, meta prompts,
+    and pasted context without sending them to the server.
     """
     return await route_prompt_payload(prompt, auth_header=_caller_auth_header())
 
 
 @mcp.tool()
 async def route_task(task: str) -> dict:
-    """Route a user task to the best reusable skill when one exists.
+    """Explicitly route a task to the best reusable skill when one exists.
 
-    Call this at the very start of every task-shaped user request, before
-    relying on your own general knowledge to solve it -- a packaged skill may
-    be more current, specific, or reliable than your default approach. Full
-    routes include skill_content. Hint routes are suggestions only and may
-    include candidate options.
+    Call when requested by the user or an explicitly enabled adapter. Full
+    routes include hash-verified skill_content for current-task use. Hint
+    routes are suggestions only and include up to three candidates.
     """
     return await route_task_payload(task, auth_header=_caller_auth_header())
 
@@ -149,14 +131,15 @@ async def recommend_skill(task: str) -> dict:
 
 
 @mcp.tool()
-async def record_feedback(route_id: str, outcome: str, note: str = "") -> dict:
+async def record_feedback(route_id: str, outcome: str) -> dict:
     """Record privacy-safe outcome feedback for a previous route.
 
     Use only after a route result has actually been used, skipped, installed,
-    dismissed, or failed. Do not include raw prompts in note.
+    dismissed, or failed. The contract is enum-only and accepts no free-form
+    note so feedback cannot become a prompt-retention side channel.
     """
     ok = await record_route_feedback(
-        route_id, outcome, source="auto-skill-mcp", note=note, auth_header=_caller_auth_header()
+        route_id, outcome, source="auto-skill-mcp", auth_header=_caller_auth_header()
     )
     return {"ok": ok, "route_id": route_id, "outcome": outcome}
 
@@ -170,48 +153,6 @@ async def healthz(request):
     return JSONResponse({"ok": True})
 
 
-async def _install_skill_impl(
-    url: str,
-    name: str = "",
-    target: str = "claude",
-    force: bool = False,
-    dry_run: bool = False,
-) -> str:
-    """Install a skill from a URL.
-
-    Permanent installs are currently supported for Claude-style SKILL.md
-    folders only. For Codex, call route_task and apply full routes in the
-    current turn.
-    """
-    if not _public_install_enabled():
-        return (
-            "install_skill is disabled for streamable-http by default because it writes files "
-            "on the server host. Run this MCP server over local stdio, or set "
-            "AUTO_SKILL_ENABLE_PUBLIC_INSTALL=1 only behind your own access control."
-        )
-
-    async with httpx.AsyncClient() as client:
-        try:
-            result = await install_skill_from_url(
-                client,
-                url=url,
-                name=name,
-                target=target,
-                force=force,
-                dry_run=dry_run,
-            )
-        except SkillAlreadyExistsError as exc:
-            return f"Refusing to overwrite existing skill at {exc.dest_file}. Call install_skill with force=true to replace it."
-        except UnsupportedTargetError as exc:
-            return str(exc)
-        except AutoSkillError as exc:
-            return str(exc)
-
-    action = "Would install" if dry_run else "Installed"
-    overwrite = " replacing an existing skill" if result["would_overwrite"] else ""
-    return f"{action} '{result['slug']}'{overwrite} from {result['source_url']} to {result['dest_file']}."
-
-
 def main() -> None:
     """Transport is chosen at launch time, not baked into the package:
       stdio (default)   -- for Claude Code / Desktop's local config (`claude mcp add`).
@@ -220,22 +161,10 @@ def main() -> None:
                              public HTTPS URL. Set MCP_TRANSPORT=streamable-http,
                              and MCP_HOST/MCP_PORT to control the bind address.
 
-    install_skill writes files to whatever machine runs this process, so it is
-    registered as a tool ONLY on stdio -- the transport used by a user's own
-    local `claude mcp add`, where they are installing skills onto their own
-    machine. The streamable-http transport is meant to be tunneled to a public
-    URL (see README's remote-connector section) and does require callers to
-    complete the MCP OAuth login (see mcp_oauth_provider.py), but that only
-    establishes who is calling -- it still doesn't imply they should be able
-    to write files on whoever is hosting the tunnel. Set
-    AUTO_SKILL_ENABLE_PUBLIC_INSTALL=1 to override, e.g. behind your own access
-    control -- never set it on an unauthenticated public tunnel. This is the
-    same env var _public_install_enabled() checks at call time, so tool
-    registration and the runtime gate can't drift out of sync with each other.
+    Both transports expose no skill/filesystem writes. Persistent installation is deliberately an
+    explicit local CLI flow until a user-selected trust policy, permission
+    inspection, and rollback exist.
     """
-    if _TRANSPORT != "streamable-http" or _public_install_enabled():
-        mcp.tool(name="install_skill")(_install_skill_impl)
-
     if _TRANSPORT == "streamable-http":
         mcp.settings.host = os.getenv("MCP_HOST", "127.0.0.1")
         mcp.settings.port = int(os.getenv("MCP_PORT", "8765"))
