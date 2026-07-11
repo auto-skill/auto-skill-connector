@@ -165,14 +165,14 @@ if [ "$ready" -ne 1 ]; then
 fi
 
 echo "==> Starting MCP after API readiness"
-if ! $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml up -d --no-build mcp"; then
+if ! $SSH "cd ${REMOTE_DIR} && started=0; for attempt in \$(seq 1 8); do if docker compose -f backend/deploy/docker-compose.yml up -d --no-build mcp; then started=1; break; fi; sleep 2; done; test \"\$started\" -eq 1"; then
   echo "FAILED: MCP recreate failed" >&2
   rollback
   exit 1
 fi
 
 echo "==> Starting worker after API/MCP readiness"
-if ! $SSH "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml up -d --no-build worker"; then
+if ! $SSH "cd ${REMOTE_DIR} && started=0; for attempt in \$(seq 1 8); do if docker compose -f backend/deploy/docker-compose.yml up -d --no-build worker; then started=1; break; fi; sleep 2; done; test \"\$started\" -eq 1"; then
   echo "FAILED: worker recreate failed" >&2
   rollback
   exit 1
