@@ -19,6 +19,9 @@ Endpoints:
   GET/POST/DELETE /favorites[/{skill_id}]     -> per-user favorited skills
   GET/POST        /installs                   -> per-user install history
   GET/POST/DELETE /private-skills[/{id}]      -> per-user private skill submissions
+  GET/POST /orgs                              -> team-plan orgs (create requires team plan)
+  GET/POST/DELETE /orgs/{id}/members[/{uid}]  -> org membership (owner-managed; members may leave)
+  GET/POST/DELETE /orgs/{id}/skills[/{sid}]   -> org-shared skills, routed first for all members
   GET  /signup                                -> account-required landing page (see scraper.py's account guard)
   GET  /account                               -> post-login confirmation, links out to the site's dashboard
 """
@@ -446,5 +449,95 @@ async def delete_private_skill(skill_id: str, authorization: str | None = Header
     user = _require_user(authorization)
     removed = store.remove_private_skill(user["id"], skill_id)
     if not removed:
+        raise HTTPException(status_code=404, detail="not found")
+    return {"ok": True}
+
+
+def _require_org_member(org_id: str, user: dict) -> str:
+    role = store.org_role(org_id, user["id"])
+    if role is None:
+        # 404 (not 403) for non-members so org ids aren't probeable.
+        raise HTTPException(status_code=404, detail="no such org")
+    return role
+
+
+def _require_org_owner(org_id: str, user: dict) -> None:
+    if _require_org_member(org_id, user) != "owner":
+        raise HTTPException(status_code=403, detail="org owner required")
+
+
+class CreateOrgRequest(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+
+
+@router.post("/orgs")
+async def create_org(body: CreateOrgRequest, authorization: str | None = Header(None)):
+    user = _require_user(authorization)
+    if (user.get("plan") or "free") != "team":
+        raise HTTPException(status_code=402, detail="orgs require the team plan")
+    return {"org": store.create_org(body.name.strip(), user["id"])}
+
+
+@router.get("/orgs")
+async def get_orgs(authorization: str | None = Header(None)):
+    user = _require_user(authorization)
+    return {"orgs": store.list_orgs_for_user(user["id"])}
+
+
+class OrgMemberRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+
+
+@router.get("/orgs/{org_id}/members")
+async def get_org_members(org_id: str, authorization: str | None = Header(None)):
+    user = _require_user(authorization)
+    _require_org_member(org_id, user)
+    return {"members": store.list_org_members(org_id)}
+
+
+@router.post("/orgs/{org_id}/members")
+async def post_org_member(org_id: str, body: OrgMemberRequest, authorization: str | None = Header(None)):
+    user = _require_user(authorization)
+    _require_org_owner(org_id, user)
+    member = store.get_user_by_email(body.email)
+    if member is None:
+        raise HTTPException(status_code=404, detail="no user with that email; they must sign up first")
+    store.add_org_member(org_id, member["id"])
+    return {"ok": True, "members": store.list_org_members(org_id)}
+
+
+@router.delete("/orgs/{org_id}/members/{user_id}")
+async def delete_org_member(org_id: str, user_id: str, authorization: str | None = Header(None)):
+    user = _require_user(authorization)
+    # Owners remove anyone; a member may remove only themselves (leave).
+    if user_id != user["id"]:
+        _require_org_owner(org_id, user)
+    else:
+        _require_org_member(org_id, user)
+    if not store.remove_org_member(org_id, user_id):
+        raise HTTPException(status_code=404, detail="not a removable member")
+    return {"ok": True}
+
+
+@router.get("/orgs/{org_id}/skills")
+async def get_org_skills(org_id: str, authorization: str | None = Header(None)):
+    user = _require_user(authorization)
+    _require_org_member(org_id, user)
+    return {"org_skills": store.list_org_skills(org_id)}
+
+
+@router.post("/orgs/{org_id}/skills")
+async def post_org_skill(org_id: str, body: PrivateSkillRequest, authorization: str | None = Header(None)):
+    user = _require_user(authorization)
+    _require_org_owner(org_id, user)
+    skill = store.add_org_skill(org_id, user["id"], body.name, body.description, body.content)
+    return {"org_skill": skill}
+
+
+@router.delete("/orgs/{org_id}/skills/{skill_id}")
+async def delete_org_skill(org_id: str, skill_id: str, authorization: str | None = Header(None)):
+    user = _require_user(authorization)
+    _require_org_owner(org_id, user)
+    if not store.remove_org_skill(org_id, skill_id):
         raise HTTPException(status_code=404, detail="not found")
     return {"ok": True}

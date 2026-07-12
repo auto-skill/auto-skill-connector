@@ -915,10 +915,12 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
     route_id = str(uuid.uuid4())
     context_guard = _empty_context_guard("no-route")
 
-    # A caller's own private skill submissions never enter the public quality
-    # gate or embedding index (see _best_private_skill_match) -- when one
-    # matches, it wins outright, since the caller uploaded it themselves.
-    private_match = store.list_private_skills(user["id"]) if user else []
+    # A caller's own private skills and their orgs' shared skills never enter
+    # the public quality gate or embedding index (see
+    # _best_private_skill_match) -- when one matches, it wins outright over
+    # public results, and org skills are listed first so an equal-scoring tie
+    # falls to the org standard rather than a personal copy.
+    private_match = store.list_routable_private_skills(user["id"]) if user else []
     private_match = _best_private_skill_match(query, private_match) if private_match else None
 
     if private_match:

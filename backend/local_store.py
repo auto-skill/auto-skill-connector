@@ -192,9 +192,27 @@ CREATE TABLE IF NOT EXISTS private_skills (
     name TEXT NOT NULL,
     description TEXT,
     content TEXT NOT NULL,
-    created_at TEXT
+    created_at TEXT,
+    org_id TEXT
 );
 CREATE INDEX IF NOT EXISTS private_skills_owner_idx ON private_skills(owner_user_id);
+
+CREATE TABLE IF NOT EXISTS orgs (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    owner_user_id TEXT NOT NULL,
+    created_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS org_members (
+    id TEXT PRIMARY KEY,
+    org_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'member',
+    created_at TEXT,
+    UNIQUE(org_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS org_members_user_idx ON org_members(user_id);
 
 CREATE TABLE IF NOT EXISTS oauth_clients (
     client_id TEXT PRIMARY KEY,
@@ -226,6 +244,8 @@ TABLES = {
     "favorites": {"unique": None, "json_cols": set()},
     "installs": {"unique": None, "json_cols": set()},
     "private_skills": {"unique": None, "json_cols": set()},
+    "orgs": {"unique": None, "json_cols": set()},
+    "org_members": {"unique": None, "json_cols": set()},
     "oauth_clients": {"unique": None, "json_cols": {"client_info"}},
     "mcp_auth_codes": {"unique": None, "json_cols": {"scopes"}},
 }
@@ -335,6 +355,14 @@ CLI_TOKEN_COLUMN_DEFAULTS = {
 USER_COLUMN_DEFAULTS = {
     "plan": "TEXT DEFAULT 'free'",
 }
+
+# NULL org_id = personal submission; a real org_id shares the skill with
+# every member of that org.
+PRIVATE_SKILL_COLUMN_DEFAULTS = {
+    "org_id": "TEXT",
+}
+
+ORG_ROLES = ("owner", "member")
 
 USER_PLANS = ("free", "pro", "team")
 
@@ -487,6 +515,11 @@ def init_db() -> None:
         for col, spec in USER_COLUMN_DEFAULTS.items():
             if col not in user_existing:
                 conn.execute(f"ALTER TABLE users ADD COLUMN {col} {spec}")
+        private_skill_existing = {row["name"] for row in conn.execute("PRAGMA table_info(private_skills)").fetchall()}
+        for col, spec in PRIVATE_SKILL_COLUMN_DEFAULTS.items():
+            if col not in private_skill_existing:
+                conn.execute(f"ALTER TABLE private_skills ADD COLUMN {col} {spec}")
+        conn.execute("CREATE INDEX IF NOT EXISTS private_skills_org_idx ON private_skills(org_id)")
         # A missing status must never become silently routable because an old
         # SQLite table still has the historical DEFAULT 'active'.
         conn.execute("UPDATE skills SET quality_status='pending' WHERE quality_status IS NULL")
@@ -2037,10 +2070,12 @@ def add_private_skill(owner_user_id: str, name: str, description: str | None, co
 
 
 def list_private_skills(owner_user_id: str) -> list[dict]:
+    """The caller's personal submissions only; org skills list via list_org_skills."""
     conn = get_conn()
     try:
         rows = conn.execute(
-            "SELECT * FROM private_skills WHERE owner_user_id=? ORDER BY created_at DESC", (owner_user_id,)
+            "SELECT * FROM private_skills WHERE owner_user_id=? AND org_id IS NULL ORDER BY created_at DESC",
+            (owner_user_id,),
         ).fetchall()
         return [dict(r) for r in rows]
     finally:
@@ -2051,8 +2086,162 @@ def remove_private_skill(owner_user_id: str, skill_id: str) -> bool:
     conn = get_conn()
     try:
         cur = conn.execute(
-            "DELETE FROM private_skills WHERE id=? AND owner_user_id=?", (skill_id, owner_user_id)
+            "DELETE FROM private_skills WHERE id=? AND owner_user_id=? AND org_id IS NULL",
+            (skill_id, owner_user_id),
         )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def list_routable_private_skills(user_id: str) -> list[dict]:
+    """Everything /route may match for this caller: their own personal
+    submissions plus every skill shared by an org they belong to. Org skills
+    come first so a tie falls to the org standard, not a personal copy."""
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT p.* FROM private_skills p JOIN org_members m ON m.org_id = p.org_id "
+            "WHERE m.user_id=? "
+            "UNION ALL "
+            "SELECT * FROM private_skills WHERE owner_user_id=? AND org_id IS NULL "
+            "ORDER BY created_at DESC",
+            (user_id, user_id),
+        ).fetchall()
+        org_rows = [dict(r) for r in rows if r["org_id"]]
+        personal_rows = [dict(r) for r in rows if not r["org_id"]]
+        return org_rows + personal_rows
+    finally:
+        conn.close()
+
+
+def get_user_by_email(email: str) -> dict | None:
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT * FROM users WHERE email=?", (email.strip(),)).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def create_org(name: str, owner_user_id: str) -> dict:
+    conn = get_conn()
+    try:
+        org_id = str(uuid.uuid4())
+        now = _now()
+        conn.execute(
+            "INSERT INTO orgs (id, name, owner_user_id, created_at) VALUES (?, ?, ?, ?)",
+            (org_id, name, owner_user_id, now),
+        )
+        conn.execute(
+            "INSERT INTO org_members (id, org_id, user_id, role, created_at) VALUES (?, ?, ?, 'owner', ?)",
+            (str(uuid.uuid4()), org_id, owner_user_id, now),
+        )
+        conn.commit()
+        return dict(conn.execute("SELECT * FROM orgs WHERE id=?", (org_id,)).fetchone())
+    finally:
+        conn.close()
+
+
+def list_orgs_for_user(user_id: str) -> list[dict]:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT o.*, m.role FROM orgs o JOIN org_members m ON m.org_id = o.id "
+            "WHERE m.user_id=? ORDER BY o.created_at",
+            (user_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def org_role(org_id: str, user_id: str) -> str | None:
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT role FROM org_members WHERE org_id=? AND user_id=?", (org_id, user_id)
+        ).fetchone()
+        return row["role"] if row else None
+    finally:
+        conn.close()
+
+
+def add_org_member(org_id: str, user_id: str, role: str = "member") -> bool:
+    if role not in ORG_ROLES:
+        raise ValueError(f"unknown org role {role!r}; choose one of {', '.join(ORG_ROLES)}")
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO org_members (id, org_id, user_id, role, created_at) VALUES (?, ?, ?, ?, ?)",
+            (str(uuid.uuid4()), org_id, user_id, role, _now()),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def remove_org_member(org_id: str, user_id: str) -> bool:
+    """Remove a membership. The owner's own row stays -- an org must keep its
+    owner; ownership transfer is deliberately not supported yet."""
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            "DELETE FROM org_members WHERE org_id=? AND user_id=? AND role != 'owner'",
+            (org_id, user_id),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def list_org_members(org_id: str) -> list[dict]:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT u.id, u.email, u.name, m.role, m.created_at AS member_since "
+            "FROM org_members m JOIN users u ON u.id = m.user_id "
+            "WHERE m.org_id=? ORDER BY m.created_at",
+            (org_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def add_org_skill(org_id: str, uploader_user_id: str, name: str, description: str | None, content: str) -> dict:
+    conn = get_conn()
+    try:
+        skill_id = str(uuid.uuid4())
+        conn.execute(
+            "INSERT INTO private_skills (id, owner_user_id, name, description, content, created_at, org_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (skill_id, uploader_user_id, name, description, content, _now(), org_id),
+        )
+        conn.commit()
+        return dict(conn.execute("SELECT * FROM private_skills WHERE id=?", (skill_id,)).fetchone())
+    finally:
+        conn.close()
+
+
+def list_org_skills(org_id: str) -> list[dict]:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM private_skills WHERE org_id=? ORDER BY created_at DESC", (org_id,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def remove_org_skill(org_id: str, skill_id: str) -> bool:
+    conn = get_conn()
+    try:
+        cur = conn.execute("DELETE FROM private_skills WHERE id=? AND org_id=?", (skill_id, org_id))
         conn.commit()
         return cur.rowcount > 0
     finally:
