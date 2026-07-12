@@ -61,6 +61,12 @@ Cursor also recognizes `~/.cursor/skills`, and Copilot also recognizes
 by default for Codex, Cursor, and Copilot, so one installed copy serves all
 three. `SKILLS_HOME` can override the selected destination.
 
+Copilot also discovers project-level skills from `.github/skills`,
+`.agents/skills`, or `.claude/skills` inside a repository. Auto-Skill installs
+user-level only today; user-level skills reach Copilot CLI and IDE agent mode
+but not the Copilot cloud agent or Copilot code review, which read skills from
+the repository.
+
 Vendor references:
 
 - [Claude Code skills](https://code.claude.com/docs/en/skills)
@@ -257,6 +263,28 @@ Add this to `claude_desktop_config.json`:
 ```
 
 Restart Claude Desktop after editing the configuration.
+
+### GitHub Copilot CLI local MCP
+
+Add this to `~/.copilot/mcp-config.json` (or run
+`copilot mcp add auto-skill -- auto-skill-mcp`):
+
+```json
+{
+  "mcpServers": {
+    "auto-skill": {
+      "type": "local",
+      "command": "auto-skill-mcp",
+      "args": [],
+      "tools": ["*"]
+    }
+  }
+}
+```
+
+The stdio server identifies the caller through the file-based CLI login, so
+run `auto-skill login` first. Copilot CLI's support for the hosted OAuth
+connector is untested; use the local stdio server with Copilot for now.
 
 ### Launch-facing tools
 
