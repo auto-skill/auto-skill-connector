@@ -26,9 +26,10 @@ check() {
 }
 
 check GET /healthz 200
-# Public discovery/routing are anonymous; account-only surfaces below should
-# still return 401 without a bearer token.
-check POST /find-semantic 200 '{"q":"create a spreadsheet report","limit":2}'
+# Hosted routing/search requires an account since 99e3a62; every route below
+# should 401 anonymously. That still exercises the guard chain end to end --
+# a down app or broken middleware returns 000/5xx, not a clean 401.
+check POST /find-semantic 401 '{"q":"create a spreadsheet report","limit":2}'
 check GET /skills-catalog 401
 check GET /auth/whoami 401
 
