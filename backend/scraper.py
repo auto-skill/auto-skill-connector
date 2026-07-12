@@ -378,25 +378,42 @@ def _strip_quotes(value: str) -> str:
     return value
 
 
-def parse_frontmatter(text: str) -> tuple[dict, str]:
-    """Returns (fields, body_after_frontmatter). Nested maps/lists are ignored."""
-    match = FRONTMATTER_RE.match(text or "")
-    if not match:
-        return {}, text or ""
-    block, body = match.group(1), (text or "")[match.end():]
+def _indent_of(line: str) -> int:
+    return len(line) - len(line.lstrip(" "))
+
+
+def _parse_frontmatter_lines(lines: list[str], start: int, indent: int) -> tuple[dict, int]:
+    """Parse key:value lines at exactly `indent` starting at lines[start].
+
+    Recurses one level per nesting depth so a bare `key:` followed by more
+    deeply indented `subkey: value` lines becomes a nested dict (e.g. a
+    `metadata:` block carrying its own `tags`/`triggers`/`platforms`), instead
+    of being silently dropped. Returns (fields, next_index_at_or_below_indent).
+    """
     fields: dict = {}
-    lines = block.splitlines()
-    i = 0
-    while i < len(lines):
+    i, n = start, len(lines)
+    while i < n:
         line = lines[i]
-        i += 1
-        km = FRONTMATTER_KEY_RE.match(line)
+        if not line.strip():
+            i += 1
+            continue
+        cur_indent = _indent_of(line)
+        if cur_indent < indent:
+            break
+        if cur_indent > indent:
+            # Orphaned deeper line with no owning key at this level; skip it
+            # defensively rather than misparsing it as a sibling key.
+            i += 1
+            continue
+        km = FRONTMATTER_KEY_RE.match(line[indent:])
         if not km:
+            i += 1
             continue
         key, value = km.group(1), km.group(2).strip()
+        i += 1
         if value in (">", "|", ">-", "|-"):
             folded = []
-            while i < len(lines) and (lines[i].startswith((" ", "\t")) or not lines[i].strip()):
+            while i < n and (lines[i].startswith((" ", "\t")) or not lines[i].strip()):
                 folded.append(lines[i].strip())
                 i += 1
             fields[key] = " ".join(f for f in folded if f)
@@ -404,14 +421,29 @@ def parse_frontmatter(text: str) -> tuple[dict, str]:
             fields[key] = [_strip_quotes(v) for v in value[1:-1].split(",") if v.strip()]
         elif value:
             fields[key] = _strip_quotes(value)
-        else:
-            # block list ("key:" followed by "- item" lines); nested maps ignored
+        elif i < n and lines[i].lstrip().startswith("- "):
             items = []
-            while i < len(lines) and lines[i].lstrip().startswith("- "):
+            while i < n and lines[i].lstrip().startswith("- "):
                 items.append(_strip_quotes(lines[i].lstrip()[2:]))
                 i += 1
             if items:
                 fields[key] = items
+        elif i < n and lines[i].strip() and _indent_of(lines[i]) > indent:
+            nested, i = _parse_frontmatter_lines(lines, i, _indent_of(lines[i]))
+            if nested:
+                fields[key] = nested
+    return fields, i
+
+
+def parse_frontmatter(text: str) -> tuple[dict, str]:
+    """Returns (fields, body_after_frontmatter). Flat YAML plus nested maps/
+    lists one or more levels deep (regex-based to avoid a PyYAML dependency;
+    this function is the single swap point if that changes)."""
+    match = FRONTMATTER_RE.match(text or "")
+    if not match:
+        return {}, text or ""
+    block, body = match.group(1), (text or "")[match.end():]
+    fields, _ = _parse_frontmatter_lines(block.splitlines(), 0, 0)
     return fields, body
 
 
@@ -1001,6 +1033,28 @@ async def _fetch_raw_file(client: httpx.AsyncClient, owner: str, repo: str, path
     return ""
 
 
+def fold_metadata_tags(tags: list, fields: dict) -> list:
+    """Merge tags/triggers/platforms nested under a frontmatter `metadata:`
+    map into a flat tags list, case-insensitively deduped.
+
+    Some skills nest these under a `metadata:` map instead of top-level keys
+    (e.g. anthropics' own SKILL.md convention). `triggers` in particular is
+    author-written "when to use this" phrasing -- exactly the signal
+    build_embed_text/lexical_overlap need -- so fold it in rather than losing
+    it. Shared by _skill_from_skill_md (scrape time) and backfill_quality.py
+    (reprocessing rows already in the DB), so both stay in sync.
+    """
+    tags = list(tags)
+    nested_metadata = fields.get("metadata")
+    if isinstance(nested_metadata, dict):
+        for nested_key in ("tags", "triggers", "platforms"):
+            nested_values = nested_metadata.get(nested_key)
+            if isinstance(nested_values, list):
+                tags = tags + [str(v) for v in nested_values if v]
+    seen: set[str] = set()
+    return [t for t in tags if not (t.casefold() in seen or seen.add(t.casefold()))]
+
+
 def _skill_from_skill_md(owner: str, repo: str, path: str, content: str, meta: dict) -> dict:
     fields, body = parse_frontmatter(content)
     dir_path = path[: -len("SKILL.md")].rstrip("/")
@@ -1016,6 +1070,7 @@ def _skill_from_skill_md(owner: str, repo: str, path: str, content: str, meta: d
                 description = re.sub(r"\s+", " ", para)[:300]
                 break
     tags = fields.get("tags") if isinstance(fields.get("tags"), list) else []
+    tags = fold_metadata_tags(tags, fields)
     if dir_path:
         url = f"https://github.com/{owner}/{repo}/tree/HEAD/{dir_path}"
     else:

@@ -1,8 +1,10 @@
 """Backfill quality metadata for existing local skills rows.
 
 This is intentionally non-destructive: it marks quality_status/reasons,
-platforms, category, and same-run content-hash duplicates. Search and routing
-then decide how conservative to be from those fields.
+platforms, category, tags (re-folded from any saved content's frontmatter,
+including nested `metadata.tags`/`triggers`/`platforms` that older scraper
+runs dropped), and same-run content-hash duplicates. Search and routing then
+decide how conservative to be from those fields.
 
 Run while the API is stopped or quiet:
     python backfill_quality.py
@@ -18,6 +20,7 @@ import tempfile
 from embeddings import LibraryContent
 from local_store import DB_PATH, init_db
 from quality import evaluate_quality, pick_canonical
+from scraper import fold_metadata_tags, parse_frontmatter
 
 PAGE_SIZE = 1000
 
@@ -78,6 +81,19 @@ def main() -> None:
                     entry["content_hash"] = chash
                     index_dirty = True
 
+                # Re-fold tags from the saved content's frontmatter every run,
+                # not just at scrape time: fold_metadata_tags picks up nested
+                # metadata.tags/triggers/platforms that older scraper code
+                # (before the nested-frontmatter fix) silently dropped, so
+                # rows scraped under the old parser can recover that signal
+                # here without a full network re-scrape.
+                stored_tags = skill.get("tags") if isinstance(skill.get("tags"), list) else []
+                new_tags = stored_tags
+                if content:
+                    fields, _ = parse_frontmatter(content)
+                    new_tags = fold_metadata_tags(stored_tags, fields)
+                tags_changed = new_tags != stored_tags
+
                 records.append({
                     "id": skill["id"],
                     "url": url,
@@ -91,12 +107,16 @@ def main() -> None:
                     "quality_score": quality.get("quality_score") or 0,
                     "platforms": quality.get("platforms") or [],
                     "category": quality.get("category"),
-                    # Embeddings include saved content. Drop vectors for rows
-                    # that are now non-routable or whose source content changed
-                    # so the normal worker can rebuild only the valid corpus.
+                    "tags": new_tags,
+                    "tags_changed": tags_changed,
+                    # Embeddings include saved content and tags. Drop vectors
+                    # for rows that are now non-routable, whose source content
+                    # changed, or whose tags changed, so the normal worker can
+                    # rebuild only the valid corpus with fresh signal.
                     "clear_embedding": (
                         quality.get("quality_status") != "active"
                         or (skill.get("content_hash") or "") != (chash or "")
+                        or tags_changed
                     ),
                 })
 
@@ -133,9 +153,10 @@ def main() -> None:
                 duplicates += 1
 
         cleared_embeddings = sum(1 for record in records if record["clear_embedding"])
+        tags_updated = sum(1 for record in records if record["tags_changed"])
         update_sql = (
             "UPDATE skills SET content_hash=?, canonical_id=?, quality_status=?, "
-            "quality_reasons=?, quality_score=?, platforms=?, category=?, "
+            "quality_reasons=?, quality_score=?, platforms=?, category=?, tags=?, "
             "embedding=CASE WHEN ? THEN NULL ELSE embedding END, "
             "embedding_text_hash=CASE WHEN ? THEN NULL ELSE embedding_text_hash END, "
             "embedded_at=CASE WHEN ? THEN NULL ELSE embedded_at END WHERE id=?"
@@ -155,6 +176,7 @@ def main() -> None:
                         record["quality_score"],
                         json.dumps(record["platforms"]),
                         record["category"],
+                        json.dumps(record["tags"]),
                         int(record["clear_embedding"]),
                         int(record["clear_embedding"]),
                         int(record["clear_embedding"]),
@@ -166,6 +188,7 @@ def main() -> None:
             conn.commit()
         print(
             f"quality-backfill: {len(records)} rows, {duplicates} duplicates, "
+            f"{tags_updated} rows gained/changed tags, "
             f"{cleared_embeddings} embeddings invalidated",
             flush=True,
         )
