@@ -78,6 +78,7 @@ ROUTE_LATENCY_WARN_MS = int(os.getenv("ROUTE_LATENCY_WARN_MS", "750"))
 ROUTE_SKILL_FIND_WARN_MS = int(os.getenv("ROUTE_SKILL_FIND_WARN_MS", "500"))
 ROUTE_INJECTED_TOKEN_WARN = int(os.getenv("ROUTE_INJECTED_TOKEN_WARN", "1000"))
 ROUTE_RESPONSE_TOKEN_WARN = int(os.getenv("ROUTE_RESPONSE_TOKEN_WARN", "3500"))
+UPGRADE_URL = os.getenv("BACKEND_BASE_URL", "https://skills.autoskill.dev").rstrip("/") + "/account"
 CONTENT_HASH_RE = re.compile(r"^[a-f0-9]{64}$")
 EMBED_INTERVAL_SECONDS = int(os.getenv("EMBED_INTERVAL_SECONDS", "300"))
 EMBED_PAGE_SIZE = 500
@@ -791,6 +792,28 @@ def _require_route_user(authorization: str | None) -> dict:
     return user
 
 
+def route_quota_exceeded(user: dict) -> bool:
+    """True when a free-plan user has used up this month's routes. Quota is
+    checked before retrieval and counted only for task-shaped queries, so
+    empty/non-task rejects never burn quota."""
+    if store.FREE_ROUTES_PER_MONTH <= 0:
+        return False
+    if (user.get("plan") or "free") != "free":
+        return False
+    return store.get_route_usage(user["id"]) >= store.FREE_ROUTES_PER_MONTH
+
+
+def _quota_route_payload(user: dict, start: float) -> dict:
+    payload = _none_route_payload("quota-exceeded", start, str(uuid.uuid4()))
+    payload["quota"] = {
+        "plan": user.get("plan") or "free",
+        "limit": store.FREE_ROUTES_PER_MONTH,
+        "used": store.get_route_usage(user["id"]),
+        "upgrade_url": UPGRADE_URL,
+    }
+    return payload
+
+
 def _none_route_payload(reason: str, start: float, route_id: str | None = None) -> dict:
     metrics = {
         "latency_ms": int((time.monotonic() - start) * 1000),
@@ -869,6 +892,10 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
             }
         )
         return payload
+
+    if route_quota_exceeded(user):
+        return _quota_route_payload(user, start)
+    await asyncio.to_thread(store.increment_route_usage, user["id"])
 
     limit = max(2, min(int(body.limit or 8), 20))
     retrieval_start = time.monotonic()

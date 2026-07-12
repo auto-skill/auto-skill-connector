@@ -15,6 +15,7 @@ Endpoints:
   GET  /runs                                  -> current user's recent route_events (dashboard metrics)
   GET  /skills-catalog                        -> paginated skill browse (account-only)
   GET  /admin/stats                           -> operator-only: all users' stats + recent activity feed
+  POST /admin/set-plan                        -> operator-only: manual free/pro/team plan flip
   GET/POST/DELETE /favorites[/{skill_id}]     -> per-user favorited skills
   GET/POST        /installs                   -> per-user install history
   GET/POST/DELETE /private-skills[/{id}]      -> per-user private skill submissions
@@ -282,7 +283,17 @@ async def account():
 @router.get("/auth/whoami")
 async def whoami(authorization: str | None = Header(None)):
     user = _require_user(authorization)
-    return {"id": user["id"], "email": user["email"], "name": user["name"], "avatar_url": user["avatar_url"]}
+    plan = user.get("plan") or "free"
+    limit = store.FREE_ROUTES_PER_MONTH if plan == "free" else None
+    return {
+        "id": user["id"],
+        "email": user["email"],
+        "name": user["name"],
+        "avatar_url": user["avatar_url"],
+        "plan": plan,
+        "routes_used_this_month": store.get_route_usage(user["id"]),
+        "routes_limit": limit,
+    }
 
 
 @router.get("/runs")
@@ -319,6 +330,23 @@ async def admin_stats(events_limit: int = 100, authorization: str | None = Heade
         # prefixes; it never exposes raw IDs or prompt-derived data.
         "route_metrics": store.route_event_summary(hours=24),
     }
+
+
+class SetPlanRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+    plan: str
+
+
+@router.post("/admin/set-plan")
+async def admin_set_plan(body: SetPlanRequest, authorization: str | None = Header(None)):
+    """Operator-only manual plan flip. There is deliberately no billing
+    integration yet -- plans change by hand until someone is actually paying."""
+    _require_admin(authorization)
+    if body.plan not in store.USER_PLANS:
+        raise HTTPException(status_code=400, detail=f"unknown plan; choose one of {', '.join(store.USER_PLANS)}")
+    if not store.set_user_plan(body.email, body.plan):
+        raise HTTPException(status_code=404, detail="no user with that email")
+    return {"ok": True, "email": body.email, "plan": body.plan}
 
 
 @router.post("/auth/logout")

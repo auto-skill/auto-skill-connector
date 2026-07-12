@@ -136,7 +136,15 @@ CREATE TABLE IF NOT EXISTS users (
     email TEXT UNIQUE NOT NULL,
     name TEXT,
     avatar_url TEXT,
-    created_at TEXT
+    created_at TEXT,
+    plan TEXT DEFAULT 'free'
+);
+
+CREATE TABLE IF NOT EXISTS route_usage (
+    user_id TEXT NOT NULL,
+    month TEXT NOT NULL,
+    count INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, month)
 );
 
 CREATE TABLE IF NOT EXISTS oauth_identities (
@@ -214,6 +222,7 @@ TABLES = {
     "users": {"unique": "email", "json_cols": set()},
     "oauth_identities": {"unique": None, "json_cols": set()},
     "cli_tokens": {"unique": "token_hash", "json_cols": set()},
+    "route_usage": {"unique": None, "json_cols": set()},
     "favorites": {"unique": None, "json_cols": set()},
     "installs": {"unique": None, "json_cols": set()},
     "private_skills": {"unique": None, "json_cols": set()},
@@ -322,6 +331,16 @@ ANONYMOUS_ID_RETENTION_DAYS = max(1, int(os.getenv("AUTOSKILL_ANONYMOUS_ID_RETEN
 CLI_TOKEN_COLUMN_DEFAULTS = {
     "expires_at": "TEXT",
 }
+
+USER_COLUMN_DEFAULTS = {
+    "plan": "TEXT DEFAULT 'free'",
+}
+
+USER_PLANS = ("free", "pro", "team")
+
+# 0 disables metering entirely (self-hosted deployments). Only the free plan
+# is metered; pro/team route without limits.
+FREE_ROUTES_PER_MONTH = int(os.getenv("AUTOSKILL_FREE_ROUTES_PER_MONTH", "200"))
 
 
 def get_conn() -> sqlite3.Connection:
@@ -464,6 +483,10 @@ def init_db() -> None:
         for col, spec in CLI_TOKEN_COLUMN_DEFAULTS.items():
             if col not in cli_token_existing:
                 conn.execute(f"ALTER TABLE cli_tokens ADD COLUMN {col} {spec}")
+        user_existing = {row["name"] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
+        for col, spec in USER_COLUMN_DEFAULTS.items():
+            if col not in user_existing:
+                conn.execute(f"ALTER TABLE users ADD COLUMN {col} {spec}")
         # A missing status must never become silently routable because an old
         # SQLite table still has the historical DEFAULT 'active'.
         conn.execute("UPDATE skills SET quality_status='pending' WHERE quality_status IS NULL")
@@ -1617,6 +1640,55 @@ def revoke_cli_token(token_hash: str) -> bool:
         )
         conn.commit()
         return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def _usage_month() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m")
+
+
+def set_user_plan(email: str, plan: str) -> bool:
+    if plan not in USER_PLANS:
+        raise ValueError(f"unknown plan {plan!r}; choose one of {', '.join(USER_PLANS)}")
+    conn = get_conn()
+    try:
+        cur = conn.execute("UPDATE users SET plan=? WHERE email=?", (plan, email))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def increment_route_usage(user_id: str) -> int:
+    """Count one route against the user's current calendar month and return
+    the new total. Kept in a bare (user_id, month, count) table rather than on
+    route_events so per-user billing state never links back to route history."""
+    month = _usage_month()
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT INTO route_usage (user_id, month, count) VALUES (?, ?, 1) "
+            "ON CONFLICT(user_id, month) DO UPDATE SET count = count + 1",
+            (user_id, month),
+        )
+        row = conn.execute(
+            "SELECT count FROM route_usage WHERE user_id=? AND month=?", (user_id, month)
+        ).fetchone()
+        conn.commit()
+        return int(row["count"])
+    finally:
+        conn.close()
+
+
+def get_route_usage(user_id: str) -> int:
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT count FROM route_usage WHERE user_id=? AND month=?",
+            (user_id, _usage_month()),
+        ).fetchone()
+        return int(row["count"]) if row else 0
     finally:
         conn.close()
 
