@@ -144,7 +144,7 @@ class PlanEndpointTests(unittest.TestCase):
             self.assertEqual(over["quota"]["used"], 2)
             self.assertIn("upgrade_url", over["quota"])
 
-    def test_pro_plan_is_not_metered(self) -> None:
+    def test_pro_plan_is_not_metered_by_the_free_quota(self) -> None:
         token = self._login("a@example.com")
         local_store.set_user_plan("a@example.com", "pro")
         with (
@@ -154,6 +154,99 @@ class PlanEndpointTests(unittest.TestCase):
             for _ in range(3):
                 payload = self._route(token)
                 self.assertNotEqual(payload["score_debug"]["reason"], "quota-exceeded")
+
+    def test_pro_plan_hits_the_internal_fair_use_cap(self) -> None:
+        token = self._login("a@example.com")
+        local_store.set_user_plan("a@example.com", "pro")
+        with (
+            patch("recommender.retrieve_skills", new=AsyncMock(return_value=[])),
+            patch.object(local_store, "PRO_ROUTES_PER_MONTH", 2),
+        ):
+            self._route(token)
+            self._route(token)
+            over = self._route(token)
+            self.assertEqual(over["score_debug"]["reason"], "quota-exceeded")
+            self.assertEqual(over["quota"]["plan"], "pro")
+            self.assertEqual(over["quota"]["limit"], 2)
+
+    def test_team_plan_pools_the_fair_use_cap_across_the_workspace(self) -> None:
+        owner_token = self._login("owner@example.com")
+        member_token = self._login("member@example.com")
+        local_store.set_user_plan("owner@example.com", "team")
+        local_store.set_user_plan("member@example.com", "team")
+        owner = local_store.get_or_create_user("owner@example.com", "owner", None)
+        member = local_store.get_or_create_user("member@example.com", "member", None)
+        org = local_store.create_org("Acme", owner["id"])
+        local_store.add_org_member(org["id"], member["id"])
+        local_store.set_org_seat_limit(org["id"], 2)
+        with (
+            patch("recommender.retrieve_skills", new=AsyncMock(return_value=[])),
+            patch.object(local_store, "PRO_ROUTES_PER_MONTH", 1),
+        ):
+            # Pool = 2 seats x 1 route. One route each drains the shared pool.
+            self._route(owner_token)
+            self._route(member_token)
+            over = self._route(owner_token)
+            self.assertEqual(over["score_debug"]["reason"], "quota-exceeded")
+            self.assertEqual(over["quota"]["plan"], "team")
+            self.assertEqual(over["quota"]["limit"], 2)
+            self.assertEqual(over["quota"]["used"], 2)
+
+    def test_team_plan_without_an_org_falls_back_to_the_per_user_cap(self) -> None:
+        token = self._login("a@example.com")
+        local_store.set_user_plan("a@example.com", "team")
+        with (
+            patch("recommender.retrieve_skills", new=AsyncMock(return_value=[])),
+            patch.object(local_store, "PRO_ROUTES_PER_MONTH", 1),
+        ):
+            self._route(token)
+            over = self._route(token)
+            self.assertEqual(over["score_debug"]["reason"], "quota-exceeded")
+
+    def _post_private_skill(self, token: str, name: str) -> int:
+        r = self.client.post(
+            "/private-skills",
+            json={"name": name, "content": "# skill"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        return r.status_code
+
+    def test_free_plan_private_skill_cap(self) -> None:
+        token = self._login("a@example.com")
+        with patch.object(local_store, "FREE_PRIVATE_SKILLS", 2):
+            self.assertEqual(self._post_private_skill(token, "one"), 200)
+            self.assertEqual(self._post_private_skill(token, "two"), 200)
+            self.assertEqual(self._post_private_skill(token, "three"), 402)
+            local_store.set_user_plan("a@example.com", "pro")
+            self.assertEqual(self._post_private_skill(token, "three"), 200)
+
+    def test_org_seat_limit_blocks_extra_members_until_admin_adds_seats(self) -> None:
+        owner_token = self._login("owner@example.com")
+        owner = local_store.get_or_create_user("owner@example.com", "owner", None)
+        local_store.get_or_create_user("b@example.com", "b", None)
+        local_store.get_or_create_user("c@example.com", "c", None)
+        org = local_store.create_org("Acme", owner["id"])
+
+        def _add(email: str) -> int:
+            r = self.client.post(
+                f"/orgs/{org['id']}/members",
+                json={"email": email},
+                headers={"Authorization": f"Bearer {owner_token}"},
+            )
+            return r.status_code
+
+        with patch.object(local_store, "TEAM_INCLUDED_MEMBERS", 2):
+            self.assertEqual(_add("b@example.com"), 200)  # owner + b fill both seats
+            self.assertEqual(_add("b@example.com"), 200)  # re-adding a member is not a new seat
+            self.assertEqual(_add("c@example.com"), 402)
+            with patch.dict("os.environ", {"ADMIN_EMAILS": "owner@example.com"}):
+                r = self.client.post(
+                    "/admin/set-org-seats",
+                    json={"org_id": org["id"], "seats": 3},
+                    headers={"Authorization": f"Bearer {owner_token}"},
+                )
+                self.assertEqual(r.status_code, 200)
+            self.assertEqual(_add("c@example.com"), 200)
 
     def test_non_task_prompts_do_not_burn_quota(self) -> None:
         token = self._login("a@example.com")

@@ -16,12 +16,26 @@ Endpoints:
   GET  /skills-catalog                        -> paginated skill browse (account-only)
   GET  /admin/stats                           -> operator-only: all users' stats + recent activity feed
   POST /admin/set-plan                        -> operator-only: manual free/pro/team plan flip
+  POST /admin/set-org-seats                   -> operator-only: manual paid-seat bump for a team workspace
   GET/POST/DELETE /favorites[/{skill_id}]     -> per-user favorited skills
-  GET/POST        /installs                   -> per-user install history
-  GET/POST/DELETE /private-skills[/{id}]      -> per-user private skill submissions
+  GET/POST        /installs                   -> per-user install history (audited to the user's orgs)
+  GET/POST/DELETE /private-skills[/{id}]      -> per-user private skill submissions (free plan capped)
+  GET  /skills/{id}/versions                  -> content-hash version history for a catalog skill
+  GET/POST/DELETE /pins[/{skill_id}]          -> pro: pin a skill to a version; routing serves the pinned content
+  GET/POST/DELETE /watches[/{skill_id}]       -> pro: subscribe to change alerts for a skill
+  GET  /alerts, POST /alerts/{skill_id}/ack   -> pro: watched skills whose content changed since last ack
+  GET/POST/DELETE /collections[/{id}]         -> pro: personal collections; team: org-shared collections
+  GET/POST/DELETE /collections/{id}/skills[/{sid}] -> skills in a collection
+  GET/PUT /preferences                        -> pro: routing exclusions, applied server-side on every client
+  GET  /analytics                             -> pro: per-user recommendation/outcome rollup
   GET/POST /orgs                              -> team-plan orgs (create requires team plan)
   GET/POST/DELETE /orgs/{id}/members[/{uid}]  -> org membership (owner-managed; members may leave)
   GET/POST/DELETE /orgs/{id}/skills[/{sid}]   -> org-shared skills, routed first for all members
+                                                 (members submit as pending; owner approves)
+  POST /orgs/{id}/skills/{sid}/approve        -> owner approves a member's pending submission
+  GET/POST/DELETE /orgs/{id}/policies[/{sid}] -> owner-managed allow/block routing policies
+  GET  /orgs/{id}/audit                       -> owner: install and change audit log
+  GET  /orgs/{id}/analytics                   -> owner: team usage and outcome analytics
   GET  /signup                                -> account-required landing page (see scraper.py's account guard)
   GET  /account                               -> post-login confirmation, links out to the site's dashboard
 """
@@ -87,6 +101,11 @@ def _require_admin(authorization: str | None) -> dict:
     if (user.get("email") or "").lower() not in _admin_emails():
         raise HTTPException(status_code=403, detail="not an admin account")
     return user
+
+
+def _require_paid_plan(user: dict, feature: str) -> None:
+    if (user.get("plan") or "free") == "free":
+        raise HTTPException(status_code=402, detail=f"{feature} requires the pro plan")
 
 
 def _origin_for_url(value: str) -> str | None:
@@ -352,6 +371,23 @@ async def admin_set_plan(body: SetPlanRequest, authorization: str | None = Heade
     return {"ok": True, "email": body.email, "plan": body.plan}
 
 
+class SetOrgSeatsRequest(BaseModel):
+    org_id: str
+    seats: int = Field(ge=1, le=1000)
+
+
+@router.post("/admin/set-org-seats")
+async def admin_set_org_seats(body: SetOrgSeatsRequest, authorization: str | None = Header(None)):
+    """Operator-only paid-seat bump. The team plan includes
+    TEAM_INCLUDED_MEMBERS members per workspace; extra seats are billed by
+    hand, same manual-billing stance as /admin/set-plan."""
+    admin = _require_admin(authorization)
+    if not store.set_org_seat_limit(body.org_id, body.seats):
+        raise HTTPException(status_code=404, detail="no such org")
+    store.record_org_audit(body.org_id, admin["id"], "seats_changed", str(body.seats))
+    return {"ok": True, "org_id": body.org_id, "seat_limit": body.seats}
+
+
 @router.post("/auth/logout")
 async def logout(authorization: str | None = Header(None)):
     if not authorization or not authorization.lower().startswith("bearer "):
@@ -420,6 +456,7 @@ async def get_installs(authorization: str | None = Header(None)):
 async def post_install(body: InstallRequest, authorization: str | None = Header(None)):
     user = _require_user(authorization)
     store.record_install(user["id"], body.skill_id, body.skill_url, body.target)
+    store.record_install_audit(user["id"], body.skill_id or body.skill_url or "")
     return {"ok": True}
 
 
@@ -440,6 +477,12 @@ async def get_private_skills(authorization: str | None = Header(None)):
 @router.post("/private-skills")
 async def post_private_skill(body: PrivateSkillRequest, authorization: str | None = Header(None)):
     user = _require_user(authorization)
+    plan = user.get("plan") or "free"
+    if plan == "free" and store.FREE_PRIVATE_SKILLS > 0 and store.count_private_skills(user["id"]) >= store.FREE_PRIVATE_SKILLS:
+        raise HTTPException(
+            status_code=402,
+            detail=f"the free plan includes up to {store.FREE_PRIVATE_SKILLS} private skills; upgrade to pro for unlimited",
+        )
     skill = store.add_private_skill(user["id"], body.name, body.description, body.content)
     return {"private_skill": skill}
 
@@ -451,6 +494,194 @@ async def delete_private_skill(skill_id: str, authorization: str | None = Header
     if not removed:
         raise HTTPException(status_code=404, detail="not found")
     return {"ok": True}
+
+
+@router.get("/skills/{skill_id}/versions")
+async def get_skill_versions(skill_id: str, authorization: str | None = Header(None)):
+    _require_user(authorization)
+    current = store.get_skill_hash(skill_id)
+    return {"current_hash": current, "versions": store.list_skill_versions(skill_id)}
+
+
+class PinRequest(BaseModel):
+    skill_id: str
+    content_hash: str = Field(min_length=8, max_length=128)
+
+
+@router.get("/pins")
+async def get_pins(authorization: str | None = Header(None)):
+    user = _require_user(authorization)
+    return {"pins": store.list_pins(user["id"])}
+
+
+@router.post("/pins")
+async def post_pin(body: PinRequest, authorization: str | None = Header(None)):
+    """Pin (or roll back) a skill to a specific content version. Routing
+    serves the pinned content until the pin is removed or re-pointed."""
+    user = _require_user(authorization)
+    _require_paid_plan(user, "version pinning")
+    if not store.skill_version_exists(body.skill_id, body.content_hash):
+        raise HTTPException(status_code=404, detail="no such version for that skill")
+    return {"pin": store.pin_skill(user["id"], body.skill_id, body.content_hash)}
+
+
+@router.delete("/pins/{skill_id}")
+async def delete_pin(skill_id: str, authorization: str | None = Header(None)):
+    user = _require_user(authorization)
+    if not store.unpin_skill(user["id"], skill_id):
+        raise HTTPException(status_code=404, detail="not pinned")
+    return {"ok": True}
+
+
+class WatchRequest(BaseModel):
+    skill_id: str
+
+
+@router.get("/watches")
+async def get_watches(authorization: str | None = Header(None)):
+    user = _require_user(authorization)
+    return {"watches": store.list_watches(user["id"])}
+
+
+@router.post("/watches")
+async def post_watch(body: WatchRequest, authorization: str | None = Header(None)):
+    user = _require_user(authorization)
+    _require_paid_plan(user, "change alerts")
+    if store.get_skill_hash(body.skill_id) is None:
+        raise HTTPException(status_code=404, detail="no such skill")
+    return {"watch": store.watch_skill(user["id"], body.skill_id)}
+
+
+@router.delete("/watches/{skill_id}")
+async def delete_watch(skill_id: str, authorization: str | None = Header(None)):
+    user = _require_user(authorization)
+    if not store.unwatch_skill(user["id"], skill_id):
+        raise HTTPException(status_code=404, detail="not watched")
+    return {"ok": True}
+
+
+@router.get("/alerts")
+async def get_alerts(authorization: str | None = Header(None)):
+    user = _require_user(authorization)
+    return {"alerts": store.list_skill_alerts(user["id"])}
+
+
+@router.post("/alerts/{skill_id}/ack")
+async def ack_alert(skill_id: str, authorization: str | None = Header(None)):
+    user = _require_user(authorization)
+    if not store.ack_skill_alert(user["id"], skill_id):
+        raise HTTPException(status_code=404, detail="not watched")
+    return {"ok": True}
+
+
+class CollectionRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    org_id: str | None = None
+
+
+class CollectionSkillRequest(BaseModel):
+    skill_id: str
+
+
+def _require_collection_access(collection_id: str, user: dict, *, modify: bool) -> dict:
+    """Personal collections: owner only. Org collections: members view and
+    add/remove skills, only the org owner deletes the collection itself."""
+    collection = store.get_collection(collection_id)
+    if collection is None:
+        raise HTTPException(status_code=404, detail="no such collection")
+    if collection.get("org_id"):
+        role = store.org_role(collection["org_id"], user["id"])
+        if role is None:
+            raise HTTPException(status_code=404, detail="no such collection")
+        if modify and role != "owner":
+            raise HTTPException(status_code=403, detail="org owner required")
+    elif collection["owner_user_id"] != user["id"]:
+        raise HTTPException(status_code=404, detail="no such collection")
+    return collection
+
+
+@router.get("/collections")
+async def get_collections(authorization: str | None = Header(None)):
+    user = _require_user(authorization)
+    return {"collections": store.list_collections(user["id"])}
+
+
+@router.post("/collections")
+async def post_collection(body: CollectionRequest, authorization: str | None = Header(None)):
+    user = _require_user(authorization)
+    _require_paid_plan(user, "collections")
+    if body.org_id:
+        if store.org_role(body.org_id, user["id"]) != "owner":
+            raise HTTPException(status_code=403, detail="org owner required for shared collections")
+    return {"collection": store.create_collection(user["id"], body.name.strip(), body.org_id)}
+
+
+@router.delete("/collections/{collection_id}")
+async def delete_collection(collection_id: str, authorization: str | None = Header(None)):
+    user = _require_user(authorization)
+    _require_collection_access(collection_id, user, modify=True)
+    store.delete_collection(collection_id)
+    return {"ok": True}
+
+
+@router.get("/collections/{collection_id}/skills")
+async def get_collection_skills(collection_id: str, authorization: str | None = Header(None)):
+    user = _require_user(authorization)
+    _require_collection_access(collection_id, user, modify=False)
+    return {"skills": store.list_collection_skills(collection_id)}
+
+
+@router.post("/collections/{collection_id}/skills")
+async def post_collection_skill(
+    collection_id: str, body: CollectionSkillRequest, authorization: str | None = Header(None)
+):
+    user = _require_user(authorization)
+    collection = _require_collection_access(collection_id, user, modify=False)
+    if not collection.get("org_id"):
+        _require_collection_access(collection_id, user, modify=True)
+    store.add_collection_skill(collection_id, body.skill_id)
+    return {"ok": True, "skills": store.list_collection_skills(collection_id)}
+
+
+@router.delete("/collections/{collection_id}/skills/{skill_id}")
+async def delete_collection_skill(collection_id: str, skill_id: str, authorization: str | None = Header(None)):
+    user = _require_user(authorization)
+    collection = _require_collection_access(collection_id, user, modify=False)
+    if not collection.get("org_id"):
+        _require_collection_access(collection_id, user, modify=True)
+    if not store.remove_collection_skill(collection_id, skill_id):
+        raise HTTPException(status_code=404, detail="not in collection")
+    return {"ok": True}
+
+
+class PreferencesRequest(BaseModel):
+    excluded_skill_ids: list[str] = Field(default_factory=list, max_length=200)
+    excluded_sources: list[str] = Field(default_factory=list, max_length=50)
+
+
+@router.get("/preferences")
+async def get_preferences(authorization: str | None = Header(None)):
+    user = _require_user(authorization)
+    return {"preferences": store.get_routing_preferences(user["id"])}
+
+
+@router.put("/preferences")
+async def put_preferences(body: PreferencesRequest, authorization: str | None = Header(None)):
+    """Custom exclusions and routing preferences. Stored server-side so every
+    connected agent on every machine applies them -- this is what the plan
+    sells as cross-agent synchronization."""
+    user = _require_user(authorization)
+    _require_paid_plan(user, "routing preferences")
+    excluded_ids = [str(v)[:80] for v in body.excluded_skill_ids]
+    excluded_sources = [str(v)[:80] for v in body.excluded_sources]
+    return {"preferences": store.set_routing_preferences(user["id"], excluded_ids, excluded_sources)}
+
+
+@router.get("/analytics")
+async def get_analytics(days: int = 30, authorization: str | None = Header(None)):
+    user = _require_user(authorization)
+    _require_paid_plan(user, "recommendation analytics")
+    return {"analytics": store.user_route_analytics(user["id"], days)}
 
 
 def _require_org_member(org_id: str, user: dict) -> str:
@@ -502,7 +733,15 @@ async def post_org_member(org_id: str, body: OrgMemberRequest, authorization: st
     member = store.get_user_by_email(body.email)
     if member is None:
         raise HTTPException(status_code=404, detail="no user with that email; they must sign up first")
-    store.add_org_member(org_id, member["id"])
+    org = store.get_org(org_id)
+    seat_limit = store.org_seat_limit(org or {})
+    if store.org_role(org_id, member["id"]) is None and store.org_member_count(org_id) >= seat_limit:
+        raise HTTPException(
+            status_code=402,
+            detail=f"this workspace includes {seat_limit} members; additional seats are billed -- contact support to add seats",
+        )
+    if store.add_org_member(org_id, member["id"]):
+        store.record_org_audit(org_id, user["id"], "member_added", member["email"])
     return {"ok": True, "members": store.list_org_members(org_id)}
 
 
@@ -516,6 +755,7 @@ async def delete_org_member(org_id: str, user_id: str, authorization: str | None
         _require_org_member(org_id, user)
     if not store.remove_org_member(org_id, user_id):
         raise HTTPException(status_code=404, detail="not a removable member")
+    store.record_org_audit(org_id, user["id"], "member_removed", user_id)
     return {"ok": True}
 
 
@@ -528,10 +768,25 @@ async def get_org_skills(org_id: str, authorization: str | None = Header(None)):
 
 @router.post("/orgs/{org_id}/skills")
 async def post_org_skill(org_id: str, body: PrivateSkillRequest, authorization: str | None = Header(None)):
+    """Owner publishes directly; a member's submission lands as 'pending' and
+    stays out of routing until the owner approves it."""
+    user = _require_user(authorization)
+    role = _require_org_member(org_id, user)
+    status = None if role == "owner" else "pending"
+    skill = store.add_org_skill(org_id, user["id"], body.name, body.description, body.content, status=status)
+    action = "org_skill_added" if role == "owner" else "org_skill_submitted"
+    store.record_org_audit(org_id, user["id"], action, body.name)
+    return {"org_skill": skill}
+
+
+@router.post("/orgs/{org_id}/skills/{skill_id}/approve")
+async def approve_org_skill(org_id: str, skill_id: str, authorization: str | None = Header(None)):
     user = _require_user(authorization)
     _require_org_owner(org_id, user)
-    skill = store.add_org_skill(org_id, user["id"], body.name, body.description, body.content)
-    return {"org_skill": skill}
+    if not store.approve_org_skill(org_id, skill_id):
+        raise HTTPException(status_code=404, detail="no pending skill with that id")
+    store.record_org_audit(org_id, user["id"], "org_skill_approved", skill_id)
+    return {"ok": True}
 
 
 @router.delete("/orgs/{org_id}/skills/{skill_id}")
@@ -540,4 +795,57 @@ async def delete_org_skill(org_id: str, skill_id: str, authorization: str | None
     _require_org_owner(org_id, user)
     if not store.remove_org_skill(org_id, skill_id):
         raise HTTPException(status_code=404, detail="not found")
+    store.record_org_audit(org_id, user["id"], "org_skill_removed", skill_id)
     return {"ok": True}
+
+
+class OrgPolicyRequest(BaseModel):
+    skill_id: str
+    policy: str
+
+
+@router.get("/orgs/{org_id}/policies")
+async def get_org_policies(org_id: str, authorization: str | None = Header(None)):
+    user = _require_user(authorization)
+    _require_org_member(org_id, user)
+    return {"policies": store.list_org_skill_policies(org_id)}
+
+
+@router.post("/orgs/{org_id}/policies")
+async def post_org_policy(org_id: str, body: OrgPolicyRequest, authorization: str | None = Header(None)):
+    """Allow/block routing policies for the workspace. Blocked skills never
+    route for members; if any allow rows exist, public-catalog routing is
+    restricted to the allowlist (team-standard-only mode)."""
+    user = _require_user(authorization)
+    _require_org_owner(org_id, user)
+    if body.policy not in store.ORG_SKILL_POLICIES:
+        raise HTTPException(
+            status_code=400, detail=f"unknown policy; choose one of {', '.join(store.ORG_SKILL_POLICIES)}"
+        )
+    policy = store.set_org_skill_policy(org_id, body.skill_id, body.policy)
+    store.record_org_audit(org_id, user["id"], "policy_set", f"{body.policy}:{body.skill_id}")
+    return {"policy": policy}
+
+
+@router.delete("/orgs/{org_id}/policies/{skill_id}")
+async def delete_org_policy(org_id: str, skill_id: str, authorization: str | None = Header(None)):
+    user = _require_user(authorization)
+    _require_org_owner(org_id, user)
+    if not store.remove_org_skill_policy(org_id, skill_id):
+        raise HTTPException(status_code=404, detail="no policy for that skill")
+    store.record_org_audit(org_id, user["id"], "policy_removed", skill_id)
+    return {"ok": True}
+
+
+@router.get("/orgs/{org_id}/audit")
+async def get_org_audit(org_id: str, limit: int = 100, authorization: str | None = Header(None)):
+    user = _require_user(authorization)
+    _require_org_owner(org_id, user)
+    return {"audit": store.list_org_audit(org_id, limit)}
+
+
+@router.get("/orgs/{org_id}/analytics")
+async def get_org_analytics(org_id: str, days: int = 30, authorization: str | None = Header(None)):
+    user = _require_user(authorization)
+    _require_org_owner(org_id, user)
+    return {"analytics": store.org_route_analytics(org_id, days)}

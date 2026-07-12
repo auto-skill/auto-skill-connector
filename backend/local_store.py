@@ -201,7 +201,8 @@ CREATE TABLE IF NOT EXISTS orgs (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     owner_user_id TEXT NOT NULL,
-    created_at TEXT
+    created_at TEXT,
+    seat_limit INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS org_members (
@@ -213,6 +214,80 @@ CREATE TABLE IF NOT EXISTS org_members (
     UNIQUE(org_id, user_id)
 );
 CREATE INDEX IF NOT EXISTS org_members_user_idx ON org_members(user_id);
+
+CREATE TABLE IF NOT EXISTS skill_versions (
+    id TEXT PRIMARY KEY,
+    skill_id TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    seen_at TEXT,
+    UNIQUE(skill_id, content_hash)
+);
+CREATE INDEX IF NOT EXISTS skill_versions_skill_idx ON skill_versions(skill_id);
+
+CREATE TABLE IF NOT EXISTS skill_pins (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    skill_id TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    created_at TEXT,
+    UNIQUE(user_id, skill_id)
+);
+CREATE INDEX IF NOT EXISTS skill_pins_user_idx ON skill_pins(user_id);
+
+CREATE TABLE IF NOT EXISTS skill_watches (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    skill_id TEXT NOT NULL,
+    last_seen_hash TEXT,
+    created_at TEXT,
+    UNIQUE(user_id, skill_id)
+);
+CREATE INDEX IF NOT EXISTS skill_watches_user_idx ON skill_watches(user_id);
+
+CREATE TABLE IF NOT EXISTS collections (
+    id TEXT PRIMARY KEY,
+    owner_user_id TEXT NOT NULL,
+    org_id TEXT,
+    name TEXT NOT NULL,
+    created_at TEXT
+);
+CREATE INDEX IF NOT EXISTS collections_owner_idx ON collections(owner_user_id);
+CREATE INDEX IF NOT EXISTS collections_org_idx ON collections(org_id);
+
+CREATE TABLE IF NOT EXISTS collection_skills (
+    id TEXT PRIMARY KEY,
+    collection_id TEXT NOT NULL,
+    skill_id TEXT NOT NULL,
+    created_at TEXT,
+    UNIQUE(collection_id, skill_id)
+);
+
+CREATE TABLE IF NOT EXISTS routing_preferences (
+    user_id TEXT PRIMARY KEY,
+    excluded_skill_ids TEXT DEFAULT '[]',
+    excluded_sources TEXT DEFAULT '[]',
+    updated_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS org_skill_policies (
+    id TEXT PRIMARY KEY,
+    org_id TEXT NOT NULL,
+    skill_id TEXT NOT NULL,
+    policy TEXT NOT NULL,
+    created_at TEXT,
+    UNIQUE(org_id, skill_id)
+);
+CREATE INDEX IF NOT EXISTS org_skill_policies_org_idx ON org_skill_policies(org_id);
+
+CREATE TABLE IF NOT EXISTS org_audit_log (
+    id TEXT PRIMARY KEY,
+    org_id TEXT NOT NULL,
+    actor_user_id TEXT,
+    action TEXT NOT NULL,
+    subject TEXT,
+    created_at TEXT
+);
+CREATE INDEX IF NOT EXISTS org_audit_log_org_idx ON org_audit_log(org_id);
 
 CREATE TABLE IF NOT EXISTS oauth_clients (
     client_id TEXT PRIMARY KEY,
@@ -357,18 +432,55 @@ USER_COLUMN_DEFAULTS = {
 }
 
 # NULL org_id = personal submission; a real org_id shares the skill with
-# every member of that org.
+# every member of that org. NULL status = approved (personal skills and
+# owner-published org skills); 'pending' = a member submission awaiting the
+# org owner's approval, invisible to routing until approved.
 PRIVATE_SKILL_COLUMN_DEFAULTS = {
     "org_id": "TEXT",
+    "status": "TEXT",
+}
+
+ORG_SKILL_POLICIES = ("allow", "block")
+
+ORG_AUDIT_ACTIONS = frozenset(
+    {
+        "member_added",
+        "member_removed",
+        "org_skill_added",
+        "org_skill_submitted",
+        "org_skill_approved",
+        "org_skill_removed",
+        "policy_set",
+        "policy_removed",
+        "seats_changed",
+        "skill_installed",
+    }
+)
+
+# NULL seat_limit = the plan's included member count (TEAM_INCLUDED_MEMBERS);
+# a real value is an operator-granted paid-seat bump.
+ORG_COLUMN_DEFAULTS = {
+    "seat_limit": "INTEGER",
 }
 
 ORG_ROLES = ("owner", "member")
 
 USER_PLANS = ("free", "pro", "team")
 
-# 0 disables metering entirely (self-hosted deployments). Only the free plan
-# is metered; pro/team route without limits.
-FREE_ROUTES_PER_MONTH = int(os.getenv("AUTOSKILL_FREE_ROUTES_PER_MONTH", "200"))
+# 0 disables metering entirely (self-hosted deployments).
+FREE_ROUTES_PER_MONTH = int(os.getenv("AUTOSKILL_FREE_ROUTES_PER_MONTH", "1000"))
+
+# Pro is marketed as unlimited fair-use routing; this is the internal abuse
+# cap behind that promise, never shown on the pricing page. 0 disables.
+PRO_ROUTES_PER_MONTH = int(os.getenv("AUTOSKILL_PRO_ROUTES_PER_MONTH", "15000"))
+
+# Free plan includes up to this many personal private skills; pro/team are
+# unlimited. 0 disables the cap.
+FREE_PRIVATE_SKILLS = int(os.getenv("AUTOSKILL_FREE_PRIVATE_SKILLS", "10"))
+
+# Team workspaces include this many members; extra seats are billed by hand
+# (see /admin/set-org-seats), same manual-billing stance as /admin/set-plan.
+TEAM_INCLUDED_MEMBERS = int(os.getenv("AUTOSKILL_TEAM_INCLUDED_MEMBERS", "5"))
 
 
 def get_conn() -> sqlite3.Connection:
@@ -519,6 +631,10 @@ def init_db() -> None:
         for col, spec in PRIVATE_SKILL_COLUMN_DEFAULTS.items():
             if col not in private_skill_existing:
                 conn.execute(f"ALTER TABLE private_skills ADD COLUMN {col} {spec}")
+        org_existing = {row["name"] for row in conn.execute("PRAGMA table_info(orgs)").fetchall()}
+        for col, spec in ORG_COLUMN_DEFAULTS.items():
+            if col not in org_existing:
+                conn.execute(f"ALTER TABLE orgs ADD COLUMN {col} {spec}")
         conn.execute("CREATE INDEX IF NOT EXISTS private_skills_org_idx ON private_skills(org_id)")
         # A missing status must never become silently routable because an old
         # SQLite table still has the historical DEFAULT 'active'.
@@ -558,6 +674,16 @@ def _row_to_dict(row: sqlite3.Row, table: str, select_cols: list[str] | None) ->
     if select_cols:
         d = {k: d[k] for k in select_cols if k in d}
     return d
+
+
+def _record_skill_version(cur, skill_id: str, content_hash: str) -> None:
+    """Append-only version history: every content hash a skill has ever been
+    seen with, so pro users can pin or roll back to a prior version and
+    watchers can be alerted when the hash moves."""
+    cur.execute(
+        "INSERT OR IGNORE INTO skill_versions (id, skill_id, content_hash, seen_at) VALUES (?, ?, ?, ?)",
+        (str(uuid.uuid4()), skill_id, content_hash, _now()),
+    )
 
 
 def upsert_rows(table: str, rows: list[dict], on_conflict: str | None) -> list[dict]:
@@ -607,7 +733,10 @@ def upsert_rows(table: str, rows: list[dict], on_conflict: str | None) -> list[d
                 r = cur.execute(f"SELECT * FROM {table} WHERE {unique_col}=?", (row[unique_col],)).fetchone()
             else:
                 r = cur.execute(f"SELECT * FROM {table} WHERE id=?", (row["id"],)).fetchone()
-            out.append(_row_to_dict(r, table, None))
+            stored = _row_to_dict(r, table, None)
+            if table == "skills" and stored.get("content_hash"):
+                _record_skill_version(cur, stored["id"], stored["content_hash"])
+            out.append(stored)
         conn.commit()
         if table == "skills":
             invalidate_vector_cache()
@@ -702,6 +831,12 @@ def update_rows(table: str, filters: dict, data: dict) -> int:
         set_clause = ",".join(f"{k}=?" for k in data.keys())
         sql = f"UPDATE {table} SET {set_clause} WHERE {' AND '.join(where_sql)}"
         cur = conn.execute(sql, list(data.values()) + params)
+        if table == "skills" and "content_hash" in data and cur.rowcount:
+            for row in conn.execute(
+                f"SELECT id, content_hash FROM skills WHERE {' AND '.join(where_sql)}", params
+            ).fetchall():
+                if row["content_hash"]:
+                    _record_skill_version(conn, row["id"], row["content_hash"])
         conn.commit()
         if table == "skills" and cur.rowcount:
             invalidate_vector_cache()
@@ -2069,6 +2204,19 @@ def add_private_skill(owner_user_id: str, name: str, description: str | None, co
         conn.close()
 
 
+def count_private_skills(owner_user_id: str) -> int:
+    """Personal submissions only (org skills don't count against the free cap)."""
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) FROM private_skills WHERE owner_user_id=? AND org_id IS NULL",
+            (owner_user_id,),
+        ).fetchone()
+        return int(row[0])
+    finally:
+        conn.close()
+
+
 def list_private_skills(owner_user_id: str) -> list[dict]:
     """The caller's personal submissions only; org skills list via list_org_skills."""
     conn = get_conn()
@@ -2103,7 +2251,7 @@ def list_routable_private_skills(user_id: str) -> list[dict]:
     try:
         rows = conn.execute(
             "SELECT p.* FROM private_skills p JOIN org_members m ON m.org_id = p.org_id "
-            "WHERE m.user_id=? "
+            "WHERE m.user_id=? AND COALESCE(p.status, 'approved') = 'approved' "
             "UNION ALL "
             "SELECT * FROM private_skills WHERE owner_user_id=? AND org_id IS NULL "
             "ORDER BY created_at DESC",
@@ -2140,6 +2288,68 @@ def create_org(name: str, owner_user_id: str) -> dict:
         )
         conn.commit()
         return dict(conn.execute("SELECT * FROM orgs WHERE id=?", (org_id,)).fetchone())
+    finally:
+        conn.close()
+
+
+def get_org(org_id: str) -> dict | None:
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT * FROM orgs WHERE id=?", (org_id,)).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def org_seat_limit(org: dict) -> int:
+    return int(org.get("seat_limit") or TEAM_INCLUDED_MEMBERS)
+
+
+def org_member_count(org_id: str) -> int:
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT COUNT(*) FROM org_members WHERE org_id=?", (org_id,)).fetchone()
+        return int(row[0])
+    finally:
+        conn.close()
+
+
+def set_org_seat_limit(org_id: str, seats: int) -> bool:
+    if seats < 1:
+        raise ValueError("seat limit must be at least 1")
+    conn = get_conn()
+    try:
+        cur = conn.execute("UPDATE orgs SET seat_limit=? WHERE id=?", (int(seats), org_id))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def team_route_pool(user_id: str) -> tuple[int, int] | None:
+    """Pooled fair-use quota for a team-plan caller: each workspace shares
+    seat_limit x PRO_ROUTES_PER_MONTH across its members this month. Returns
+    the (used, pool) pair of the caller's org with the most headroom, or None
+    when they belong to no org (the per-user pro cap applies instead)."""
+    month = _usage_month()
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            """
+            SELECT COALESCE(o.seat_limit, ?) AS seat_limit,
+                   (SELECT COALESCE(SUM(ru.count), 0) FROM route_usage ru
+                     WHERE ru.month = ?
+                       AND ru.user_id IN (SELECT user_id FROM org_members WHERE org_id = o.id)
+                   ) AS used
+            FROM orgs o JOIN org_members m ON m.org_id = o.id
+            WHERE m.user_id = ?
+            """,
+            (TEAM_INCLUDED_MEMBERS, month, user_id),
+        ).fetchall()
+        if not rows:
+            return None
+        best = max(rows, key=lambda r: int(r["seat_limit"]) * PRO_ROUTES_PER_MONTH - int(r["used"]))
+        return int(best["used"]), int(best["seat_limit"]) * PRO_ROUTES_PER_MONTH
     finally:
         conn.close()
 
@@ -2212,17 +2422,37 @@ def list_org_members(org_id: str) -> list[dict]:
         conn.close()
 
 
-def add_org_skill(org_id: str, uploader_user_id: str, name: str, description: str | None, content: str) -> dict:
+def add_org_skill(
+    org_id: str,
+    uploader_user_id: str,
+    name: str,
+    description: str | None,
+    content: str,
+    status: str | None = None,
+) -> dict:
     conn = get_conn()
     try:
         skill_id = str(uuid.uuid4())
         conn.execute(
-            "INSERT INTO private_skills (id, owner_user_id, name, description, content, created_at, org_id) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (skill_id, uploader_user_id, name, description, content, _now(), org_id),
+            "INSERT INTO private_skills (id, owner_user_id, name, description, content, created_at, org_id, status) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (skill_id, uploader_user_id, name, description, content, _now(), org_id, status),
         )
         conn.commit()
         return dict(conn.execute("SELECT * FROM private_skills WHERE id=?", (skill_id,)).fetchone())
+    finally:
+        conn.close()
+
+
+def approve_org_skill(org_id: str, skill_id: str) -> bool:
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            "UPDATE private_skills SET status='approved' WHERE id=? AND org_id=? AND status='pending'",
+            (skill_id, org_id),
+        )
+        conn.commit()
+        return cur.rowcount > 0
     finally:
         conn.close()
 
@@ -2246,3 +2476,499 @@ def remove_org_skill(org_id: str, skill_id: str) -> bool:
         return cur.rowcount > 0
     finally:
         conn.close()
+
+
+# --- skill versions, pins, and change alerts (pro plan) ---------------------
+
+
+def get_skill_hash(skill_id: str) -> str | None:
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT content_hash FROM skills WHERE id=?", (skill_id,)).fetchone()
+        return row["content_hash"] if row else None
+    finally:
+        conn.close()
+
+
+def list_skill_versions(skill_id: str) -> list[dict]:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT content_hash, seen_at FROM skill_versions WHERE skill_id=? ORDER BY seen_at DESC",
+            (skill_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def skill_version_exists(skill_id: str, content_hash: str) -> bool:
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM skill_versions WHERE skill_id=? AND content_hash=?",
+            (skill_id, content_hash),
+        ).fetchone()
+        if row:
+            return True
+        current = conn.execute(
+            "SELECT 1 FROM skills WHERE id=? AND content_hash=?", (skill_id, content_hash)
+        ).fetchone()
+        return current is not None
+    finally:
+        conn.close()
+
+
+def pin_skill(user_id: str, skill_id: str, content_hash: str) -> dict:
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT INTO skill_pins (id, user_id, skill_id, content_hash, created_at) VALUES (?, ?, ?, ?, ?) "
+            "ON CONFLICT(user_id, skill_id) DO UPDATE SET content_hash=excluded.content_hash, created_at=excluded.created_at",
+            (str(uuid.uuid4()), user_id, skill_id, content_hash, _now()),
+        )
+        conn.commit()
+        return dict(
+            conn.execute(
+                "SELECT * FROM skill_pins WHERE user_id=? AND skill_id=?", (user_id, skill_id)
+            ).fetchone()
+        )
+    finally:
+        conn.close()
+
+
+def unpin_skill(user_id: str, skill_id: str) -> bool:
+    conn = get_conn()
+    try:
+        cur = conn.execute("DELETE FROM skill_pins WHERE user_id=? AND skill_id=?", (user_id, skill_id))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def list_pins(user_id: str) -> list[dict]:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT skill_id, content_hash, created_at FROM skill_pins WHERE user_id=? ORDER BY created_at DESC",
+            (user_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_pin(user_id: str, skill_id: str) -> dict | None:
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT skill_id, content_hash FROM skill_pins WHERE user_id=? AND skill_id=?",
+            (user_id, skill_id),
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def watch_skill(user_id: str, skill_id: str) -> dict:
+    """Subscribe to change alerts; the watch remembers the hash the user last
+    saw so /alerts can report anything that moved since."""
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT content_hash FROM skills WHERE id=?", (skill_id,)).fetchone()
+        current = row["content_hash"] if row else None
+        conn.execute(
+            "INSERT INTO skill_watches (id, user_id, skill_id, last_seen_hash, created_at) VALUES (?, ?, ?, ?, ?) "
+            "ON CONFLICT(user_id, skill_id) DO NOTHING",
+            (str(uuid.uuid4()), user_id, skill_id, current, _now()),
+        )
+        conn.commit()
+        return dict(
+            conn.execute(
+                "SELECT skill_id, last_seen_hash, created_at FROM skill_watches WHERE user_id=? AND skill_id=?",
+                (user_id, skill_id),
+            ).fetchone()
+        )
+    finally:
+        conn.close()
+
+
+def unwatch_skill(user_id: str, skill_id: str) -> bool:
+    conn = get_conn()
+    try:
+        cur = conn.execute("DELETE FROM skill_watches WHERE user_id=? AND skill_id=?", (user_id, skill_id))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def list_watches(user_id: str) -> list[dict]:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT skill_id, last_seen_hash, created_at FROM skill_watches WHERE user_id=? ORDER BY created_at DESC",
+            (user_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def list_skill_alerts(user_id: str) -> list[dict]:
+    """Watched skills whose current content hash differs from the hash the
+    user last acknowledged."""
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            """
+            SELECT w.skill_id, s.name, s.url, w.last_seen_hash, s.content_hash AS current_hash
+            FROM skill_watches w JOIN skills s ON s.id = w.skill_id
+            WHERE w.user_id=? AND s.content_hash IS NOT NULL
+              AND COALESCE(w.last_seen_hash, '') != s.content_hash
+            ORDER BY w.created_at DESC
+            """,
+            (user_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def ack_skill_alert(user_id: str, skill_id: str) -> bool:
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            "UPDATE skill_watches SET last_seen_hash=(SELECT content_hash FROM skills WHERE id=?) "
+            "WHERE user_id=? AND skill_id=?",
+            (skill_id, user_id, skill_id),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+# --- collections (pro personal; team shared) --------------------------------
+
+
+def create_collection(owner_user_id: str, name: str, org_id: str | None = None) -> dict:
+    conn = get_conn()
+    try:
+        collection_id = str(uuid.uuid4())
+        conn.execute(
+            "INSERT INTO collections (id, owner_user_id, org_id, name, created_at) VALUES (?, ?, ?, ?, ?)",
+            (collection_id, owner_user_id, org_id, name, _now()),
+        )
+        conn.commit()
+        return dict(conn.execute("SELECT * FROM collections WHERE id=?", (collection_id,)).fetchone())
+    finally:
+        conn.close()
+
+
+def get_collection(collection_id: str) -> dict | None:
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT * FROM collections WHERE id=?", (collection_id,)).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def list_collections(user_id: str) -> list[dict]:
+    """Personal collections plus every collection shared by the caller's orgs."""
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT c.* FROM collections c JOIN org_members m ON m.org_id = c.org_id AND m.user_id=? "
+            "UNION ALL "
+            "SELECT * FROM collections WHERE owner_user_id=? AND org_id IS NULL "
+            "ORDER BY created_at",
+            (user_id, user_id),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def delete_collection(collection_id: str) -> bool:
+    conn = get_conn()
+    try:
+        conn.execute("DELETE FROM collection_skills WHERE collection_id=?", (collection_id,))
+        cur = conn.execute("DELETE FROM collections WHERE id=?", (collection_id,))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def add_collection_skill(collection_id: str, skill_id: str) -> bool:
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO collection_skills (id, collection_id, skill_id, created_at) VALUES (?, ?, ?, ?)",
+            (str(uuid.uuid4()), collection_id, skill_id, _now()),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def remove_collection_skill(collection_id: str, skill_id: str) -> bool:
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            "DELETE FROM collection_skills WHERE collection_id=? AND skill_id=?", (collection_id, skill_id)
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def list_collection_skills(collection_id: str) -> list[dict]:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT cs.skill_id, cs.created_at, s.name, s.url, s.description "
+            "FROM collection_skills cs LEFT JOIN skills s ON s.id = cs.skill_id "
+            "WHERE cs.collection_id=? ORDER BY cs.created_at",
+            (collection_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+# --- routing preferences and org allow/block policies -----------------------
+
+
+def get_routing_preferences(user_id: str) -> dict:
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT * FROM routing_preferences WHERE user_id=?", (user_id,)).fetchone()
+        if row is None:
+            return {"excluded_skill_ids": [], "excluded_sources": []}
+        return {
+            "excluded_skill_ids": json.loads(row["excluded_skill_ids"] or "[]"),
+            "excluded_sources": json.loads(row["excluded_sources"] or "[]"),
+        }
+    finally:
+        conn.close()
+
+
+def set_routing_preferences(user_id: str, excluded_skill_ids: list[str], excluded_sources: list[str]) -> dict:
+    """Server-stored preferences are what makes exclusions cross-agent: every
+    connector on every machine routes through the same account, so a single
+    PUT applies everywhere without client-side sync."""
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT INTO routing_preferences (user_id, excluded_skill_ids, excluded_sources, updated_at) "
+            "VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(user_id) DO UPDATE SET excluded_skill_ids=excluded.excluded_skill_ids, "
+            "excluded_sources=excluded.excluded_sources, updated_at=excluded.updated_at",
+            (user_id, json.dumps(excluded_skill_ids), json.dumps(excluded_sources), _now()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return get_routing_preferences(user_id)
+
+
+def set_org_skill_policy(org_id: str, skill_id: str, policy: str) -> dict:
+    if policy not in ORG_SKILL_POLICIES:
+        raise ValueError(f"unknown policy {policy!r}; choose one of {', '.join(ORG_SKILL_POLICIES)}")
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT INTO org_skill_policies (id, org_id, skill_id, policy, created_at) VALUES (?, ?, ?, ?, ?) "
+            "ON CONFLICT(org_id, skill_id) DO UPDATE SET policy=excluded.policy, created_at=excluded.created_at",
+            (str(uuid.uuid4()), org_id, skill_id, policy, _now()),
+        )
+        conn.commit()
+        return dict(
+            conn.execute(
+                "SELECT skill_id, policy, created_at FROM org_skill_policies WHERE org_id=? AND skill_id=?",
+                (org_id, skill_id),
+            ).fetchone()
+        )
+    finally:
+        conn.close()
+
+
+def remove_org_skill_policy(org_id: str, skill_id: str) -> bool:
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            "DELETE FROM org_skill_policies WHERE org_id=? AND skill_id=?", (org_id, skill_id)
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def list_org_skill_policies(org_id: str) -> list[dict]:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT skill_id, policy, created_at FROM org_skill_policies WHERE org_id=? ORDER BY created_at",
+            (org_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def routing_filters_for_user(user_id: str) -> dict:
+    """Everything /route must exclude or restrict for this caller: their own
+    exclusions plus their orgs' allow/block policies. Blocks always win. If any
+    org defines allow rows, public-catalog candidates are limited to that
+    allowlist (team-standard-only mode); private and org skills are unaffected."""
+    prefs = get_routing_preferences(user_id)
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT p.skill_id, p.policy FROM org_skill_policies p "
+            "JOIN org_members m ON m.org_id = p.org_id WHERE m.user_id=?",
+            (user_id,),
+        ).fetchall()
+    finally:
+        conn.close()
+    blocked = {r["skill_id"] for r in rows if r["policy"] == "block"}
+    allow_rows = {r["skill_id"] for r in rows if r["policy"] == "allow"}
+    return {
+        "excluded_ids": set(prefs["excluded_skill_ids"]),
+        "excluded_sources": set(prefs["excluded_sources"]),
+        "blocked_ids": blocked,
+        "allowed_ids": allow_rows or None,
+    }
+
+
+# --- org audit log and analytics (team plan) --------------------------------
+
+
+def record_org_audit(org_id: str, actor_user_id: str | None, action: str, subject: str | None = None) -> None:
+    if action not in ORG_AUDIT_ACTIONS:
+        raise ValueError(f"unknown audit action {action!r}")
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT INTO org_audit_log (id, org_id, actor_user_id, action, subject, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (str(uuid.uuid4()), org_id, actor_user_id, action, (subject or "")[:200] or None, _now()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def record_install_audit(user_id: str, subject: str) -> None:
+    """Installs are personal, but the team plan promises an install audit log:
+    log the install to every org the installer belongs to."""
+    conn = get_conn()
+    try:
+        org_ids = [
+            r["org_id"]
+            for r in conn.execute("SELECT org_id FROM org_members WHERE user_id=?", (user_id,)).fetchall()
+        ]
+    finally:
+        conn.close()
+    for org_id in org_ids:
+        record_org_audit(org_id, user_id, "skill_installed", subject)
+
+
+def list_org_audit(org_id: str, limit: int = 100) -> list[dict]:
+    limit = max(1, min(int(limit or 100), 500))
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT a.action, a.subject, a.created_at, u.email AS actor_email "
+            "FROM org_audit_log a LEFT JOIN users u ON u.id = a.actor_user_id "
+            "WHERE a.org_id=? ORDER BY a.created_at DESC, a.id DESC LIMIT ?",
+            (org_id, limit),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def _route_event_rollup(conn: sqlite3.Connection, where: str, params: list) -> dict:
+    total = int(conn.execute(f"SELECT COUNT(*) FROM route_events WHERE {where}", params).fetchone()[0])
+    tiers = {
+        row["tier"] or "none": row["count"]
+        for row in conn.execute(
+            f"SELECT tier, COUNT(*) AS count FROM route_events WHERE {where} GROUP BY tier", params
+        ).fetchall()
+    }
+    outcomes = {
+        row["outcome"] or "pending": row["count"]
+        for row in conn.execute(
+            f"SELECT outcome, COUNT(*) AS count FROM route_events WHERE {where} GROUP BY outcome", params
+        ).fetchall()
+    }
+    top_skills = [
+        dict(r)
+        for r in conn.execute(
+            f"""
+            SELECT skill_name, skill_url, COUNT(*) AS count,
+                   SUM(CASE WHEN outcome IN ('used', 'installed') THEN 1 ELSE 0 END) AS positive_count
+            FROM route_events
+            WHERE {where} AND skill_name IS NOT NULL AND skill_name != ''
+            GROUP BY skill_name, skill_url
+            ORDER BY count DESC, positive_count DESC, skill_name ASC
+            LIMIT 10
+            """,
+            params,
+        ).fetchall()
+    ]
+    for skill in top_skills:
+        skill["count"] = int(skill["count"] or 0)
+        skill["positive_count"] = int(skill["positive_count"] or 0)
+    return {"total_routes": total, "tiers": tiers, "outcomes": outcomes, "top_skills": top_skills}
+
+
+def user_route_analytics(user_id: str, days: int = 30) -> dict:
+    days = max(1, min(int(days or 30), 365))
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    conn = get_conn()
+    try:
+        rollup = _route_event_rollup(conn, "user_id = ? AND created_at >= ?", [user_id, cutoff])
+    finally:
+        conn.close()
+    rollup["window_days"] = days
+    rollup["routes_this_month"] = get_route_usage(user_id)
+    return rollup
+
+
+def org_route_analytics(org_id: str, days: int = 30) -> dict:
+    days = max(1, min(int(days or 30), 365))
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    conn = get_conn()
+    try:
+        member_ids = [
+            r["user_id"]
+            for r in conn.execute("SELECT user_id FROM org_members WHERE org_id=?", (org_id,)).fetchall()
+        ]
+        placeholders = ",".join("?" for _ in member_ids) or "''"
+        rollup = _route_event_rollup(
+            conn, f"user_id IN ({placeholders}) AND created_at >= ?", [*member_ids, cutoff]
+        )
+        month = _usage_month()
+        pooled_used = int(
+            conn.execute(
+                f"SELECT COALESCE(SUM(count), 0) FROM route_usage WHERE month=? AND user_id IN ({placeholders})",
+                [month, *member_ids],
+            ).fetchone()[0]
+        )
+    finally:
+        conn.close()
+    org = get_org(org_id) or {}
+    rollup["window_days"] = days
+    rollup["members"] = len(member_ids)
+    rollup["pooled_routes_this_month"] = pooled_used
+    rollup["pooled_route_limit"] = org_seat_limit(org) * PRO_ROUTES_PER_MONTH if PRO_ROUTES_PER_MONTH > 0 else None
+    return rollup

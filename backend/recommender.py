@@ -792,23 +792,51 @@ def _require_route_user(authorization: str | None) -> dict:
     return user
 
 
+def _route_quota(user: dict) -> tuple[int, int] | None:
+    """(used, limit) for this month under the caller's plan, or None when
+    unmetered. Free gets the published quota; pro gets the internal fair-use
+    cap behind "unlimited"; team pools that cap across the workspace's seats."""
+    plan = user.get("plan") or "free"
+    if plan == "free":
+        if store.FREE_ROUTES_PER_MONTH <= 0:
+            return None
+        return store.get_route_usage(user["id"]), store.FREE_ROUTES_PER_MONTH
+    if store.PRO_ROUTES_PER_MONTH <= 0:
+        return None
+    if plan == "team":
+        pool = store.team_route_pool(user["id"])
+        if pool is not None:
+            return pool
+    return store.get_route_usage(user["id"]), store.PRO_ROUTES_PER_MONTH
+
+
+def _passes_routing_filters(candidate: dict, filters: dict) -> bool:
+    """Apply the caller's exclusions and their orgs' allow/block policies to a
+    public-catalog candidate (private/org skills never pass through here)."""
+    skill_id = candidate.get("id")
+    if skill_id in filters["excluded_ids"] or skill_id in filters["blocked_ids"]:
+        return False
+    if (candidate.get("source") or "") in filters["excluded_sources"]:
+        return False
+    allowed = filters["allowed_ids"]
+    return allowed is None or skill_id in allowed
+
+
 def route_quota_exceeded(user: dict) -> bool:
-    """True when a free-plan user has used up this month's routes. Quota is
+    """True when the caller has used up this month's routes. Quota is
     checked before retrieval and counted only for task-shaped queries, so
     empty/non-task rejects never burn quota."""
-    if store.FREE_ROUTES_PER_MONTH <= 0:
-        return False
-    if (user.get("plan") or "free") != "free":
-        return False
-    return store.get_route_usage(user["id"]) >= store.FREE_ROUTES_PER_MONTH
+    quota = _route_quota(user)
+    return quota is not None and quota[0] >= quota[1]
 
 
 def _quota_route_payload(user: dict, start: float) -> dict:
     payload = _none_route_payload("quota-exceeded", start, str(uuid.uuid4()))
+    used, limit = _route_quota(user) or (store.get_route_usage(user["id"]), 0)
     payload["quota"] = {
         "plan": user.get("plan") or "free",
-        "limit": store.FREE_ROUTES_PER_MONTH,
-        "used": store.get_route_usage(user["id"]),
+        "limit": limit,
+        "used": used,
         "upgrade_url": UPGRADE_URL,
     }
     return payload
@@ -904,6 +932,8 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
     retrieval_ms = int((time.monotonic() - retrieval_start) * 1000)
     rerank_start = time.monotonic()
     results = rerank_candidates(query, results)
+    routing_filters = await asyncio.to_thread(store.routing_filters_for_user, user["id"])
+    results = [r for r in results if _passes_routing_filters(r, routing_filters)]
     tier = injection_tier(query, results)
     rerank_ms = int((time.monotonic() - rerank_start) * 1000)
     skill_find_ms = int((time.monotonic() - retrieval_start) * 1000)
@@ -937,6 +967,20 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
         content_start = time.monotonic()
         library = LibraryContent()
         text = library.get(skill.get("url") or "")
+        # Version pinning: a pinned skill serves the pinned hash's content, so
+        # an upstream update never changes what this account gets until they
+        # unpin (or re-pin to roll forward). All verification below still runs
+        # against the pinned text.
+        pin = await asyncio.to_thread(store.get_pin, user["id"], str(skill.get("id") or ""))
+        if pin and text and pin["content_hash"] != skill.get("content_hash"):
+            pinned_text = await asyncio.to_thread(_library_content_by_hash, pin["content_hash"])
+            if pinned_text:
+                text = pinned_text
+                skill["content_hash"] = pin["content_hash"]
+                skill["pinned"] = True
+                warnings.append("Serving the version pinned by this account; the skill has newer content.")
+            else:
+                warnings.append("Pinned version content is unavailable; serving the current version.")
         content_ms = int((time.monotonic() - content_start) * 1000)
         if not text:
             tier = "hint"

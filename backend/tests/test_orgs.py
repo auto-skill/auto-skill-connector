@@ -173,15 +173,16 @@ class OrgEndpointTests(unittest.TestCase):
         self.assertEqual(create.status_code, 200)
         skill_id = create.json()["org_skill"]["id"]
 
-        # Members read, only owners write.
+        # Members read; a member's own submission lands as pending, not live.
         listing = self.client.get(f"/orgs/{org['id']}/skills", headers=member_headers)
         self.assertEqual([s["name"] for s in listing.json()["org_skills"]], ["acme-standards"])
-        deny = self.client.post(
+        submit = self.client.post(
             f"/orgs/{org['id']}/skills",
             json={"name": "rogue", "content": "x" * 10},
             headers=member_headers,
         )
-        self.assertEqual(deny.status_code, 403)
+        self.assertEqual(submit.status_code, 200)
+        self.assertEqual(submit.json()["org_skill"]["status"], "pending")
 
         delete = self.client.delete(f"/orgs/{org['id']}/skills/{skill_id}", headers=owner_headers)
         self.assertEqual(delete.status_code, 200)
