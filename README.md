@@ -260,6 +260,15 @@ automatic application, commit the generated skill to the repository's
 `.github/skills/<slug>/SKILL.md`, which every supported client picks up on
 checkout — including Copilot code review and cloud agents.
 
+Standards that must govern every relevant task (review rubrics, security
+policies) get two-layer delivery: skill discovery is opportunistic, so the
+skill alone cannot guarantee it is always applied. skill-creator additionally
+writes a short precedence kernel into the repo's always-on instructions files
+(`CLAUDE.md`/`AGENTS.md`/`.github/copilot-instructions.md`) stating that the
+standards skill applies first and wins over any other skill's guidance when
+they conflict. The kernel stays small; extra skills layer on top per task,
+under the standard's authority.
+
 ## MCP
 
 ### Claude Code local MCP

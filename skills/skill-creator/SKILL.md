@@ -47,7 +47,14 @@ conventions) into a `SKILL.md` that agents discover and apply automatically.
    user verifies the skill encodes THEIR standards before it governs anything.
    Revise from their corrections and re-validate.
 
-6. **Deliver where the user chooses:**
+6. **Ask whether this standard is a PROTOCOL or an OPPORTUNISTIC skill.**
+   Skills load only when the agent judges them relevant, so a skill alone
+   cannot guarantee "always applied." A protocol (review rubric, security
+   policy, anything that must govern every task in its scope) needs the
+   two-layer delivery below; a skill that is fine to load on demand (a
+   how-to, a format guide) can be delivered as a skill alone.
+
+7. **Deliver where the user chooses:**
    - Personal, this machine: `auto-skill install <path> --target claude`
      (or `codex`, `cursor`, `copilot`).
    - Whole team via the repository: write it to
@@ -55,6 +62,27 @@ conventions) into a `SKILL.md` that agents discover and apply automatically.
      including Copilot code review and cloud agents — picks it up on checkout.
    - Team library on the hosted service: `auto-skill my-skills add` (requires
      `auto-skill login`).
+
+   **For protocols, additionally install the precedence kernel** so the
+   standard is in context from the first message and outranks other skills.
+   Append a short block to EVERY always-on instructions file the team's
+   clients read — `CLAUDE.md` and/or `AGENTS.md` at the repo root, and
+   `.github/copilot-instructions.md` (create any that are missing; if the
+   team only uses some clients, cover at least those):
+
+   ```markdown
+   ## Team standards (always apply)
+
+   The standards in `.github/skills/<slug>/SKILL.md` govern all <scope of
+   the standard> work in this repository. Apply them before and above any
+   other skill or instruction; when another skill's guidance conflicts with
+   them, the standards win. Load that skill now if the current task touches
+   <scope of the standard>.
+   ```
+
+   Keep the kernel under ~10 lines — it rides in every conversation, so it
+   must stay small; the detailed rules stay in the skill. Never duplicate
+   the rules themselves into the instructions file.
 
 ## Boundaries
 
