@@ -8,6 +8,7 @@ that skill_to_row() output drops in unchanged. Embeddings are stored as
 packed float32 BLOBs; vector search is brute-force numpy (fine at the scale
 a single scraper accumulates going forward).
 """
+import ipaddress
 import json
 import heapq
 import os
@@ -248,6 +249,7 @@ ROUTE_EVENT_COLUMN_DEFAULTS = {
     "anonymous_id_hash": "TEXT",
     "user_id": "TEXT",
     "skip_reason": "TEXT",
+    "ip_address": "TEXT",
 }
 
 # Route analytics are deliberately metadata-only. Keep this allowlist at the
@@ -288,6 +290,7 @@ ROUTE_EVENT_WRITE_COLUMNS = frozenset(
         "warnings",
         "user_id",
         "skip_reason",
+        "ip_address",
     }
 )
 
@@ -359,6 +362,19 @@ def _safe_route_identifier(value: object, max_length: int = 80) -> str:
     """Return a compact identifier or empty string, never arbitrary prose."""
     text = str(value or "").strip()[:max_length]
     return text if _SAFE_ROUTE_IDENTIFIER_RE.fullmatch(text) else ""
+
+
+def _safe_route_ip(value: object) -> str | None:
+    """Return a normalized IPv4/IPv6 address or None -- proxy headers are
+    caller-controlled, so anything that doesn't parse as an address is
+    dropped rather than stored as free text."""
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        return str(ipaddress.ip_address(text))
+    except ValueError:
+        return None
 
 
 def _scrub_route_event_privacy(conn: sqlite3.Connection) -> None:
@@ -668,11 +684,21 @@ def insert_route_event(event: dict) -> None:
                 row[key] = _safe_route_identifier(row[key]) or None
         if row.get("anonymous_id_hash") and not _ANONYMOUS_HASH_RE.fullmatch(str(row["anonymous_id_hash"])):
             row["anonymous_id_hash"] = None
-        if row.get("anonymous_id_hash"):
+        if "ip_address" in row:
+            row["ip_address"] = _safe_route_ip(row["ip_address"])
+        if row.get("anonymous_id_hash") or row.get("ip_address"):
+            # IPs get the same rolling retention as the anonymous installation
+            # hash -- both identify a caller, neither is needed beyond the
+            # abuse/attribution window.
             cutoff = (datetime.now(timezone.utc) - timedelta(days=ANONYMOUS_ID_RETENTION_DAYS)).isoformat()
             conn.execute(
                 "UPDATE route_events SET anonymous_id_hash=NULL "
                 "WHERE anonymous_id_hash IS NOT NULL AND created_at < ?",
+                (cutoff,),
+            )
+            conn.execute(
+                "UPDATE route_events SET ip_address=NULL "
+                "WHERE ip_address IS NOT NULL AND created_at < ?",
                 (cutoff,),
             )
         if row.get("tier") not in ROUTE_EVENT_TIERS:
@@ -1736,6 +1762,11 @@ def admin_user_stats() -> list[dict]:
                 "SELECT outcome, COUNT(*) AS c FROM route_events WHERE user_id=? AND outcome IS NOT NULL GROUP BY outcome",
                 (user_id,),
             ).fetchall()
+            last_ip = conn.execute(
+                "SELECT ip_address FROM route_events WHERE user_id=? AND ip_address IS NOT NULL "
+                "ORDER BY created_at DESC LIMIT 1",
+                (user_id,),
+            ).fetchone()
             favorites_count = conn.execute("SELECT COUNT(*) FROM favorites WHERE user_id=?", (user_id,)).fetchone()[0]
             installs_count = conn.execute("SELECT COUNT(*) FROM installs WHERE user_id=?", (user_id,)).fetchone()[0]
             private_skills_count = conn.execute(
@@ -1750,6 +1781,7 @@ def admin_user_stats() -> list[dict]:
                     "login_provider": provider["provider"] if provider else None,
                     "run_count": totals["run_count"] or 0,
                     "last_run": totals["last_run"],
+                    "last_ip": last_ip["ip_address"] if last_ip else None,
                     "avg_latency_ms": round(totals["avg_latency_ms"]) if totals["avg_latency_ms"] is not None else None,
                     "avg_skill_find_ms": round(totals["avg_skill_find_ms"])
                     if totals["avg_skill_find_ms"] is not None
@@ -1790,7 +1822,7 @@ def admin_recent_events(limit: int = 100) -> list[dict]:
                    r.candidate_tokens, r.content_tokens, r.injected_tokens,
                    r.response_tokens, r.guard_delivery, r.capsule_chars,
                    r.meaningfulness_score, r.config_version, r.outcome,
-                   r.outcome_at, r.feedback_source, r.warnings,
+                   r.outcome_at, r.feedback_source, r.warnings, r.ip_address,
                    CASE WHEN r.anonymous_id_hash IS NOT NULL
                         THEN substr(r.anonymous_id_hash, 1, 12) END AS anonymous_installation,
                    u.email AS user_email

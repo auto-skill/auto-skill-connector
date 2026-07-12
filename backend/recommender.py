@@ -28,7 +28,7 @@ from math import ceil
 from typing import Literal
 
 import httpx
-from fastapi import APIRouter, Header, HTTPException, Response
+from fastapi import APIRouter, Header, HTTPException, Request, Response
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
@@ -768,6 +768,18 @@ def _anonymous_id_hash(value: str | None) -> str | None:
     return hashlib.sha256(f"autoskill-anonymous-installation-v1:{normalized}".encode("ascii")).hexdigest()
 
 
+def _route_client_ip(request: Request) -> str | None:
+    """Best-effort caller IP for per-user route metrics: the proxy-reported
+    client (Cloudflare first, then the nearest x-forwarded-for hop), falling
+    back to the direct peer for self-hosted deployments with no proxy.
+    Validation happens at the storage boundary (local_store._safe_route_ip)."""
+    raw = request.headers.get("cf-connecting-ip") or (request.headers.get("x-forwarded-for") or "").split(",")[0]
+    raw = raw.strip()
+    if raw:
+        return raw
+    return request.client.host if request.client else None
+
+
 def _require_route_user(authorization: str | None) -> dict:
     """Require identity at the handler boundary, even when proxy headers are absent."""
     user = auth.user_from_authorization_header(authorization)
@@ -829,10 +841,11 @@ async def get_content(hash_value: str):
 
 
 @router.post("/route")
-async def route(body: RouteRequest, authorization: str | None = Header(None)):
+async def route(request: Request, body: RouteRequest, authorization: str | None = Header(None)):
     """Deterministic backend-owned route contract for connectors."""
     start = time.monotonic()
     user = _require_route_user(authorization)
+    ip_address = _route_client_ip(request)
     anonymous_id_hash = None
     query = (body.task or body.prompt or "").strip()
     if not query:
@@ -848,6 +861,7 @@ async def route(body: RouteRequest, authorization: str | None = Header(None)):
                 "id": route_id,
                 "user_id": user["id"] if user else None,
                 "anonymous_id_hash": anonymous_id_hash,
+                "ip_address": ip_address,
                 "query_chars": len(query),
                 "tier": "none",
                 "config_version": CONFIG_VERSION,
@@ -1028,6 +1042,7 @@ async def route(body: RouteRequest, authorization: str | None = Header(None)):
             "id": route_id,
             "user_id": user["id"] if user else None,
             "anonymous_id_hash": anonymous_id_hash,
+            "ip_address": ip_address,
             "query_chars": len(query),
             "tier": tier,
             "skill_id": skill.get("id") if skill else None,

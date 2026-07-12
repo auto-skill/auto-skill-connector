@@ -271,13 +271,17 @@ class AccountsEndpointTests(unittest.TestCase):
         user = local_store.get_or_create_user("busy@example.com", "Busy", None)
         conn = local_store.get_conn()
         try:
-            for i, (tier, latency, outcome, skill_name) in enumerate(
-                [("full", 100, "used", "skill-a"), ("full", 200, None, "skill-b"), ("hint", 50, "dismissed", "skill-c")]
+            for i, (tier, latency, outcome, skill_name, ip) in enumerate(
+                [
+                    ("full", 100, "used", "skill-a", "203.0.113.7"),
+                    ("full", 200, None, "skill-b", "203.0.113.7"),
+                    ("hint", 50, "dismissed", "skill-c", "203.0.113.9"),
+                ]
             ):
                 conn.execute(
-                    "INSERT INTO route_events (id, created_at, user_id, tier, latency_ms, outcome, skill_name)"
-                    " VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    (f"evt-{i}", f"2026-07-0{i + 1}T00:00:00+00:00", user["id"], tier, latency, outcome, skill_name),
+                    "INSERT INTO route_events (id, created_at, user_id, tier, latency_ms, outcome, skill_name, ip_address)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (f"evt-{i}", f"2026-07-0{i + 1}T00:00:00+00:00", user["id"], tier, latency, outcome, skill_name, ip),
                 )
             conn.commit()
         finally:
@@ -291,12 +295,14 @@ class AccountsEndpointTests(unittest.TestCase):
             self.assertEqual(row["tiers"], {"full": 2, "hint": 1})
             self.assertEqual(row["outcomes"], {"used": 1, "dismissed": 1})
             self.assertEqual(row["avg_latency_ms"], round((100 + 200 + 50) / 3))
+            self.assertEqual(row["last_ip"], "203.0.113.9")
             self.assertIn("route_metrics", body)
             self.assertIn("anonymous_installations", body["route_metrics"])
 
             latest_event = body["recent_events"][0]
             self.assertEqual(latest_event["user_email"], "busy@example.com")
             self.assertEqual(latest_event["skill_name"], "skill-c")
+            self.assertEqual(latest_event["ip_address"], "203.0.113.9")
             self.assertNotIn("prompt_text", latest_event)
 
     def test_web_login_start_accepts_dashboard_return_url(self) -> None:

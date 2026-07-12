@@ -139,6 +139,8 @@ may include:
 - caller/user id when authentication is present;
 - an optional one-way hash of a client-generated anonymous installation ID
   when the client explicitly opts into `AUTOSKILL_ANONYMOUS_ANALYTICS=1`;
+- the caller's IP address (proxy-reported client IP, validated as a real
+  address before storage);
 - query length;
 - client and client version;
 - selected skill, tier, result count, and outcome;
@@ -155,10 +157,12 @@ for anonymous route IDs with rate limiting.
 not a consumer analytics dashboard. The public read-only guard intentionally
 does not expose it.
 
-Anonymous installation hashes expire from route events after
-`AUTOSKILL_ANONYMOUS_ID_RETENTION_DAYS` (90 days by default). They identify a
-persisted installation for coarse retention/conversion metrics, not a person;
-authenticated `user_id` remains the authoritative identity.
+Anonymous installation hashes and IP addresses expire from route events after
+`AUTOSKILL_ANONYMOUS_ID_RETENTION_DAYS` (90 days by default). The hash
+identifies a persisted installation for coarse retention/conversion metrics,
+not a person; authenticated `user_id` remains the authoritative identity. IPs
+back per-user abuse attribution in the operator dashboard (`/admin/stats`
+shows each user's most recent IP) and are never exposed publicly.
 
 Default warning budgets are 750 ms total latency, 500 ms skill-find time,
 1000 injected tokens, and 3500 response tokens.

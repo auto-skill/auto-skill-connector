@@ -8,6 +8,7 @@ import unittest
 import uuid
 import zipfile
 from contextlib import redirect_stdout
+from datetime import datetime, timedelta, timezone
 from io import StringIO
 from pathlib import Path
 
@@ -123,6 +124,48 @@ class RouteEventPrivacyTests(unittest.TestCase):
             conn.close()
         self.assertEqual(valid["anonymous_id_hash"], "a" * 64)
         self.assertIsNone(invalid["anonymous_id_hash"])
+
+    def test_ip_address_is_retained_only_when_a_real_address(self) -> None:
+        local_store.insert_route_event(
+            {"id": "ip-valid", "tier": "hint", "ip_address": "203.0.113.5"}
+        )
+        local_store.insert_route_event(
+            {"id": "ip-invalid", "tier": "hint", "ip_address": "not-an-ip, 203.0.113.5"}
+        )
+        conn = local_store.get_conn()
+        try:
+            valid = conn.execute("SELECT ip_address FROM route_events WHERE id='ip-valid'").fetchone()
+            invalid = conn.execute("SELECT ip_address FROM route_events WHERE id='ip-invalid'").fetchone()
+        finally:
+            conn.close()
+        self.assertEqual(valid["ip_address"], "203.0.113.5")
+        self.assertIsNone(invalid["ip_address"])
+
+    def test_ip_address_expires_with_the_retention_window(self) -> None:
+        stale = (
+            datetime.now(timezone.utc)
+            - timedelta(days=local_store.ANONYMOUS_ID_RETENTION_DAYS + 1)
+        ).isoformat()
+        conn = local_store.get_conn()
+        try:
+            conn.execute(
+                "INSERT INTO route_events (id, created_at, tier, ip_address) VALUES (?, ?, 'hint', ?)",
+                ("ip-stale", stale, "203.0.113.5"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        local_store.insert_route_event({"id": "ip-fresh", "tier": "hint", "ip_address": "203.0.113.6"})
+
+        conn = local_store.get_conn()
+        try:
+            stale_row = conn.execute("SELECT ip_address FROM route_events WHERE id='ip-stale'").fetchone()
+            fresh_row = conn.execute("SELECT ip_address FROM route_events WHERE id='ip-fresh'").fetchone()
+        finally:
+            conn.close()
+        self.assertIsNone(stale_row["ip_address"])
+        self.assertEqual(fresh_row["ip_address"], "203.0.113.6")
 
     def test_init_db_scrubs_legacy_columns_and_unsafe_skip_reason(self) -> None:
         self._add_legacy_columns()
