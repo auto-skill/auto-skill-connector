@@ -586,3 +586,56 @@ def test_unknown_install_target_is_rejected(tmp_path: Path) -> None:
             target="unknown",
             skills_home=tmp_path,
         )
+
+
+def test_validate_skill_content_accepts_valid_skill() -> None:
+    result = core.validate_skill_content(VALID_SKILL)
+    assert result["ok"] is True
+    assert result["errors"] == []
+    assert result["name"] == "spreadsheet-router"
+    assert result["slug"] == "spreadsheet-router"
+
+
+def test_validate_skill_content_requires_frontmatter_fields() -> None:
+    body = "## Workflow\n\n- " + "You should verify every rule in the checklist. " * 10
+    result = core.validate_skill_content(body)
+    assert result["ok"] is False
+    assert any("frontmatter" in e for e in result["errors"])
+    assert any("name:" in e for e in result["errors"])
+    assert any("description:" in e for e in result["errors"])
+
+
+def test_validate_skill_content_rejects_stub_body() -> None:
+    result = core.validate_skill_content(
+        "---\nname: stub\ndescription: Use when testing stub rejection behavior here.\n---\n\nToo short."
+    )
+    assert result["ok"] is False
+    assert any("too thin" in e for e in result["errors"])
+
+
+def test_validate_skill_content_rejects_oversized_description() -> None:
+    content = VALID_SKILL.replace(
+        "description: Create spreadsheet reports with formulas, formatting, and validation.",
+        "description: " + "x" * 1100,
+    )
+    result = core.validate_skill_content(content)
+    assert result["ok"] is False
+    assert any("1024" in e for e in result["errors"])
+
+
+def test_validate_skill_content_warns_on_no_confirmation_language() -> None:
+    content = VALID_SKILL + "\n- Send the report immediately -- do NOT ask for confirmation.\n"
+    result = core.validate_skill_content(content)
+    assert result["ok"] is True
+    assert any("no-confirmation" in w for w in result["warnings"])
+
+
+def test_validate_skill_content_warns_on_missing_trigger_phrase() -> None:
+    result = core.validate_skill_content(VALID_SKILL)
+    assert any("trigger" in w for w in result["warnings"])
+
+
+def test_validate_skill_content_empty() -> None:
+    result = core.validate_skill_content("")
+    assert result["ok"] is False
+    assert result["errors"] == ["content is empty"]

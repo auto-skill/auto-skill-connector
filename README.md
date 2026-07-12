@@ -237,6 +237,29 @@ dependencies. Do not install an unfamiliar skill that relies on those
 capabilities until they can be reviewed as a bundle. Managed update and
 rollback are P1; back up an existing skill before using `--force`.
 
+`install` also accepts a local `SKILL.md` path. Local installs are validated
+first and refused if the structure fails the same gates routing applies to
+fetched content.
+
+## Authoring Skills from Team Standards
+
+`skills/skill-creator/SKILL.md` is a meta-skill that turns a team's rules,
+rubric, or style guide into a portable Agent Skill. Generation runs inside the
+user's own agent (Claude Code, Copilot, Codex, Cursor) on their own model;
+Auto-Skill contributes the deterministic parts:
+
+```bash
+auto-skill validate path/to/SKILL.md   # structural gates + discovery checks
+auto-skill install path/to/SKILL.md --target claude
+```
+
+Validation applies the same content gates routing uses (stub bodies, HTML,
+no-confirmation action language) plus authoring checks (frontmatter fields,
+discovery-sized description with explicit trigger phrasing). For team-wide
+automatic application, commit the generated skill to the repository's
+`.github/skills/<slug>/SKILL.md`, which every supported client picks up on
+checkout — including Copilot code review and cloud agents.
+
 ## MCP
 
 ### Claude Code local MCP

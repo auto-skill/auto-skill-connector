@@ -414,3 +414,67 @@ def test_codex_install_uses_native_agent_skills_path(
     assert result == 0
     assert str(tmp_path / ".agents" / "skills" / "demo" / "SKILL.md") in captured.out
     assert "explicit local install" in captured.out
+
+
+VALID_LOCAL_SKILL = """---
+name: acme-review-standards
+description: Apply Acme's code review rubric. Use when reviewing pull requests or writing new endpoints.
+---
+
+## When reviewing a PR
+
+- You should verify every endpoint has an auth check and a rate-limit bucket.
+- Flag any new SQL that concatenates user input; parameterized queries are required.
+- Must confirm new config values appear in .env.example with a comment.
+"""
+
+
+def test_validate_command_accepts_valid_skill(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    path = tmp_path / "SKILL.md"
+    path.write_text(VALID_LOCAL_SKILL, encoding="utf-8")
+    result = cli.main(["validate", str(path)])
+    out = capsys.readouterr().out
+    assert result == 0
+    assert "ok: acme-review-standards" in out
+
+
+def test_validate_command_rejects_invalid_skill(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    path = tmp_path / "SKILL.md"
+    path.write_text("---\nname: bad\n---\nshort", encoding="utf-8")
+    result = cli.main(["validate", str(path)])
+    err = capsys.readouterr().err
+    assert result == 1
+    assert "description" in err
+    assert "invalid: fix the errors above" in err
+
+
+def test_validate_command_missing_file(capsys: pytest.CaptureFixture[str]) -> None:
+    result = cli.main(["validate", "no-such-file.md"])
+    assert result == 1
+    assert "is not a file" in capsys.readouterr().err
+
+
+def test_install_from_local_path_writes_validated_skill(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    source = tmp_path / "draft.md"
+    source.write_text(VALID_LOCAL_SKILL, encoding="utf-8")
+    home = tmp_path / "home"
+    monkeypatch.setenv("SKILLS_HOME", str(home))
+    result = cli.main(["install", str(source), "--yes"])
+    assert result == 0
+    installed = home / "acme-review-standards" / "SKILL.md"
+    assert installed.read_text(encoding="utf-8") == VALID_LOCAL_SKILL
+
+
+def test_install_from_local_path_rejects_invalid_skill(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    source = tmp_path / "draft.md"
+    source.write_text("---\nname: bad\n---\nshort", encoding="utf-8")
+    home = tmp_path / "home"
+    monkeypatch.setenv("SKILLS_HOME", str(home))
+    result = cli.main(["install", str(source), "--yes"])
+    assert result == 1
+    assert "failed validation" in capsys.readouterr().err
+    assert not home.exists()

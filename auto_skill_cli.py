@@ -42,6 +42,7 @@ from auto_skill_core import (
     route_prompt_payload,
     route_task_payload,
     submit_private_skill,
+    validate_skill_content,
     whoami,
 )
 
@@ -310,7 +311,39 @@ async def _command_metrics(args: argparse.Namespace) -> int:
     return 1 if int(breaches.get("any") or 0) else 0
 
 
+async def _command_validate(args: argparse.Namespace) -> int:
+    path = Path(args.path)
+    if not path.is_file():
+        print(f"error: {path} is not a file", file=sys.stderr)
+        return 1
+    result = validate_skill_content(path.read_text(encoding="utf-8"))
+    if args.json:
+        print(json.dumps(result, indent=2))
+        return 0 if result["ok"] else 1
+    for error in result["errors"]:
+        print(f"error: {error}", file=sys.stderr)
+    _print_warning_lines(result["warnings"])
+    if result["ok"]:
+        print(f"ok: {result['name']} (installs as {result['slug']}/SKILL.md)")
+        return 0
+    print("invalid: fix the errors above and validate again", file=sys.stderr)
+    return 1
+
+
 async def _resolve_cli_skill(source: str) -> dict[str, Any]:
+    local_path = Path(source)
+    if not is_url(source) and local_path.is_file():
+        content = local_path.read_text(encoding="utf-8")
+        result = validate_skill_content(content)
+        if not result["ok"]:
+            details = "; ".join(result["errors"])
+            raise AutoSkillError(f"{source} failed validation: {details}")
+        return {
+            "content": content,
+            "source_url": local_path.resolve().as_uri(),
+            "metadata": {"path": str(local_path)},
+            "warnings": result["warnings"],
+        }
     async with httpx.AsyncClient() as client:
         if is_url(source):
             content = await _fetch_content(client, source)
@@ -840,6 +873,11 @@ def build_parser() -> argparse.ArgumentParser:
     install.add_argument("--force", action="store_true", help="Overwrite an existing skill with the same slug.")
     install.add_argument("--dry-run", action="store_true", help="Show what would happen without writing files.")
     install.set_defaults(func=_command_install)
+
+    validate = subparsers.add_parser("validate", help="Validate a local SKILL.md before installing or sharing it.")
+    validate.add_argument("path", help="Path to a SKILL.md file.")
+    validate.add_argument("--json", action="store_true", help="Print the structured validation result as JSON.")
+    validate.set_defaults(func=_command_validate)
 
     doctor = subparsers.add_parser("doctor", help="Check local auto-skill setup.")
     doctor.add_argument("--settings-path", default="", help="Override the Claude Code settings.json path (for testing).")

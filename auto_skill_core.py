@@ -349,6 +349,70 @@ def _extract_skill_name(content: str) -> str:
     return m.group(1).strip() if m else ""
 
 
+def _extract_skill_description(content: str) -> str:
+    m = re.search(r"^description:\s*(.+)$", content, re.MULTILINE)
+    return m.group(1).strip() if m else ""
+
+
+# Claude Code rejects skills whose frontmatter description exceeds 1024 chars;
+# other clients truncate silently, which is worse for discovery.
+MAX_SKILL_DESCRIPTION_CHARS = 1024
+MIN_SKILL_DESCRIPTION_CHARS = 20
+
+
+def validate_skill_content(content: str) -> dict[str, Any]:
+    """Structural validation for locally authored SKILL.md content.
+
+    Applies the same gates routing applies to fetched content
+    (_looks_like_skill_content, _is_stub_content,
+    _is_unconfirmed_action_content) so a skill that validates here won't be
+    demoted or rejected later, plus authoring checks those gates don't need
+    (a present, discovery-sized description). Errors block; warnings don't.
+    """
+    errors: list[str] = []
+    warnings: list[str] = []
+    normalized = (content or "").replace("\r\n", "\n").strip()
+    name = _extract_skill_name(normalized)
+    description = _extract_skill_description(normalized)
+    result: dict[str, Any] = {
+        "name": name,
+        "slug": _slugify(name) if name else "",
+        "description": description,
+        "errors": errors,
+        "warnings": warnings,
+    }
+    if not normalized:
+        errors.append("content is empty")
+        result["ok"] = False
+        return result
+
+    if not _FRONTMATTER_RE.match(normalized + "\n"):
+        errors.append("missing YAML frontmatter block (--- name/description ---) at the top")
+    if not name:
+        errors.append("frontmatter has no name: field")
+    if not description:
+        errors.append("frontmatter has no description: field; clients discover skills by description")
+    elif len(description) > MAX_SKILL_DESCRIPTION_CHARS:
+        errors.append(f"description is {len(description)} chars; keep it under {MAX_SKILL_DESCRIPTION_CHARS}")
+    elif len(description) < MIN_SKILL_DESCRIPTION_CHARS:
+        warnings.append("description is very short; say when to use the skill or auto-discovery will miss it")
+    elif not re.search(r"\buse (?:when|for|this|whenever|it)\b", description, re.IGNORECASE):
+        warnings.append('description has no "Use when ..." trigger phrasing; explicit triggers improve auto-discovery')
+
+    if _is_stub_content(normalized):
+        errors.append(f"body is too thin to be real instructions (under {MIN_STUB_BODY_CHARS} chars)")
+    elif not _looks_like_skill_content(normalized):
+        errors.append("body does not read as skill instructions (needs markdown structure and instruction language)")
+
+    if _is_unconfirmed_action_content(normalized):
+        warnings.append(
+            "body pairs action verbs with no-confirmation language; routers will demote this to hint-only"
+        )
+
+    result["ok"] = not errors
+    return result
+
+
 def _candidate_key(candidate: dict[str, Any]) -> str:
     name = str(candidate.get("name") or "").strip()
     if name:
