@@ -45,8 +45,9 @@ Pro-only endpoints return `402` for free accounts.
 
 ## Team — $49/month per workspace
 
-Includes up to 5 members, then $8–10 per additional member (seat bumps are
-manual: `POST /admin/set-org-seats` after billing by hand).
+Includes up to 5 members, then $10 per additional member (self-serve via
+`POST /billing/seats`; `POST /admin/set-org-seats` remains the manual
+override).
 
 | Feature | Where it lives |
 | --- | --- |

@@ -351,6 +351,7 @@ async def admin_stats(events_limit: int = 100, authorization: str | None = Heade
         # response contains only aggregate counts and short installation
         # prefixes; it never exposes raw IDs or prompt-derived data.
         "route_metrics": store.route_event_summary(hours=24),
+        "plan_summary": store.admin_plan_summary(),
     }
 
 
@@ -361,8 +362,8 @@ class SetPlanRequest(BaseModel):
 
 @router.post("/admin/set-plan")
 async def admin_set_plan(body: SetPlanRequest, authorization: str | None = Header(None)):
-    """Operator-only manual plan flip. There is deliberately no billing
-    integration yet -- plans change by hand until someone is actually paying."""
+    """Operator-only manual plan flip for comps and support. Paid plan
+    changes normally arrive through the Stripe webhook (billing_api.py)."""
     _require_admin(authorization)
     if body.plan not in store.USER_PLANS:
         raise HTTPException(status_code=400, detail=f"unknown plan; choose one of {', '.join(store.USER_PLANS)}")
@@ -378,9 +379,9 @@ class SetOrgSeatsRequest(BaseModel):
 
 @router.post("/admin/set-org-seats")
 async def admin_set_org_seats(body: SetOrgSeatsRequest, authorization: str | None = Header(None)):
-    """Operator-only paid-seat bump. The team plan includes
-    TEAM_INCLUDED_MEMBERS members per workspace; extra seats are billed by
-    hand, same manual-billing stance as /admin/set-plan."""
+    """Operator-only paid-seat override for comps and support. The team plan
+    includes TEAM_INCLUDED_MEMBERS members per workspace; self-serve seat
+    purchases go through /billing/seats (billing_api.py)."""
     admin = _require_admin(authorization)
     if not store.set_org_seat_limit(body.org_id, body.seats):
         raise HTTPException(status_code=404, detail="no such org")

@@ -296,8 +296,24 @@ class AccountsEndpointTests(unittest.TestCase):
             self.assertEqual(row["outcomes"], {"used": 1, "dismissed": 1})
             self.assertEqual(row["avg_latency_ms"], round((100 + 200 + 50) / 3))
             self.assertEqual(row["last_ip"], "203.0.113.9")
+            self.assertEqual(row["plan"], "free")
+            self.assertFalse(row["billing_linked"])
+            self.assertEqual(row["routes_this_month"], 0)
+            self.assertEqual(row["routes_limit"], local_store.FREE_ROUTES_PER_MONTH)
+            self.assertEqual(row["orgs"], [])
+            self.assertEqual(row["pins_count"], 0)
+            self.assertEqual(row["watches_count"], 0)
+            self.assertEqual(row["collections_count"], 0)
             self.assertIn("route_metrics", body)
             self.assertIn("anonymous_installations", body["route_metrics"])
+
+            summary = body["plan_summary"]
+            self.assertGreaterEqual(summary["plans"]["free"], 1)
+            self.assertEqual(summary["paying_users"], summary["plans"]["pro"] + summary["plans"]["team"])
+            self.assertIn("billing_linked_users", summary)
+            self.assertIn("orgs", summary)
+            self.assertIn("routes_this_month", summary)
+            self.assertIn("free_users_at_quota", summary)
 
             latest_event = body["recent_events"][0]
             self.assertEqual(latest_event["user_email"], "busy@example.com")

@@ -2016,8 +2016,10 @@ def list_route_events_for_user(user_id: str, limit: int = 100) -> list[dict]:
 
 def admin_user_stats() -> list[dict]:
     """Per-user rollup for the admin dashboard: signup info, login provider,
-    tier/outcome breakdown, average latency/tokens, and favorites/installs/
-    private-skill counts. One row per user, newest signup first."""
+    plan/quota/billing state, tier/outcome breakdown, average latency/tokens,
+    and favorites/installs/private-skill/pro-feature counts. One row per user,
+    newest signup first."""
+    month = _usage_month()
     conn = get_conn()
     try:
         users = conn.execute("SELECT * FROM users ORDER BY created_at DESC").fetchall()
@@ -2057,6 +2059,21 @@ def admin_user_stats() -> list[dict]:
             private_skills_count = conn.execute(
                 "SELECT COUNT(*) FROM private_skills WHERE owner_user_id=?", (user_id,)
             ).fetchone()[0]
+            pins_count = conn.execute("SELECT COUNT(*) FROM skill_pins WHERE user_id=?", (user_id,)).fetchone()[0]
+            watches_count = conn.execute("SELECT COUNT(*) FROM skill_watches WHERE user_id=?", (user_id,)).fetchone()[0]
+            collections_count = conn.execute(
+                "SELECT COUNT(*) FROM collections WHERE owner_user_id=?", (user_id,)
+            ).fetchone()[0]
+            usage_row = conn.execute(
+                "SELECT count FROM route_usage WHERE user_id=? AND month=?", (user_id, month)
+            ).fetchone()
+            org_rows = conn.execute(
+                "SELECT o.id AS org_id, o.name, m.role FROM org_members m "
+                "JOIN orgs o ON o.id = m.org_id WHERE m.user_id=? ORDER BY m.created_at ASC",
+                (user_id,),
+            ).fetchall()
+            plan = user["plan"] or "free"
+            plan_cap = FREE_ROUTES_PER_MONTH if plan == "free" else PRO_ROUTES_PER_MONTH
             stats.append(
                 {
                     "id": user_id,
@@ -2064,6 +2081,11 @@ def admin_user_stats() -> list[dict]:
                     "name": user["name"],
                     "created_at": user["created_at"],
                     "login_provider": provider["provider"] if provider else None,
+                    "plan": plan,
+                    "billing_linked": bool(user["stripe_customer_id"]),
+                    "routes_this_month": int(usage_row["count"]) if usage_row else 0,
+                    "routes_limit": plan_cap or None,
+                    "orgs": [{"org_id": row["org_id"], "name": row["name"], "role": row["role"]} for row in org_rows],
                     "run_count": totals["run_count"] or 0,
                     "last_run": totals["last_run"],
                     "last_ip": last_ip["ip_address"] if last_ip else None,
@@ -2082,9 +2104,57 @@ def admin_user_stats() -> list[dict]:
                     "favorites_count": favorites_count,
                     "installs_count": installs_count,
                     "private_skills_count": private_skills_count,
+                    "pins_count": pins_count,
+                    "watches_count": watches_count,
+                    "collections_count": collections_count,
                 }
             )
         return stats
+    finally:
+        conn.close()
+
+
+def admin_plan_summary() -> dict:
+    """Business rollup for the admin dashboard: plan mix, Stripe billing
+    linkage, org/seat totals, and current-month route usage. Aggregate counts
+    only -- same metadata-only stance as the rest of the admin surface."""
+    month = _usage_month()
+    conn = get_conn()
+    try:
+        plans = {plan: 0 for plan in USER_PLANS}
+        for row in conn.execute("SELECT COALESCE(plan, 'free') AS plan, COUNT(*) AS c FROM users GROUP BY 1"):
+            plans[row["plan"]] = row["c"]
+        billing_linked = conn.execute(
+            "SELECT COUNT(*) FROM users WHERE stripe_customer_id IS NOT NULL"
+        ).fetchone()[0]
+        orgs_row = conn.execute(
+            "SELECT COUNT(*) AS orgs, COALESCE(SUM(COALESCE(seat_limit, ?)), 0) AS seats FROM orgs",
+            (TEAM_INCLUDED_MEMBERS,),
+        ).fetchone()
+        org_members = conn.execute("SELECT COUNT(*) FROM org_members").fetchone()[0]
+        usage = conn.execute(
+            "SELECT COALESCE(SUM(count), 0) AS routes, COUNT(*) AS users FROM route_usage WHERE month=?",
+            (month,),
+        ).fetchone()
+        free_users_at_quota = 0
+        if FREE_ROUTES_PER_MONTH > 0:
+            free_users_at_quota = conn.execute(
+                "SELECT COUNT(*) FROM route_usage ru JOIN users u ON u.id = ru.user_id "
+                "WHERE ru.month=? AND COALESCE(u.plan, 'free')='free' AND ru.count >= ?",
+                (month, FREE_ROUTES_PER_MONTH),
+            ).fetchone()[0]
+        return {
+            "month": month,
+            "plans": plans,
+            "paying_users": plans.get("pro", 0) + plans.get("team", 0),
+            "billing_linked_users": billing_linked,
+            "orgs": orgs_row["orgs"],
+            "org_seats": int(orgs_row["seats"]),
+            "org_members": org_members,
+            "routes_this_month": int(usage["routes"]),
+            "users_routing_this_month": usage["users"],
+            "free_users_at_quota": free_users_at_quota,
+        }
     finally:
         conn.close()
 
