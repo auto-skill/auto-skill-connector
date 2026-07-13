@@ -217,8 +217,9 @@ becoming searchable.
 `deploy/docker-compose.yml` is a small VPS-oriented stack:
 
 - `api`: public/read-oriented FastAPI service.
-- `admin-local`: founder admin UI/API bound to droplet `127.0.0.1:8002` on an
-  internal network; reach it only through SSH port forwarding.
+- `admin-local`: founder admin UI/API bound to droplet `127.0.0.1:8002` on a
+  dedicated network excluded from `cloudflared`; reach it only through SSH
+  port forwarding.
 - `mcp`: authenticated streamable-HTTP connector with no skill/filesystem
   write tool, routed to the API
   over the compose network.

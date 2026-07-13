@@ -206,6 +206,5 @@ services:
 
 networks:
   admin-isolation:
-    internal: true
   db-inspection:
     internal: true

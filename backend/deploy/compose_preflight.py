@@ -380,7 +380,7 @@ def check_compose_runtime_contract(compose_file: Path, checks: list[Check]) -> N
             "networks:", "admin-isolation", "../skills_library:/app/skills_library:ro",
         ),
     )
-    require("compose admin internal network", None, ("admin-isolation:\n    internal: true",))
+    require("compose admin dedicated network", None, ("\nnetworks:\n  admin-isolation:\n",))
     if "admin-isolation" in service_blocks.get("cloudflared", ""):
         add(checks, "FAIL", "compose admin tunnel isolation", "cloudflared must not join admin-isolation")
     else:

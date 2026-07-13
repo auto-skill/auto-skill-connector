@@ -139,7 +139,6 @@ services:
     command: ["datasette", "/data/local_skills.db", "--setting", "allow_download", "off"]
 networks:
   admin-isolation:
-    internal: true
   db-inspection:
     internal: true
 """,

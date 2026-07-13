@@ -366,8 +366,8 @@ Postgres, Redis, queues, Kubernetes, or a new vector server.
 ## Founder Admin Setup
 
 The restrained founder UI is intentionally not public. Compose runs a second
-`admin-local` app process on droplet loopback only (`127.0.0.1:8002`) and an
-internal Docker network that `cloudflared` does not join. The public `api`
+`admin-local` app process on droplet loopback only (`127.0.0.1:8002`) and a
+dedicated Docker network that `cloudflared` does not join. The public `api`
 service sets `ADMIN_ACCESS_MODE=disabled`, so `/admin` remains unavailable on
 `skills.autoskill.dev` even if a caller knows an admin bearer token.
 
@@ -389,8 +389,8 @@ to an exact email in `ADMIN_EMAILS`. The page stores the token only in
 therefore require both possession of the droplet SSH key and an allowlisted
 Auto-Skill bearer.
 
-Never publish port 8002 on `0.0.0.0`, add `admin-local` to the Cloudflare
-network, create an `admin.autoskill.dev` route, or relax `ADMIN_HOST`. Verify
+Never publish port 8002 on `0.0.0.0`, add `cloudflared` to the admin network,
+create an `admin.autoskill.dev` route, or relax `ADMIN_HOST`. Verify
 the deployment from the droplet with `ss -lntp`: port 8002 must listen only on
 127.0.0.1. A compromised droplet/root SSH key remains a full-host compromise,
 so use key-only SSH, protect founder keys, and remove departed operators.
