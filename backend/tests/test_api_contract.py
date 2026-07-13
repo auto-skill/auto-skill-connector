@@ -223,7 +223,6 @@ class ApiContractTests(unittest.TestCase):
 
         for method, path, json_body in (
             ("get", "/skills-catalog", None),
-            ("get", "/admin/stats", None),
             ("post", "/route-skip", {"prompt": "x", "reason": "test"}),
             ("get", "/scrape", None),
             ("get", "/rest/v1/skills?select=id", None),
@@ -235,6 +234,10 @@ class ApiContractTests(unittest.TestCase):
             blocked = request(path, **kwargs)
             self.assertEqual(blocked.status_code, 401, (method, path))
             self.assertEqual(blocked.json()["signup_url"], "/signup", (method, path))
+
+        admin_blocked = self.client.get("/admin/stats", headers=no_auth)
+        self.assertEqual(admin_blocked.status_code, 401)
+        self.assertEqual(admin_blocked.json()["signup_url"], "/signup")
 
     def test_public_guard_allows_readiness_and_route_but_blocks_writes(self) -> None:
         headers = self._auth_headers()
@@ -310,7 +313,6 @@ class ApiContractTests(unittest.TestCase):
             ("POST", "/installs"),
             ("GET", "/runs"),
             ("GET", "/skills-catalog"),
-            ("GET", "/admin/stats"),
             ("GET", "/private-skills"),
             ("POST", "/private-skills"),
             ("DELETE", "/private-skills/{skill_id}"),
@@ -356,7 +358,6 @@ class ApiContractTests(unittest.TestCase):
             # Stripe billing (bearer-authed except the signature-verified webhook).
             ("GET", "/billing/status"),
             ("POST", "/billing/checkout"),
-            ("POST", "/billing/seats"),
             ("POST", "/billing/portal"),
             ("POST", "/billing/webhook"),
         }

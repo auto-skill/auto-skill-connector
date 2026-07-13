@@ -3,8 +3,9 @@
 ## Route Privacy Migration
 
 The droplet deploy performs a one-time physical scrub before creating
-`backend/data/.route-privacy-scrub-v1.complete`. It stops API, MCP, worker, and
-Litestream database access; enables SQLite secure deletion; truncates the WAL;
+`backend/data/.route-privacy-scrub-v1.complete`. It stops API, the SSH-only
+admin process, MCP, worker, and Litestream database access; enables SQLite
+secure deletion; truncates the WAL;
 runs a disk-preflighted `VACUUM`; verifies integrity and zero retained route
 fields; scrubs/removes local database backup copies; purges both the Litestream
 and legacy database-backup R2 prefixes; then starts
@@ -362,6 +363,111 @@ The compose file is intentionally small. It keeps SQLite, the hosted MCP
 connector, Cloudflare Tunnel, and Litestream on one VM. It does not introduce
 Postgres, Redis, queues, Kubernetes, or a new vector server.
 
+## Founder Admin Setup
+
+The restrained founder UI is intentionally not public. Compose runs a second
+`admin-local` app process on droplet loopback only (`127.0.0.1:8002`) and an
+internal Docker network that `cloudflared` does not join. The public `api`
+service sets `ADMIN_ACCESS_MODE=disabled`, so `/admin` remains unavailable on
+`skills.autoskill.dev` even if a caller knows an admin bearer token.
+
+Configure exact founder emails in `deploy/.env`:
+
+    ADMIN_ACCESS_MODE=ssh
+    ADMIN_HOST=127.0.0.1
+    ADMIN_EMAILS=founder-one@example.com,founder-two@example.com
+
+From a founder workstation, open an SSH tunnel and keep the process running:
+
+    ssh -N -o ExitOnForwardFailure=yes \
+      -L 127.0.0.1:8002:127.0.0.1:8002 \
+      -i <key> <user>@<droplet>
+
+Then browse to http://127.0.0.1:8002/admin and paste an Auto-Skill token issued
+to an exact email in `ADMIN_EMAILS`. The page stores the token only in
+`sessionStorage`; closing the browser tab clears it. Admin data and mutations
+therefore require both possession of the droplet SSH key and an allowlisted
+Auto-Skill bearer.
+
+Never publish port 8002 on `0.0.0.0`, add `admin-local` to the Cloudflare
+network, create an `admin.autoskill.dev` route, or relax `ADMIN_HOST`. Verify
+the deployment from the droplet with `ss -lntp`: port 8002 must listen only on
+127.0.0.1. A compromised droplet/root SSH key remains a full-host compromise,
+so use key-only SSH, protect founder keys, and remove departed operators.
+
+Paid plan changes must be made in Stripe Dashboard or the customer portal.
+Signed subscription webhooks reconcile current Stripe subscriptions by known
+price ID. Configure the Stripe customer portal to allow subscription
+cancellation and Team seat quantity changes; those changes update local access
+only after the signed webhook is processed. The admin UI can only
+grant/revoke an expiring complimentary
+entitlement with a reason; the removed /admin/set-plan and
+/admin/set-org-seats paths must remain unavailable. On first startup after
+this change, an unlinked legacy manual paid-plan row becomes a 30-day
+complimentary grant and audit entry for founder review. Linked legacy paid
+rows remain provisional until Stripe status/webhooks reconcile them.
+
+After rotating/configuring Stripe, inspect and then apply a one-time full
+reconciliation before opening launch traffic:
+
+    docker compose --env-file backend/deploy/.env -f backend/deploy/docker-compose.yml \
+      run --rm --no-deps api python reconcile_billing.py
+    docker compose --env-file backend/deploy/.env -f backend/deploy/docker-compose.yml \
+      run --rm --no-deps api python reconcile_billing.py --apply
+
+The first command is a dry run. Stop if any active subscription reports an
+unrecognized price; correct the configured price IDs instead of forcing a
+downgrade.
+
+## On-demand read-only SQLite inspection
+
+Datasette is an optional compose profile, stopped by default, isolated from
+cloudflared, mounted read-only, and published only on droplet loopback. It is
+broader than the admin UI: anyone with droplet SSH access and the local tunnel
+can read every table. Start it only for deliberate inspection:
+
+    cd /opt/auto-skill-connector
+    docker compose --env-file backend/deploy/.env \
+      -f backend/deploy/docker-compose.yml \
+      --profile db-inspector up -d db-inspector
+
+From a founder workstation:
+
+    ssh -N -o ExitOnForwardFailure=yes \
+      -L 127.0.0.1:8001:127.0.0.1:8001 \
+      -i <key> <user>@<droplet>
+
+Open http://127.0.0.1:8001, then stop and remove the service:
+
+    docker compose --env-file backend/deploy/.env \
+      -f backend/deploy/docker-compose.yml \
+      --profile db-inspector rm -sf db-inspector
+
+Never add this service to the Cloudflare Tunnel. Stop it before restore,
+privacy scrub, migration, or VACUUM. Datasette allows read-only SQL by
+design; this profile also disables database downloads and bounds query time
+and result size. See the
+[Datasette settings reference](https://docs.datasette.io/en/latest/settings.html).
+
+## Credential rotation before deployment
+
+Previously shared Cloudflare/R2 and Stripe test credentials must be considered
+exposed. Do not reuse or paste them into commits or logs.
+
+- Rotate the Cloudflare Tunnel token, update CLOUDFLARED_TOKEN, and recreate
+  only cloudflared.
+- Create a new bucket-scoped R2 token, update both R2 key values, recreate
+  Litestream and backup services, prove a new backup/restore manifest, then
+  delete the old token.
+- Rotate the Stripe test secret/restricted key and webhook signing secret.
+  Update the droplet first, verify a signed test webhook, then expire the old
+  secret.
+- Rotate any pasted OAuth client secret as well. Never print .env or run a
+  non-quiet docker compose config in shared logs.
+- After rotation, verify public admin denial, loopback-only port 8002,
+  allowlisted bearer enforcement, Stripe replay handling, Litestream
+  replication, and a scratch restore.
+
 The compose file uses bind mounts instead of opaque Docker volumes:
 
 - `data/local_skills.db` is mounted at `/data/local_skills.db`.
@@ -377,9 +483,10 @@ rebuilds those vectors after restart:
 
 ```bash
 cd /opt/auto-skill-connector
-docker compose -f backend/deploy/docker-compose.yml stop worker mcp api litestream
+docker compose -f backend/deploy/docker-compose.yml --profile db-inspector stop db-inspector
+docker compose -f backend/deploy/docker-compose.yml stop worker mcp admin-local api litestream
 docker compose -f backend/deploy/docker-compose.yml run --rm --no-deps api python backfill_quality.py
-docker compose -f backend/deploy/docker-compose.yml up -d api mcp
+docker compose -f backend/deploy/docker-compose.yml up -d api admin-local mcp
 curl -fsS http://127.0.0.1:8000/readyz
 docker compose -f backend/deploy/docker-compose.yml up -d litestream worker
 ```

@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Auto-Skill operations</title>
+  <style nonce="__CSP_NONCE__">
+    :root { color-scheme: dark; font: 15px/1.45 system-ui, sans-serif; background:#0b1020; color:#e8edf7 }
+    body { margin:0; padding:24px; max-width:1280px; margin-inline:auto }
+    header,.row { display:flex; gap:12px; align-items:center; flex-wrap:wrap }
+    h1 { margin:0; font-size:24px } h2 { margin:0 0 14px; font-size:18px }
+    section { background:#141b2d; border:1px solid #29334b; border-radius:12px; padding:18px; margin-top:18px }
+    input,select,button { background:#0d1425; color:#e8edf7; border:1px solid #3b4762; border-radius:7px; padding:9px 11px }
+    input { min-width:220px } button { cursor:pointer } button.primary { background:#2867e8; border-color:#2867e8 }
+    button.danger { border-color:#bd4b5a; color:#ffbdc5 } button:disabled { opacity:.55; cursor:default }
+    .grow { flex:1 }.muted { color:#9ba8c0 }.error { color:#ff98a5 }.ok { color:#84e0aa }
+    .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:10px }
+    .card { background:#0d1425; border-radius:8px; padding:12px }.metric { font-size:24px; font-weight:700 }
+    table { width:100%; border-collapse:collapse; margin-top:12px } th,td { text-align:left; padding:9px; border-bottom:1px solid #2a344b; vertical-align:top }
+    th { color:#aebbd2; font-weight:600 } a { color:#83b4ff } code { color:#bdd0f5 }
+    dialog { max-width:560px; background:#141b2d; color:#e8edf7; border:1px solid #3b4762; border-radius:12px }
+    dialog label { display:block; margin:10px 0 4px } dialog input,dialog select { width:100%; box-sizing:border-box }
+    @media (max-width:700px) { body{padding:12px}.scroll{overflow:auto} table{min-width:850px} }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="grow"><h1>Auto-Skill operations</h1><div class="muted">Restrained account, access, usage, and billing state</div></div>
+    <button id="forget">Forget token</button>
+  </header>
+
+  <section id="auth-panel">
+    <h2>Auto-Skill admin token</h2>
+    <p class="muted">This page is available only through the droplet SSH tunnel. Paste an Auto-Skill token for an allowlisted founder account. It is kept only in this tab's session storage.</p>
+    <div class="row"><input id="token" type="password" autocomplete="off" placeholder="Bearer token"><button class="primary" id="save-token">Use token</button></div>
+  </section>
+
+  <main id="app" hidden>
+    <section><h2>Overview</h2><div class="cards" id="overview"></div></section>
+    <section>
+      <h2>User search</h2>
+      <div class="row"><input class="grow" id="search" type="search" placeholder="Email or name"><button id="search-button">Search</button></div>
+      <div class="scroll"><table><thead><tr><th>User</th><th>Access</th><th>Usage</th><th>Billing</th><th>Complimentary history</th><th></th></tr></thead><tbody id="users"></tbody></table></div>
+    </section>
+    <section><h2>Recent routing metadata</h2><div class="scroll"><table><thead><tr><th>Time</th><th>User</th><th>Client</th><th>Tier / outcome</th><th>Skill</th><th>Latency</th></tr></thead><tbody id="events"></tbody></table></div></section>
+    <section><h2>Admin audit</h2><div class="scroll"><table><thead><tr><th>Time</th><th>Actor</th><th>Target</th><th>Action</th><th>Reason</th><th>Safe change</th></tr></thead><tbody id="audit"></tbody></table></div></section>
+  </main>
+  <p id="status" role="status"></p>
+
+  <dialog id="grant-dialog">
+    <form method="dialog" id="grant-form">
+      <h2>Grant complimentary access</h2>
+      <input id="grant-user-id" type="hidden">
+      <div id="grant-user" class="muted"></div>
+      <label for="grant-plan">Plan</label><select id="grant-plan"><option value="pro">Pro</option><option value="team">Team</option></select>
+      <label for="grant-expiry">Expires</label><input id="grant-expiry" type="datetime-local" required>
+      <label for="grant-reason">Reason</label><input id="grant-reason" maxlength="500" required placeholder="Why this access is being granted">
+      <div class="row"><button value="cancel">Cancel</button><button class="primary" id="confirm-grant" value="default">Grant</button></div>
+    </form>
+  </dialog>
+
+  <script nonce="__CSP_NONCE__">
+  (() => {
+    const $ = id => document.getElementById(id);
+    const storageKey = 'autoskill_admin_token';
+    let token = sessionStorage.getItem(storageKey) || '';
+    const text = (tag, value, cls) => { const el=document.createElement(tag); el.textContent=value == null ? '—' : String(value); if(cls)el.className=cls; return el };
+    const clear = el => { while(el.firstChild)el.removeChild(el.firstChild) };
+    const td = value => text('td', value);
+    const fmt = value => value ? new Date(value).toLocaleString() : '—';
+    const api = async (path, options={}) => {
+      const headers = Object.assign({'Authorization':'Bearer '+token}, options.headers || {});
+      if(options.body) headers['Content-Type']='application/json';
+      const response = await fetch(path, Object.assign({}, options, {headers}));
+      if(!response.ok) { let msg=response.status+' request failed'; try { msg=(await response.json()).detail || msg } catch(_){} throw new Error(msg) }
+      return response.json();
+    };
+    const setStatus = (message, failed=false) => { $('status').textContent=message; $('status').className=failed?'error':'ok' };
+    const metric = (label,value) => { const box=text('div','', 'card'); box.append(text('div',value,'metric'), text('div',label,'muted')); return box };
+    async function loadOverview() {
+      const data=await api('/admin/stats?events_limit=50'); const s=data.plan_summary; clear($('overview'));
+      $('overview').append(metric('Paying users',s.paying_users),metric('Active comps',s.active_complimentary_entitlements),metric('Routes this month',s.routes_this_month),metric('Organizations',s.orgs),metric('Billing-linked users',s.billing_linked_users));
+      clear($('events')); data.recent_events.forEach(e => { const tr=document.createElement('tr'); tr.append(td(fmt(e.created_at)),td(e.user_email||'anonymous'),td([e.client,e.client_version].filter(Boolean).join(' ')),td([e.tier,e.outcome].filter(Boolean).join(' / ')),td(e.skill_name),td(e.latency_ms == null?'—':e.latency_ms+' ms')); $('events').append(tr) });
+    }
+    function entitlementCell(user) {
+      const cell=document.createElement('td'); const rows=user.complimentary_entitlements || [];
+      if(!rows.length) return td('None');
+      rows.forEach(e => { const line=document.createElement('div'); line.append(text('span',e.plan+' until '+fmt(e.expires_at)+(e.revoked_at?' (revoked)':''))); if(!e.revoked_at && new Date(e.expires_at)>new Date()) { const b=text('button','Revoke','danger'); b.type='button'; b.addEventListener('click',()=>revoke(e.id)); line.append(document.createTextNode(' '),b) } cell.append(line) }); return cell;
+    }
+    async function searchUsers() {
+      const data=await api('/admin/users?q='+encodeURIComponent($('search').value)); clear($('users'));
+      data.users.forEach(u => { const tr=document.createElement('tr'); const who=document.createElement('td'); who.append(text('div',u.email),text('div',u.name,'muted')); const access=td(u.effective_plan+' ('+u.plan_source+'), paid: '+u.paid_plan); const usage=td(u.routes_this_month+' / '+(u.routes_limit == null?'fair use':u.routes_limit)); const billing=document.createElement('td'); if(u.stripe_customer_url){const a=text('a','Open Stripe customer');a.href=u.stripe_customer_url;a.target='_blank';a.rel='noopener noreferrer';billing.append(a,text('div',u.stripe_subscription_status,'muted'))}else billing.textContent='Not linked'; const action=document.createElement('td'); const grant=text('button','Grant comp','primary'); grant.type='button'; grant.addEventListener('click',()=>openGrant(u)); action.append(grant); tr.append(who,access,usage,billing,entitlementCell(u),action); $('users').append(tr) });
+    }
+    async function loadAudit() { const data=await api('/admin/audit?limit=100'); clear($('audit')); data.events.forEach(e=>{const tr=document.createElement('tr');tr.append(td(fmt(e.created_at)),td(e.actor_email),td(e.target_email),td(e.action),td(e.reason),td(JSON.stringify({old:e.old_value,new:e.new_value})));$('audit').append(tr)}) }
+    function openGrant(user){$('grant-user-id').value=user.id;$('grant-user').textContent=user.email;const d=new Date(Date.now()+30*86400000);$('grant-expiry').value=d.toISOString().slice(0,16);$('grant-reason').value='';$('grant-dialog').showModal()}
+    async function grant(){const expiry=new Date($('grant-expiry').value);await api('/admin/entitlements/grant',{method:'POST',body:JSON.stringify({target_user_id:$('grant-user-id').value,plan:$('grant-plan').value,expires_at:expiry.toISOString(),reason:$('grant-reason').value})});await Promise.all([searchUsers(),loadOverview(),loadAudit()]);setStatus('Complimentary access granted')}
+    async function revoke(id){const reason=prompt('Reason for revocation:');if(!reason)return;try{await api('/admin/entitlements/'+encodeURIComponent(id)+'/revoke',{method:'POST',body:JSON.stringify({reason})});await Promise.all([searchUsers(),loadOverview(),loadAudit()]);setStatus('Complimentary access revoked')}catch(e){setStatus(e.message,true)}}
+    async function start(){if(!token)return;$('auth-panel').hidden=true;$('app').hidden=false;try{await Promise.all([loadOverview(),searchUsers(),loadAudit()]);setStatus('Operational data loaded')}catch(e){$('app').hidden=true;$('auth-panel').hidden=false;setStatus(e.message,true)}}
+    $('save-token').addEventListener('click',()=>{token=$('token').value.trim();if(!token)return;sessionStorage.setItem(storageKey,token);$('token').value='';start()});
+    $('forget').addEventListener('click',()=>{sessionStorage.removeItem(storageKey);token='';$('app').hidden=true;$('auth-panel').hidden=false;setStatus('Token forgotten')});
+    $('search-button').addEventListener('click',()=>searchUsers().catch(e=>setStatus(e.message,true)));
+    $('search').addEventListener('keydown',e=>{if(e.key==='Enter')searchUsers().catch(err=>setStatus(err.message,true))});
+    $('grant-form').addEventListener('submit',e=>{if(e.submitter && e.submitter.value==='cancel')return;e.preventDefault();grant().then(()=>$('grant-dialog').close()).catch(err=>setStatus(err.message,true))});
+    start();
+  })();
+  </script>
+</body>
+</html>

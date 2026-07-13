@@ -1,16 +1,15 @@
 """Stripe billing: checkout, seats, portal, and the webhook that flips plans.
 
 Stripe is the source of truth for subscription state; SQLite only mirrors the
-resulting plan and seat_limit (see local_store.USER_COLUMN_DEFAULTS's
-stripe_customer_id note). No card data ever touches this backend -- checkout
+resulting paid plan and seat_limit (see local_store's Stripe subscription
+snapshot). No card data ever touches this backend -- checkout
 and payment management happen on Stripe-hosted pages, and the webhook is the
-one write path back into our plan state. /admin/set-plan remains the manual
-override for comps and support.
+one write path back into paid-plan state. Complimentary access is stored
+separately and never overwrites Stripe state.
 
 Endpoints:
   GET  /billing/status    -> configured flag + caller's plan (dashboard)
   POST /billing/checkout  -> Stripe Checkout session URL for pro or team
-  POST /billing/seats     -> org owner sets paid extra seats on the team sub
   POST /billing/portal    -> Stripe customer portal session URL (manage/cancel)
   POST /billing/webhook   -> Stripe events -> plan/seat sync (signature-verified,
                              the only unauthenticated billing route)
@@ -22,9 +21,10 @@ configured=false until then):
   STRIPE_PRICE_TEAM_SEAT ($10/mo per extra seat)
 """
 import os
+import threading
 
 from fastapi import APIRouter, Header, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 import auth
 import local_store as store
@@ -39,6 +39,7 @@ router = APIRouter()
 DASHBOARD_URL = os.getenv("SIGNUP_DASHBOARD_URL", "https://autoskill.dev/dashboard.html")
 
 CHECKOUT_PLANS = {"pro": "STRIPE_PRICE_PRO", "team": "STRIPE_PRICE_TEAM"}
+_WEBHOOK_LOCK = threading.Lock()
 
 
 def _require_user(authorization: str | None) -> dict:
@@ -97,17 +98,13 @@ def _reconcile_missed_grant(user: dict) -> dict:
     working. Only heals a MISSED GRANT -- never auto-downgrades, since a real
     cancellation should always go through the webhook, and a transient
     Stripe API hiccup here must never look like a revoked entitlement."""
-    if (user.get("plan") or "free") != "free" or not user.get("stripe_customer_id") or not billing_configured():
+    if (user.get("paid_plan") or "free") != "free" or not user.get("stripe_customer_id") or not billing_configured():
         return user
     try:
         client = _stripe()
-        active = _call_stripe(
-            client.Subscription.list, customer=user["stripe_customer_id"], status="active", limit=10
-        ).to_dict()
-        for sub in active.get("data", []):
-            if (sub.get("metadata") or {}).get("plan") in ("pro", "team"):
-                _sync_subscription(sub)
-                return store.get_user_by_id(user["id"]) or user
+        _reconcile_customer_subscriptions(client, user["id"], user["stripe_customer_id"])
+        refreshed = store.get_user_by_id(user["id"])
+        return store.access_details_for_user(refreshed) if refreshed else user
     except Exception:
         pass  # best-effort; a reconciliation failure must not break /billing/status itself
     return user
@@ -120,6 +117,9 @@ async def billing_status(authorization: str | None = Header(None)):
     return {
         "configured": billing_configured(),
         "plan": user.get("plan") or "free",
+        "paid_plan": user.get("paid_plan") or "free",
+        "plan_source": user.get("plan_source") or "free",
+        "complimentary_expires_at": user.get("complimentary_expires_at"),
         "has_stripe_customer": bool(user.get("stripe_customer_id")),
     }
 
@@ -134,10 +134,14 @@ async def billing_checkout(body: CheckoutRequest, authorization: str | None = He
     if body.plan not in CHECKOUT_PLANS:
         raise HTTPException(status_code=400, detail="plan must be pro or team")
     client = _stripe()
+    customer_id = _customer_id_for(user)
+    existing = _call_stripe(client.Subscription.list, customer=customer_id, status="all", limit=100).to_dict()
+    if any((sub.get("status") in {"active", "trialing", "past_due"}) for sub in existing.get("data", [])):
+        raise HTTPException(status_code=409, detail="an active subscription already exists; use the billing portal")
     session = _call_stripe(
         client.checkout.Session.create,
         mode="subscription",
-        customer=_customer_id_for(user),
+        customer=customer_id,
         line_items=[{"price": os.environ[CHECKOUT_PLANS[body.plan]], "quantity": 1}],
         # The webhook reads plan/user_id from subscription metadata for every
         # later lifecycle event, so they must live on the subscription, not
@@ -150,59 +154,6 @@ async def billing_checkout(body: CheckoutRequest, authorization: str | None = He
         allow_promotion_codes=True,
     )
     return {"url": session["url"]}
-
-
-class SeatsRequest(BaseModel):
-    org_id: str
-    # 0 removes all paid seats (back to the included count).
-    extra_seats: int = Field(ge=0, le=995)
-
-
-def _active_team_subscription(client, customer_id: str) -> dict | None:
-    # See billing_webhook's to_dict() note: list responses are SDK objects
-    # too, and don't support .get() the way the rest of this module assumes.
-    subs = _call_stripe(client.Subscription.list, customer=customer_id, status="active", limit=10).to_dict()
-    for sub in subs.get("data", []):
-        if (sub.get("metadata") or {}).get("plan") == "team":
-            return sub
-    return None
-
-
-@router.post("/billing/seats")
-async def billing_seats(body: SeatsRequest, authorization: str | None = Header(None)):
-    """Set the paid extra-seat quantity for a workspace. The seat_limit is
-    updated optimistically here and again by the subscription webhook, so a
-    missed webhook can't leave a paying org locked out of its seats."""
-    user = _require_user(authorization)
-    if store.org_role(body.org_id, user["id"]) != "owner":
-        raise HTTPException(status_code=403, detail="org owner required")
-    client = _stripe()
-    customer_id = user.get("stripe_customer_id")
-    sub = _active_team_subscription(client, customer_id) if customer_id else None
-    if sub is None:
-        raise HTTPException(status_code=402, detail="no active team subscription; subscribe to team first")
-
-    seat_price = os.environ["STRIPE_PRICE_TEAM_SEAT"]
-    seat_item = next(
-        (item for item in sub["items"]["data"] if item["price"]["id"] == seat_price), None
-    )
-    if seat_item is None and body.extra_seats > 0:
-        items = [{"price": seat_price, "quantity": body.extra_seats}]
-    elif seat_item is not None:
-        items = [{"id": seat_item["id"], "quantity": body.extra_seats}]
-    else:
-        items = []
-    if items:
-        _call_stripe(
-            client.Subscription.modify,
-            sub["id"],
-            items=items,
-            metadata={**(sub.get("metadata") or {}), "org_id": body.org_id},
-        )
-    seat_limit = store.TEAM_INCLUDED_MEMBERS + body.extra_seats
-    store.set_org_seat_limit(body.org_id, seat_limit)
-    store.record_org_audit(body.org_id, user["id"], "seats_changed", str(seat_limit))
-    return {"ok": True, "org_id": body.org_id, "seat_limit": seat_limit}
 
 
 @router.post("/billing/portal")
@@ -224,31 +175,51 @@ def _user_id_from_subscription(sub: dict) -> str | None:
     return user["id"] if user else None
 
 
-def _sync_subscription(sub: dict) -> None:
-    """Mirror one subscription's state into plan/seat_limit."""
-    user_id = _user_id_from_subscription(sub)
-    if user_id is None:
-        return
-    plan = (sub.get("metadata") or {}).get("plan")
-    if plan not in ("pro", "team"):
-        return
-    status = sub.get("status")
-    org_id = (sub.get("metadata") or {}).get("org_id")
-    if status in ("active", "trialing", "past_due"):
-        store.set_user_plan_by_id(user_id, plan)
-        if plan == "team" and org_id:
-            seat_price = os.getenv("STRIPE_PRICE_TEAM_SEAT", "")
-            extra = sum(
-                int(item.get("quantity") or 0)
-                for item in (sub.get("items") or {}).get("data", [])
-                if (item.get("price") or {}).get("id") == seat_price
-            )
-            store.set_org_seat_limit(org_id, store.TEAM_INCLUDED_MEMBERS + extra)
-    else:
-        # canceled / unpaid / incomplete_expired all mean no live entitlement.
-        store.set_user_plan_by_id(user_id, "free")
-        if org_id:
-            store.set_org_seat_limit(org_id, None)
+def _plan_from_subscription(sub: dict) -> str | None:
+    prices = {
+        (item.get("price") or {}).get("id")
+        for item in (sub.get("items") or {}).get("data", [])
+    }
+    if os.getenv("STRIPE_PRICE_TEAM") in prices:
+        return "team"
+    if os.getenv("STRIPE_PRICE_PRO") in prices:
+        return "pro"
+    return None
+
+
+def _subscription_snapshot(sub: dict) -> dict | None:
+    plan = _plan_from_subscription(sub)
+    subscription_id = sub.get("id")
+    if not plan or not subscription_id:
+        return None
+    org_id = (sub.get("metadata") or {}).get("org_id") or store.stripe_subscription_org_id(subscription_id)
+    extra = 0
+    if plan == "team":
+        seat_price = os.getenv("STRIPE_PRICE_TEAM_SEAT", "")
+        extra = sum(
+            int(item.get("quantity") or 0)
+            for item in (sub.get("items") or {}).get("data", [])
+            if (item.get("price") or {}).get("id") == seat_price
+        )
+    return {
+        "subscription_id": subscription_id,
+        "plan": plan,
+        "status": sub.get("status") or "unknown",
+        "org_id": org_id,
+        "seat_limit": store.TEAM_INCLUDED_MEMBERS + extra if plan == "team" and org_id else None,
+    }
+
+
+def _reconcile_customer_subscriptions(client, user_id: str, customer_id: str) -> str:
+    response = _call_stripe(client.Subscription.list, customer=customer_id, status="all", limit=100).to_dict()
+    subscriptions = response.get("data", [])
+    snapshots = [snapshot for sub in subscriptions if (snapshot := _subscription_snapshot(sub))]
+    if any(
+        sub.get("status") in {"active", "trialing", "past_due"} and _plan_from_subscription(sub) is None
+        for sub in subscriptions
+    ):
+        raise HTTPException(status_code=502, detail="active Stripe subscription has an unrecognized price")
+    return store.replace_stripe_customer_subscriptions(user_id, customer_id, snapshots)
 
 
 @router.post("/billing/webhook")
@@ -268,15 +239,24 @@ async def billing_webhook(request: Request, stripe_signature: str | None = Heade
     # below relies on. to_dict() recursively converts the whole tree once,
     # up front, so the rest of this module can stay plain-dict code.
     event = event.to_dict()
+    event_id = str(event.get("id") or "").strip()
+    if not event_id:
+        raise HTTPException(status_code=400, detail="Stripe event id is required")
     kind = event.get("type") or ""
     obj = (event.get("data") or {}).get("object") or {}
+    with _WEBHOOK_LOCK:
+        if store.stripe_event_processed(event_id):
+            return {"ok": True, "duplicate": True}
+        if kind == "checkout.session.completed":
+            user_id = obj.get("client_reference_id") or (obj.get("metadata") or {}).get("user_id")
+            customer_id = obj.get("customer")
+            if user_id and customer_id:
+                store.set_stripe_customer_id(user_id, customer_id)
+        elif kind in ("customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted"):
+            user_id = _user_id_from_subscription(obj)
+            customer_id = obj.get("customer")
+            if user_id and customer_id:
+                _reconcile_customer_subscriptions(_stripe(), user_id, customer_id)
+        store.record_stripe_event(event_id, kind)
 
-    if kind == "checkout.session.completed":
-        user_id = obj.get("client_reference_id") or (obj.get("metadata") or {}).get("user_id")
-        plan = (obj.get("metadata") or {}).get("plan")
-        if user_id and plan in ("pro", "team"):
-            store.set_user_plan_by_id(user_id, plan)
-    elif kind in ("customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted"):
-        _sync_subscription(obj)
-
-    return {"ok": True}
+    return {"ok": True, "duplicate": False}

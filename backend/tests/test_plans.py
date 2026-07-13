@@ -92,31 +92,14 @@ class PlanEndpointTests(unittest.TestCase):
         self.assertEqual(body["plan"], "pro")
         self.assertIsNone(body["routes_limit"])
 
-    def test_admin_set_plan_requires_admin(self) -> None:
+    def test_legacy_admin_set_plan_is_removed(self) -> None:
         token = self._login("a@example.com")
         payload = {"email": "a@example.com", "plan": "pro"}
         r = self.client.post(
             "/admin/set-plan", json=payload, headers={"Authorization": f"Bearer {token}"}
         )
-        self.assertEqual(r.status_code, 403)
-
-        with patch.dict("os.environ", {"ADMIN_EMAILS": "a@example.com"}):
-            r = self.client.post(
-                "/admin/set-plan", json=payload, headers={"Authorization": f"Bearer {token}"}
-            )
-            self.assertEqual(r.status_code, 200)
-            bad_plan = self.client.post(
-                "/admin/set-plan",
-                json={"email": "a@example.com", "plan": "platinum"},
-                headers={"Authorization": f"Bearer {token}"},
-            )
-            self.assertEqual(bad_plan.status_code, 400)
-            missing = self.client.post(
-                "/admin/set-plan",
-                json={"email": "nobody@example.com", "plan": "pro"},
-                headers={"Authorization": f"Bearer {token}"},
-            )
-            self.assertEqual(missing.status_code, 404)
+        self.assertEqual(r.status_code, 404)
+        self.assertEqual(local_store.get_user_by_email("a@example.com")["plan"], "free")
 
     def _route(self, token: str) -> dict:
         r = self.client.post(
@@ -223,6 +206,7 @@ class PlanEndpointTests(unittest.TestCase):
     def test_org_seat_limit_blocks_extra_members_until_admin_adds_seats(self) -> None:
         owner_token = self._login("owner@example.com")
         owner = local_store.get_or_create_user("owner@example.com", "owner", None)
+        local_store.set_user_plan("owner@example.com", "team")
         local_store.get_or_create_user("b@example.com", "b", None)
         local_store.get_or_create_user("c@example.com", "c", None)
         org = local_store.create_org("Acme", owner["id"])
@@ -239,14 +223,8 @@ class PlanEndpointTests(unittest.TestCase):
             self.assertEqual(_add("b@example.com"), 200)  # owner + b fill both seats
             self.assertEqual(_add("b@example.com"), 200)  # re-adding a member is not a new seat
             self.assertEqual(_add("c@example.com"), 402)
-            with patch.dict("os.environ", {"ADMIN_EMAILS": "owner@example.com"}):
-                r = self.client.post(
-                    "/admin/set-org-seats",
-                    json={"org_id": org["id"], "seats": 3},
-                    headers={"Authorization": f"Bearer {owner_token}"},
-                )
-                self.assertEqual(r.status_code, 200)
-            self.assertEqual(_add("c@example.com"), 200)
+            # Additional paid seats now flow only through Stripe /billing/seats.
+            self.assertEqual(self.client.post("/admin/set-org-seats").status_code, 404)
 
     def test_non_task_prompts_do_not_burn_quota(self) -> None:
         token = self._login("a@example.com")

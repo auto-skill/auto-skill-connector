@@ -19,6 +19,14 @@ REQUIRED_ENV = {
     "R2_BUCKET": "required for Litestream and skills_library backups",
     "R2_ACCESS_KEY_ID": "required for Litestream and skills_library backups",
     "R2_SECRET_ACCESS_KEY": "required for Litestream and skills_library backups",
+    "ADMIN_ACCESS_MODE": "required to declare the SSH-only admin deployment",
+    "ADMIN_HOST": "required for the loopback-only admin origin",
+    "ADMIN_EMAILS": "required for the application-level founder allowlist",
+    "STRIPE_SECRET_KEY": "required for Stripe subscription reconciliation",
+    "STRIPE_WEBHOOK_SECRET": "required for signed Stripe webhooks",
+    "STRIPE_PRICE_PRO": "required to derive Pro access from Stripe prices",
+    "STRIPE_PRICE_TEAM": "required to derive Team access from Stripe prices",
+    "STRIPE_PRICE_TEAM_SEAT": "required to derive paid Team seats",
 }
 
 OPTIONAL_ENV_WARNINGS = {
@@ -128,7 +136,42 @@ def check_env(env_file: Path, checks: list[Check]) -> dict[str, str]:
         add(checks, "WARN", "env SEARXNG_URL", "unset; scraper can still run, but web search discovery will be thinner")
 
     check_dashboard_origins(env, checks)
+    check_admin_and_billing_env(env, checks)
     return env
+
+
+def check_admin_and_billing_env(env: dict[str, str], checks: list[Check]) -> None:
+    admin_mode = env.get("ADMIN_ACCESS_MODE", os.environ.get("ADMIN_ACCESS_MODE", "")).strip().lower()
+    if admin_mode != "ssh":
+        add(checks, "FAIL", "admin access mode", "production deploy must set ADMIN_ACCESS_MODE=ssh")
+    else:
+        add(checks, "PASS", "admin access mode", "ssh")
+
+    admin_host = env.get("ADMIN_HOST", os.environ.get("ADMIN_HOST", "")).strip().lower()
+    if admin_host != "127.0.0.1":
+        add(checks, "FAIL", "admin host format", "SSH-only production admin must use ADMIN_HOST=127.0.0.1")
+    else:
+        add(checks, "PASS", "admin host format", admin_host)
+
+    emails = [value.strip() for value in env.get("ADMIN_EMAILS", os.environ.get("ADMIN_EMAILS", "")).split(",") if value.strip()]
+    if not emails or any("*" in email or not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email) for email in emails):
+        add(checks, "FAIL", "admin email allowlist", "ADMIN_EMAILS must contain exact comma-separated email addresses")
+    else:
+        add(checks, "PASS", "admin email allowlist", f"{len(emails)} exact address(es)")
+
+    prefix_rules = {
+        "STRIPE_SECRET_KEY": ("sk_test_", "sk_live_", "rk_test_", "rk_live_"),
+        "STRIPE_WEBHOOK_SECRET": ("whsec_",),
+        "STRIPE_PRICE_PRO": ("price_",),
+        "STRIPE_PRICE_TEAM": ("price_",),
+        "STRIPE_PRICE_TEAM_SEAT": ("price_",),
+    }
+    for key, prefixes in prefix_rules.items():
+        value = env.get(key, os.environ.get(key, ""))
+        if not value.startswith(prefixes):
+            add(checks, "FAIL", f"{key} format", f"expected prefix {', '.join(prefixes)}")
+        else:
+            add(checks, "PASS", f"{key} format", "recognized identifier format")
 
 
 def check_dashboard_origins(env: dict[str, str], checks: list[Check]) -> None:
@@ -269,6 +312,7 @@ def check_files(
         repo_root / "deploy" / "export-seed-packet.ps1",
         repo_root / "requirements.txt",
         repo_root / "scraper.py",
+        repo_root / "reconcile_billing.py",
         repo_root / "worker.py",
     ]
     for path in required_files:
@@ -326,6 +370,39 @@ def check_compose_runtime_contract(compose_file: Path, checks: list[Check]) -> N
     require("compose worker service", "worker", ("command: python worker.py", "LOCAL_DB_URL: http://api:8000"))
     require("compose worker no embedded app loops", "worker", ("AUTO_START_SCRAPER: \"0\"", "AUTO_START_EMBEDDER: \"0\""))
     require("compose tunnel and backups", None, ("cloudflared:", "litestream:", "library-backup:"))
+    require("compose public admin disabled", "api", ("ADMIN_ACCESS_MODE: disabled",))
+    require(
+        "compose SSH-only admin service",
+        "admin-local",
+        (
+            "ADMIN_ACCESS_MODE: ssh", "ADMIN_HOST:", "ADMIN_EMAILS:",
+            "127.0.0.1:8002:8000", "command: uvicorn scraper:app",
+            "networks:", "admin-isolation", "../skills_library:/app/skills_library:ro",
+        ),
+    )
+    require("compose admin internal network", None, ("admin-isolation:\n    internal: true",))
+    if "admin-isolation" in service_blocks.get("cloudflared", ""):
+        add(checks, "FAIL", "compose admin tunnel isolation", "cloudflared must not join admin-isolation")
+    else:
+        add(checks, "PASS", "compose admin tunnel isolation", "cloudflared is not on admin network")
+    require(
+        "compose on-demand read-only db inspector",
+        "db-inspector",
+        (
+            'profiles: ["db-inspector"]', 'read_only: true', '../data:/data:ro',
+            '127.0.0.1:8001:8001', 'allow_download', '"off"', 'cap_drop: ["ALL"]',
+            'networks:', 'db-inspection',
+        ),
+    )
+    inspector = service_blocks.get("db-inspector", "")
+    if "restart:" in inspector:
+        add(checks, "FAIL", "compose db inspector stays on-demand", "db-inspector must not have a restart policy")
+    else:
+        add(checks, "PASS", "compose db inspector stays on-demand", "no restart policy")
+    if "db-inspection" in service_blocks.get("cloudflared", ""):
+        add(checks, "FAIL", "compose db inspector tunnel isolation", "cloudflared must not join db-inspection")
+    else:
+        add(checks, "PASS", "compose db inspector tunnel isolation", "cloudflared is not on inspector network")
 
 
 def check_dockerignore(repo_root: Path, checks: list[Check]) -> None:

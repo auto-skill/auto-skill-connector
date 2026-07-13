@@ -8,3 +8,4 @@ tokenizers
 huggingface_hub
 mcp>=1.0
 stripe
+PyJWT[crypto]>=2.8,<3

@@ -153,6 +153,8 @@ async def fetch_profile(client: httpx.AsyncClient, provider: str, access_token: 
     profile = r.json()
 
     if provider == "google":
+        if profile.get("email_verified") is not True:
+            raise ValueError("Google account email is not verified")
         return {
             "email": profile["email"],
             "name": profile.get("name"),
@@ -160,20 +162,18 @@ async def fetch_profile(client: httpx.AsyncClient, provider: str, access_token: 
             "provider_user_id": profile["sub"],
         }
 
-    # GitHub: primary email is often null on /user when private; fetch /user/emails instead.
-    email = profile.get("email")
+    # Email is an authorization attribute for the small admin allowlist, so
+    # always use GitHub's verified-email endpoint rather than trusting the
+    # optional public email field returned by /user.
+    er = await client.get("https://api.github.com/user/emails", headers=headers)
+    er.raise_for_status()
+    emails = er.json()
+    email = next(
+        (entry.get("email") for entry in emails if entry.get("primary") and entry.get("verified")),
+        None,
+    )
     if not email:
-        er = await client.get("https://api.github.com/user/emails", headers=headers)
-        er.raise_for_status()
-        for entry in er.json():
-            if entry.get("primary") and entry.get("verified"):
-                email = entry["email"]
-                break
-        else:
-            for entry in er.json():
-                if entry.get("verified"):
-                    email = entry["email"]
-                    break
+        email = next((entry.get("email") for entry in emails if entry.get("verified")), None)
     if not email:
         raise ValueError("GitHub account has no verified email available")
     return {
@@ -205,7 +205,8 @@ def user_from_authorization_header(header: str | None) -> dict | None:
     raw_token = header[len("Bearer "):].strip()
     if not raw_token:
         return None
-    return store.get_user_by_token_hash(_hash_token(raw_token))
+    user = store.get_user_by_token_hash(_hash_token(raw_token))
+    return store.access_details_for_user(user) if user else None
 
 
 async def complete_login(provider: str, code: str, host: str) -> tuple[dict, str]:

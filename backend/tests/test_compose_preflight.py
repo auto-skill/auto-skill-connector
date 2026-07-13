@@ -3,10 +3,12 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import os
 import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from deploy import compose_preflight
 
@@ -19,6 +21,21 @@ class ComposePreflightTests(unittest.TestCase):
         (self.root / "deploy").mkdir()
         (self.root / "data").mkdir()
         (self.root / "skills_library").mkdir()
+        self.env_patcher = patch.dict(
+            os.environ,
+            {
+                "ADMIN_ACCESS_MODE": "ssh",
+                "ADMIN_HOST": "127.0.0.1",
+                "ADMIN_EMAILS": "founder@example.test",
+                "STRIPE_SECRET_KEY": "sk_test_preflight",
+                "STRIPE_WEBHOOK_SECRET": "whsec_preflight",
+                "STRIPE_PRICE_PRO": "price_preflight_pro",
+                "STRIPE_PRICE_TEAM": "price_preflight_team",
+                "STRIPE_PRICE_TEAM_SEAT": "price_preflight_seat",
+            },
+        )
+        self.env_patcher.start()
+        self.addCleanup(self.env_patcher.stop)
 
         for path in [
             ".dockerignore",
@@ -30,6 +47,7 @@ class ComposePreflightTests(unittest.TestCase):
             "deploy/export-seed-packet.ps1",
             "requirements.txt",
             "scraper.py",
+            "reconcile_billing.py",
             "worker.py",
         ]:
             target = self.root / path
@@ -67,8 +85,25 @@ services:
       LOCAL_DB_PATH: /data/local_skills.db
       AUTO_START_SCRAPER: "0"
       AUTO_START_EMBEDDER: "0"
+      ADMIN_ACCESS_MODE: disabled
+      ADMIN_HOST: 127.0.0.1
     ports:
       - "127.0.0.1:8000:8000"
+    command: uvicorn scraper:app --host 0.0.0.0 --port 8000
+  admin-local:
+    environment:
+      LOCAL_DB_PATH: /data/local_skills.db
+      AUTO_START_SCRAPER: "0"
+      AUTO_START_EMBEDDER: "0"
+      ADMIN_ACCESS_MODE: ssh
+      ADMIN_HOST: 127.0.0.1
+      ADMIN_EMAILS: founder@example.test
+    volumes:
+      - ../skills_library:/app/skills_library:ro
+    ports:
+      - "127.0.0.1:8002:8000"
+    networks:
+      - admin-isolation
     command: uvicorn scraper:app --host 0.0.0.0 --port 8000
   worker:
     environment:
@@ -90,6 +125,23 @@ services:
     command: replicate
   library-backup:
     command: backup
+  db-inspector:
+    image: datasetteproject/datasette:0.65.2
+    profiles: ["db-inspector"]
+    read_only: true
+    volumes:
+      - ../data:/data:ro
+    ports:
+      - "127.0.0.1:8001:8001"
+    cap_drop: ["ALL"]
+    networks:
+      - db-inspection
+    command: ["datasette", "/data/local_skills.db", "--setting", "allow_download", "off"]
+networks:
+  admin-isolation:
+    internal: true
+  db-inspection:
+    internal: true
 """,
             encoding="utf-8",
         )
@@ -313,6 +365,42 @@ services:
         self.assertIn("[FAIL] env AUTO_SKILL_DASHBOARD_ORIGINS", output)
         self.assertIn("https://*.bad.test", output)
         self.assertIn("https://autoskill.dev/dashboard", output)
+
+    def test_rejects_malformed_admin_access_and_stripe_configuration(self) -> None:
+        self.write_env(
+            "\n".join(
+                [
+                    "CLOUDFLARED_TOKEN=cloudflare-token",
+                    "R2_ENDPOINT=https://abc.r2.cloudflarestorage.com",
+                    "R2_BUCKET=autoskill-backups",
+                    "R2_ACCESS_KEY_ID=access",
+                    "R2_SECRET_ACCESS_KEY=secret",
+                    "ADMIN_ACCESS_MODE=cloudflare",
+                    "ADMIN_HOST=https://admin.autoskill.dev/path",
+                    "ADMIN_EMAILS=*@example.com",
+                    "STRIPE_SECRET_KEY=not-a-stripe-key",
+                    "STRIPE_WEBHOOK_SECRET=bad",
+                    "STRIPE_PRICE_PRO=bad",
+                    "STRIPE_PRICE_TEAM=bad",
+                    "STRIPE_PRICE_TEAM_SEAT=bad",
+                    "",
+                ]
+            )
+        )
+        with patch.dict(
+            os.environ,
+            {key: "" for key in (
+                "ADMIN_ACCESS_MODE", "ADMIN_HOST", "ADMIN_EMAILS",
+                "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "STRIPE_PRICE_PRO",
+                "STRIPE_PRICE_TEAM", "STRIPE_PRICE_TEAM_SEAT",
+            )},
+        ):
+            exit_code, output = self.run_preflight("--skip-seed-checks")
+        self.assertEqual(exit_code, 1, output)
+        self.assertIn("[FAIL] admin access mode", output)
+        self.assertIn("[FAIL] admin host format", output)
+        self.assertIn("[FAIL] admin email allowlist", output)
+        self.assertIn("[FAIL] STRIPE_SECRET_KEY format", output)
 
     def test_rejects_compose_that_starts_scraper_in_api(self) -> None:
         (self.root / "deploy" / "docker-compose.yml").write_text(

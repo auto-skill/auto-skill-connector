@@ -17,6 +17,7 @@ from datetime import datetime, timezone, date, timedelta
 import os
 from embeddings import embedding_model_status
 from quality import content_hash as quality_content_hash, evaluate_quality, pick_canonical
+import admin_security
 
 # Storage moved local 2026-07-05 (Supabase free-tier space ran out) -- new
 # skills now go into local_skills.db via local_api.py's router, mounted below
@@ -84,7 +85,6 @@ PUBLIC_GET_PATHS = frozenset(
         "/private-skills",
         "/runs",
         "/skills-catalog",
-        "/admin/stats",
         "/signup",
         "/account",
         # Pro/team account features (each enforces its own bearer auth in
@@ -123,7 +123,6 @@ PUBLIC_POST_PATHS = frozenset(
         "/collections",
         "/orgs",
         "/billing/checkout",
-        "/billing/seats",
         "/billing/portal",
         "/billing/webhook",
     }
@@ -140,9 +139,24 @@ PUBLIC_DELETE_PREFIXES = (
 )
 
 
-def public_api_allows(method: str, path: str) -> bool:
+ADMIN_GET_PATHS = frozenset({"/admin", "/admin/stats", "/admin/users", "/admin/audit"})
+
+
+def public_api_allows(method: str, path: str, host: str = "") -> bool:
     path = path.rstrip("/") or "/"
     method = method.upper()
+    if path == "/admin" or path.startswith("/admin/"):
+        if admin_security.admin_access_mode() != "cloudflare":
+            return False
+        if host.lower().rstrip(".") != admin_security.admin_host():
+            return False
+        if method == "GET":
+            return path in ADMIN_GET_PATHS
+        if method == "POST":
+            return path == "/admin/entitlements/grant" or (
+                path.startswith("/admin/entitlements/") and path.endswith("/revoke")
+            )
+        return False
     if method == "GET":
         return path in PUBLIC_GET_PATHS or any(path.startswith(prefix) for prefix in PUBLIC_GET_PREFIXES)
     if method == "POST":
@@ -167,7 +181,7 @@ async def public_readonly_guard(request, call_next):
         return await call_next(request)
     is_public = bool(request.headers.get("cf-connecting-ip") or request.headers.get("x-forwarded-for"))
     if is_public:
-        if not public_api_allows(request.method, request.url.path):
+        if not public_api_allows(request.method, request.url.path, admin_security.request_host(request)):
             return JSONResponse({"error": "read-only public API"}, status_code=403)
     return await call_next(request)
 
@@ -179,7 +193,7 @@ async def public_readonly_guard(request, call_next):
 ACCOUNT_EXEMPT_PATHS = frozenset(
     # /billing/webhook is Stripe server-to-server: no bearer token, but the
     # handler rejects anything without a valid webhook signature.
-    {"/", "/healthz", "/readyz", "/status", "/signup", "/account", "/billing/webhook"}
+    {"/", "/healthz", "/readyz", "/status", "/signup", "/account", "/billing/webhook", "/admin"}
 )
 ACCOUNT_EXEMPT_PREFIXES = ("/auth/", "/mcp-oauth/", "/content/")
 

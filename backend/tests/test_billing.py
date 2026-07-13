@@ -78,6 +78,7 @@ class BillingEndpointTests(unittest.TestCase):
         mock.Customer.create.return_value = {"id": "cus_1"}
         mock.checkout.Session.create.return_value = {"url": "https://checkout.stripe.com/test"}
         mock.billing_portal.Session.create.return_value = {"url": "https://billing.stripe.com/test"}
+        mock.Subscription.list.return_value = _FakeStripeObject({"data": []})
         return mock
 
     def test_unconfigured_billing_is_explicit(self) -> None:
@@ -122,19 +123,22 @@ class BillingEndpointTests(unittest.TestCase):
             r = self.client.post("/billing/webhook", content=b"{}")
             self.assertEqual(r.status_code, 400)
 
-    def test_webhook_checkout_completed_flips_plan(self) -> None:
+    def test_webhook_checkout_completed_does_not_grant_paid_plan(self) -> None:
         user, _ = self._login("a@example.com")
         mock = self._mock_stripe()
         mock.Webhook.construct_event.return_value = _FakeStripeObject(
             {
+                "id": "evt_checkout_1",
                 "type": "checkout.session.completed",
-                "data": {"object": {"client_reference_id": user["id"], "metadata": {"plan": "pro"}}},
+                "data": {"object": {"client_reference_id": user["id"], "customer": "cus_1", "metadata": {"plan": "pro"}}},
             }
         )
         with patch.object(billing_api, "stripe", mock), patch.dict("os.environ", STRIPE_ENV):
             r = self.client.post("/billing/webhook", content=b"{}")
             self.assertEqual(r.status_code, 200)
-        self.assertEqual(local_store.get_user_by_id(user["id"])["plan"], "pro")
+        stored = local_store.get_user_by_id(user["id"])
+        self.assertEqual(stored["plan"], "free")
+        self.assertEqual(stored["stripe_customer_id"], "cus_1")
 
     def test_webhook_subscription_lifecycle_syncs_plan_and_seats(self) -> None:
         user, _ = self._login("owner@example.com")
@@ -146,10 +150,15 @@ class BillingEndpointTests(unittest.TestCase):
             "status": "active",
             "customer": "cus_1",
             "metadata": {"plan": "team", "user_id": user["id"], "org_id": org["id"]},
-            "items": {"data": [{"id": "si_1", "price": {"id": "price_seat"}, "quantity": 3}]},
+            "items": {"data": [
+                {"id": "si_base", "price": {"id": "price_team"}, "quantity": 1},
+                {"id": "si_1", "price": {"id": "price_seat"}, "quantity": 3},
+            ]},
         }
+        mock.Subscription.list.return_value = _FakeStripeObject({"data": [sub]})
         mock.Webhook.construct_event.return_value = _FakeStripeObject(
             {
+                "id": "evt_sub_active",
                 "type": "customer.subscription.updated",
                 "data": {"object": sub},
             }
@@ -162,8 +171,10 @@ class BillingEndpointTests(unittest.TestCase):
             )
 
             cancelled = dict(sub, status="canceled")
+            mock.Subscription.list.return_value = _FakeStripeObject({"data": [cancelled]})
             mock.Webhook.construct_event.return_value = _FakeStripeObject(
                 {
+                    "id": "evt_sub_cancelled",
                     "type": "customer.subscription.deleted",
                     "data": {"object": cancelled},
                 }
@@ -176,50 +187,10 @@ class BillingEndpointTests(unittest.TestCase):
             local_store.TEAM_INCLUDED_MEMBERS,
         )
 
-    def test_seats_requires_owner_and_active_team_subscription(self) -> None:
-        owner, owner_headers = self._login("owner@example.com", "team")
-        _, member_headers = self._login("member@example.com", "team")
-        org = local_store.create_org("Acme", owner["id"])
-        local_store.set_stripe_customer_id(owner["id"], "cus_1")
-        mock = self._mock_stripe()
-
-        with patch.object(billing_api, "stripe", mock), patch.dict("os.environ", STRIPE_ENV):
-            deny = self.client.post(
-                "/billing/seats", json={"org_id": org["id"], "extra_seats": 2}, headers=member_headers
-            )
-            self.assertEqual(deny.status_code, 403)
-
-            mock.Subscription.list.return_value = _FakeStripeObject({"data": []})
-            no_sub = self.client.post(
-                "/billing/seats", json={"org_id": org["id"], "extra_seats": 2}, headers=owner_headers
-            )
-            self.assertEqual(no_sub.status_code, 402)
-
-            mock.Subscription.list.return_value = _FakeStripeObject(
-                {
-                    "data": [
-                        {
-                            "id": "sub_1",
-                            "status": "active",
-                            "metadata": {"plan": "team", "user_id": owner["id"]},
-                            "items": {"data": [{"id": "si_base", "price": {"id": "price_team"}, "quantity": 1}]},
-                        }
-                    ]
-                }
-            )
-            ok = self.client.post(
-                "/billing/seats", json={"org_id": org["id"], "extra_seats": 2}, headers=owner_headers
-            )
-            self.assertEqual(ok.status_code, 200)
-            self.assertEqual(ok.json()["seat_limit"], local_store.TEAM_INCLUDED_MEMBERS + 2)
-
-        modify_kwargs = mock.Subscription.modify.call_args.kwargs
-        self.assertEqual(modify_kwargs["items"], [{"price": "price_seat", "quantity": 2}])
-        self.assertEqual(modify_kwargs["metadata"]["org_id"], org["id"])
-        self.assertEqual(
-            local_store.org_seat_limit(local_store.get_org(org["id"])),
-            local_store.TEAM_INCLUDED_MEMBERS + 2,
-        )
+    def test_direct_seat_mutation_is_removed_in_favor_of_stripe_portal(self) -> None:
+        _, owner_headers = self._login("owner@example.com", "team")
+        response = self.client.post("/billing/seats", json={"org_id": "org", "extra_seats": 2}, headers=owner_headers)
+        self.assertEqual(response.status_code, 404)
 
     def test_portal_requires_billing_history(self) -> None:
         user, headers = self._login("a@example.com")
@@ -248,6 +219,7 @@ class BillingEndpointTests(unittest.TestCase):
                         "id": "sub_1",
                         "status": "active",
                         "metadata": {"plan": "pro", "user_id": user["id"]},
+                        "items": {"data": [{"id": "si_base", "price": {"id": "price_pro"}, "quantity": 1}]},
                     }
                 ]
             }
@@ -256,6 +228,126 @@ class BillingEndpointTests(unittest.TestCase):
             r = self.client.get("/billing/status", headers=headers)
             self.assertEqual(r.status_code, 200)
             self.assertEqual(r.json()["plan"], "pro")
+        self.assertEqual(local_store.get_user_by_id(user["id"])["plan"], "pro")
+
+    def test_webhook_event_id_is_idempotent(self) -> None:
+        user, _ = self._login("a@example.com")
+        mock = self._mock_stripe()
+        sub = {
+            "id": "sub_1",
+            "status": "active",
+            "customer": "cus_1",
+            "metadata": {"user_id": user["id"]},
+            "items": {"data": [{"price": {"id": "price_pro"}, "quantity": 1}]},
+        }
+        mock.Subscription.list.return_value = _FakeStripeObject({"data": [sub]})
+        mock.Webhook.construct_event.return_value = _FakeStripeObject(
+            {"id": "evt_replay", "type": "customer.subscription.updated", "data": {"object": sub}}
+        )
+        with patch.object(billing_api, "stripe", mock), patch.dict("os.environ", STRIPE_ENV):
+            first = self.client.post("/billing/webhook", content=b"{}")
+            second = self.client.post("/billing/webhook", content=b"{}")
+        self.assertFalse(first.json()["duplicate"])
+        self.assertTrue(second.json()["duplicate"])
+        self.assertEqual(mock.Subscription.list.call_count, 1)
+        conn = local_store.get_conn()
+        self.assertEqual(conn.execute("SELECT COUNT(*) FROM stripe_webhook_events WHERE event_id='evt_replay'").fetchone()[0], 1)
+        conn.close()
+
+    def test_failed_webhook_reconciliation_is_retryable(self) -> None:
+        user, _ = self._login("retry@example.com")
+        mock = self._mock_stripe()
+        sub = {
+            "id": "sub_retry", "status": "active", "customer": "cus_retry",
+            "metadata": {"user_id": user["id"]},
+            "items": {"data": [{"price": {"id": "price_pro"}, "quantity": 1}]},
+        }
+        mock.Webhook.construct_event.return_value = _FakeStripeObject(
+            {"id": "evt_retry", "type": "customer.subscription.updated", "data": {"object": sub}}
+        )
+        mock.Subscription.list.side_effect = [
+            _FakeStripeError("temporary failure"),
+            _FakeStripeObject({"data": [sub]}),
+        ]
+        with patch.object(billing_api, "stripe", mock), patch.dict("os.environ", STRIPE_ENV):
+            self.assertEqual(self.client.post("/billing/webhook", content=b"{}").status_code, 502)
+            self.assertFalse(local_store.stripe_event_processed("evt_retry"))
+            self.assertEqual(self.client.post("/billing/webhook", content=b"{}").status_code, 200)
+        self.assertTrue(local_store.stripe_event_processed("evt_retry"))
+        self.assertEqual(local_store.get_user_by_id(user["id"])["plan"], "pro")
+
+    def test_canceling_one_subscription_does_not_revoke_another_active_subscription(self) -> None:
+        user, _ = self._login("multi@example.com")
+        mock = self._mock_stripe()
+        active_pro = {
+            "id": "sub_pro", "status": "active", "customer": "cus_multi",
+            "metadata": {"user_id": user["id"]},
+            "items": {"data": [{"price": {"id": "price_pro"}, "quantity": 1}]},
+        }
+        canceled_team = {
+            "id": "sub_team", "status": "canceled", "customer": "cus_multi",
+            "metadata": {"user_id": user["id"]},
+            "items": {"data": [{"price": {"id": "price_team"}, "quantity": 1}]},
+        }
+        mock.Subscription.list.return_value = _FakeStripeObject({"data": [active_pro, canceled_team]})
+        mock.Webhook.construct_event.return_value = _FakeStripeObject(
+            {"id": "evt_multi", "type": "customer.subscription.deleted", "data": {"object": canceled_team}}
+        )
+        with patch.object(billing_api, "stripe", mock), patch.dict("os.environ", STRIPE_ENV):
+            response = self.client.post("/billing/webhook", content=b"{}")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(local_store.get_user_by_id(user["id"])["plan"], "pro")
+
+    def test_team_workspace_binding_survives_portal_seat_webhooks(self) -> None:
+        user, headers = self._login("workspace@example.com")
+        mock = self._mock_stripe()
+        sub = {
+            "id": "sub_workspace", "status": "active", "customer": "cus_workspace",
+            "metadata": {"user_id": user["id"]},
+            "items": {"data": [{"price": {"id": "price_team"}, "quantity": 1}]},
+        }
+        mock.Subscription.list.return_value = _FakeStripeObject({"data": [sub]})
+        mock.Webhook.construct_event.return_value = _FakeStripeObject(
+            {"id": "evt_workspace_create", "type": "customer.subscription.created", "data": {"object": sub}}
+        )
+        with patch.object(billing_api, "stripe", mock), patch.dict("os.environ", STRIPE_ENV):
+            self.assertEqual(self.client.post("/billing/webhook", content=b"{}").status_code, 200)
+            created = self.client.post("/orgs", json={"name": "Workspace"}, headers=headers)
+            self.assertEqual(created.status_code, 200)
+            org_id = created.json()["org"]["id"]
+            updated = {
+                **sub,
+                "items": {"data": [
+                    {"price": {"id": "price_team"}, "quantity": 1},
+                    {"price": {"id": "price_seat"}, "quantity": 2},
+                ]},
+            }
+            mock.Subscription.list.return_value = _FakeStripeObject({"data": [updated]})
+            mock.Webhook.construct_event.return_value = _FakeStripeObject(
+                {"id": "evt_workspace_seats", "type": "customer.subscription.updated", "data": {"object": updated}}
+            )
+            self.assertEqual(self.client.post("/billing/webhook", content=b"{}").status_code, 200)
+        self.assertEqual(
+            local_store.org_seat_limit(local_store.get_org(org_id)),
+            local_store.TEAM_INCLUDED_MEMBERS + 2,
+        )
+
+    def test_unrecognized_active_price_fails_without_revoking_access(self) -> None:
+        user, _ = self._login("unknown-price@example.com", "pro")
+        mock = self._mock_stripe()
+        sub = {
+            "id": "sub_unknown", "status": "active", "customer": "cus_unknown",
+            "metadata": {"user_id": user["id"]},
+            "items": {"data": [{"price": {"id": "price_not_configured"}, "quantity": 1}]},
+        }
+        mock.Subscription.list.return_value = _FakeStripeObject({"data": [sub]})
+        mock.Webhook.construct_event.return_value = _FakeStripeObject(
+            {"id": "evt_unknown_price", "type": "customer.subscription.updated", "data": {"object": sub}}
+        )
+        with patch.object(billing_api, "stripe", mock), patch.dict("os.environ", STRIPE_ENV):
+            response = self.client.post("/billing/webhook", content=b"{}")
+        self.assertEqual(response.status_code, 502)
+        self.assertFalse(local_store.stripe_event_processed("evt_unknown_price"))
         self.assertEqual(local_store.get_user_by_id(user["id"])["plan"], "pro")
 
     def test_billing_status_never_auto_downgrades(self) -> None:

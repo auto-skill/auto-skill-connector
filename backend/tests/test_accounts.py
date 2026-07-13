@@ -171,6 +171,12 @@ class AccountsEndpointTests(unittest.TestCase):
         user = local_store.get_or_create_user(email, email.split("@")[0], None)
         return auth.issue_cli_token(user["id"])
 
+    def _admin_headers(self, token: str) -> dict:
+        return {
+            "Authorization": f"Bearer {token}",
+            "Host": "127.0.0.1",
+        }
+
     def test_whoami_requires_bearer_token(self) -> None:
         self.assertEqual(self.client.get("/auth/whoami").status_code, 401)
         token = self._login("a@example.com")
@@ -247,15 +253,19 @@ class AccountsEndpointTests(unittest.TestCase):
     def test_admin_stats_requires_admin_email(self) -> None:
         admin = local_store.get_or_create_user("admin@example.com", "Admin", None)
         local_store.link_oauth_identity(admin["id"], "google", "google-sub-1")
-        regular_headers = {"Authorization": f"Bearer {self._login('regular@example.com')}"}
+        regular_headers = self._admin_headers(self._login("regular@example.com"))
         admin_token = auth.issue_cli_token(admin["id"])
-        admin_headers = {"Authorization": f"Bearer {admin_token}"}
+        admin_headers = self._admin_headers(admin_token)
 
-        self.assertEqual(self.client.get("/admin/stats").status_code, 401)
-        self.assertEqual(self.client.get("/admin/stats", headers=regular_headers).status_code, 403)
-
-        with patch.dict(os.environ, {"ADMIN_EMAILS": "admin@example.com"}):
-            r = self.client.get("/admin/stats", headers=admin_headers)
+        with patch.dict(os.environ, {
+            "ADMIN_ACCESS_MODE": "ssh", "ADMIN_HOST": "127.0.0.1",
+            "ADMIN_EMAILS": "admin@example.com",
+        }):
+            anonymous = dict(admin_headers)
+            anonymous.pop("Authorization")
+            self.assertEqual(self.client.get("/admin/stats", headers=anonymous).status_code, 401)
+            self.assertEqual(self.client.get("/admin/stats", headers=regular_headers).status_code, 403)
+            r = self.client.get("/admin/users", headers=admin_headers)
             self.assertEqual(r.status_code, 200)
             body = r.json()
             emails = {u["email"] for u in body["users"]}
@@ -265,7 +275,6 @@ class AccountsEndpointTests(unittest.TestCase):
             self.assertEqual(admin_row["login_provider"], "google")
             self.assertEqual(admin_row["run_count"], 0)
             self.assertEqual(admin_row["tiers"], {})
-            self.assertIn("recent_events", body)
 
     def test_admin_stats_rolls_up_route_events(self) -> None:
         user = local_store.get_or_create_user("busy@example.com", "Busy", None)
@@ -287,16 +296,21 @@ class AccountsEndpointTests(unittest.TestCase):
         finally:
             conn.close()
 
-        admin_headers = {"Authorization": f"Bearer {self._login('admin2@example.com')}"}
-        with patch.dict(os.environ, {"ADMIN_EMAILS": "admin2@example.com"}):
+        admin_headers = self._admin_headers(self._login("admin2@example.com"))
+        with patch.dict(os.environ, {
+            "ADMIN_ACCESS_MODE": "ssh", "ADMIN_HOST": "127.0.0.1",
+            "ADMIN_EMAILS": "admin2@example.com",
+        }):
             body = self.client.get("/admin/stats", headers=admin_headers).json()
-            row = next(u for u in body["users"] if u["email"] == "busy@example.com")
+            users = self.client.get("/admin/users?q=busy", headers=admin_headers).json()["users"]
+            row = next(u for u in users if u["email"] == "busy@example.com")
             self.assertEqual(row["run_count"], 3)
             self.assertEqual(row["tiers"], {"full": 2, "hint": 1})
             self.assertEqual(row["outcomes"], {"used": 1, "dismissed": 1})
             self.assertEqual(row["avg_latency_ms"], round((100 + 200 + 50) / 3))
-            self.assertEqual(row["last_ip"], "203.0.113.9")
-            self.assertEqual(row["plan"], "free")
+            self.assertNotIn("last_ip", row)
+            self.assertEqual(row["effective_plan"], "free")
+            self.assertEqual(row["paid_plan"], "free")
             self.assertFalse(row["billing_linked"])
             self.assertEqual(row["routes_this_month"], 0)
             self.assertEqual(row["routes_limit"], local_store.FREE_ROUTES_PER_MONTH)
@@ -308,8 +322,8 @@ class AccountsEndpointTests(unittest.TestCase):
             self.assertIn("anonymous_installations", body["route_metrics"])
 
             summary = body["plan_summary"]
-            self.assertGreaterEqual(summary["plans"]["free"], 1)
-            self.assertEqual(summary["paying_users"], summary["plans"]["pro"] + summary["plans"]["team"])
+            self.assertGreaterEqual(summary["paid_plans"]["free"], 1)
+            self.assertEqual(summary["paying_users"], summary["paid_plans"]["pro"] + summary["paid_plans"]["team"])
             self.assertIn("billing_linked_users", summary)
             self.assertIn("orgs", summary)
             self.assertIn("routes_this_month", summary)
@@ -318,7 +332,7 @@ class AccountsEndpointTests(unittest.TestCase):
             latest_event = body["recent_events"][0]
             self.assertEqual(latest_event["user_email"], "busy@example.com")
             self.assertEqual(latest_event["skill_name"], "skill-c")
-            self.assertEqual(latest_event["ip_address"], "203.0.113.9")
+            self.assertNotIn("ip_address", latest_event)
             self.assertNotIn("prompt_text", latest_event)
 
     def test_web_login_start_accepts_dashboard_return_url(self) -> None:

@@ -140,6 +140,66 @@ CREATE TABLE IF NOT EXISTS users (
     plan TEXT DEFAULT 'free'
 );
 
+CREATE TABLE IF NOT EXISTS complimentary_entitlements (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    plan TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    granted_by_user_id TEXT NOT NULL,
+    granted_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    revoked_at TEXT,
+    revoked_by_user_id TEXT,
+    revoke_reason TEXT
+);
+CREATE INDEX IF NOT EXISTS complimentary_entitlements_user_idx
+    ON complimentary_entitlements(user_id, expires_at);
+
+CREATE TABLE IF NOT EXISTS admin_audit_log (
+    id TEXT PRIMARY KEY,
+    actor_user_id TEXT NOT NULL,
+    actor_email TEXT NOT NULL,
+    target_user_id TEXT,
+    target_email TEXT,
+    action TEXT NOT NULL,
+    old_value TEXT,
+    new_value TEXT,
+    reason TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS admin_audit_log_created_idx ON admin_audit_log(created_at);
+CREATE TRIGGER IF NOT EXISTS admin_audit_log_no_update
+BEFORE UPDATE ON admin_audit_log BEGIN
+    SELECT RAISE(ABORT, 'admin audit log is append-only');
+END;
+CREATE TRIGGER IF NOT EXISTS admin_audit_log_no_delete
+BEFORE DELETE ON admin_audit_log BEGIN
+    SELECT RAISE(ABORT, 'admin audit log is append-only');
+END;
+
+CREATE TABLE IF NOT EXISTS stripe_webhook_events (
+    event_id TEXT PRIMARY KEY,
+    event_type TEXT NOT NULL,
+    processed_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS stripe_subscriptions (
+    subscription_id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    customer_id TEXT NOT NULL,
+    plan TEXT NOT NULL,
+    status TEXT NOT NULL,
+    org_id TEXT,
+    seat_limit INTEGER,
+    synced_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS stripe_subscriptions_user_idx ON stripe_subscriptions(user_id, status);
+
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    name TEXT PRIMARY KEY,
+    applied_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS route_usage (
     user_id TEXT NOT NULL,
     month TEXT NOT NULL,
@@ -432,6 +492,9 @@ USER_COLUMN_DEFAULTS = {
     # Stripe is the source of truth for subscription state; this is the only
     # billing identifier we persist (never card or invoice data).
     "stripe_customer_id": "TEXT",
+    "stripe_subscription_id": "TEXT",
+    "stripe_subscription_status": "TEXT",
+    "stripe_plan_updated_at": "TEXT",
 }
 
 # NULL org_id = personal submission; a real org_id shares the skill with
@@ -461,7 +524,7 @@ ORG_AUDIT_ACTIONS = frozenset(
 )
 
 # NULL seat_limit = the plan's included member count (TEAM_INCLUDED_MEMBERS);
-# a real value is an operator-granted paid-seat bump.
+# a real value is mirrored from Stripe's paid extra-seat quantity.
 ORG_COLUMN_DEFAULTS = {
     "seat_limit": "INTEGER",
 }
@@ -469,6 +532,8 @@ ORG_COLUMN_DEFAULTS = {
 ORG_ROLES = ("owner", "member")
 
 USER_PLANS = ("free", "pro", "team")
+COMPLIMENTARY_PLANS = ("pro", "team")
+_PLAN_RANK = {"free": 0, "pro": 1, "team": 2}
 
 # 0 disables metering entirely (self-hosted deployments).
 FREE_ROUTES_PER_MONTH = int(os.getenv("AUTOSKILL_FREE_ROUTES_PER_MONTH", "1000"))
@@ -481,8 +546,7 @@ PRO_ROUTES_PER_MONTH = int(os.getenv("AUTOSKILL_PRO_ROUTES_PER_MONTH", "15000"))
 # unlimited. 0 disables the cap.
 FREE_PRIVATE_SKILLS = int(os.getenv("AUTOSKILL_FREE_PRIVATE_SKILLS", "10"))
 
-# Team workspaces include this many members; extra seats are billed by hand
-# (see /admin/set-org-seats), same manual-billing stance as /admin/set-plan.
+# Team workspaces include this many members; extra seats flow through Stripe.
 TEAM_INCLUDED_MEMBERS = int(os.getenv("AUTOSKILL_TEAM_INCLUDED_MEMBERS", "5"))
 
 
@@ -608,6 +672,39 @@ def route_event_privacy_status(conn: sqlite3.Connection | None = None) -> dict:
             conn.close()
 
 
+def _migrate_legacy_manual_plans(conn: sqlite3.Connection) -> None:
+    """Preserve pre-separation manual plans as reviewable 30-day grants."""
+    migration = "2026-07-separate-complimentary-plans-v1"
+    if conn.execute("SELECT 1 FROM schema_migrations WHERE name=?", (migration,)).fetchone():
+        return
+    now = _now()
+    expires = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
+    rows = conn.execute(
+        "SELECT id, email, plan FROM users WHERE plan IN ('pro', 'team') AND stripe_customer_id IS NULL"
+    ).fetchall()
+    for row in rows:
+        entitlement_id = str(uuid.uuid4())
+        reason = "Legacy manual plan migrated for founder review"
+        conn.execute(
+            "INSERT INTO complimentary_entitlements "
+            "(id, user_id, plan, reason, granted_by_user_id, granted_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (entitlement_id, row["id"], row["plan"], reason, "system-migration", now, expires),
+        )
+        conn.execute(
+            "INSERT INTO admin_audit_log "
+            "(id, actor_user_id, actor_email, target_user_id, target_email, action, old_value, new_value, reason, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                str(uuid.uuid4()), "system-migration", "system@local", row["id"], row["email"],
+                "legacy_plan_migrated", json.dumps({"plan": row["plan"]}, sort_keys=True),
+                json.dumps({"entitlement_id": entitlement_id, "plan": row["plan"], "expires_at": expires}, sort_keys=True),
+                reason, now,
+            ),
+        )
+        conn.execute("UPDATE users SET plan='free' WHERE id=?", (row["id"],))
+    conn.execute("INSERT INTO schema_migrations (name, applied_at) VALUES (?, ?)", (migration, now))
+
+
 def init_db() -> None:
     conn = get_conn()
     try:
@@ -630,6 +727,7 @@ def init_db() -> None:
         for col, spec in USER_COLUMN_DEFAULTS.items():
             if col not in user_existing:
                 conn.execute(f"ALTER TABLE users ADD COLUMN {col} {spec}")
+        _migrate_legacy_manual_plans(conn)
         private_skill_existing = {row["name"] for row in conn.execute("PRAGMA table_info(private_skills)").fetchall()}
         for col, spec in PRIVATE_SKILL_COLUMN_DEFAULTS.items():
             if col not in private_skill_existing:
@@ -1843,6 +1941,220 @@ def set_user_plan_by_id(user_id: str, plan: str) -> bool:
         conn.close()
 
 
+def _active_complimentary_entitlement_for_conn(
+    conn: sqlite3.Connection, user_id: str, now: str | None = None
+) -> dict | None:
+    row = conn.execute(
+        "SELECT * FROM complimentary_entitlements "
+        "WHERE user_id=? AND revoked_at IS NULL AND expires_at > ? "
+        "ORDER BY CASE plan WHEN 'team' THEN 2 WHEN 'pro' THEN 1 ELSE 0 END DESC, "
+        "expires_at DESC, granted_at DESC LIMIT 1",
+        (user_id, now or _now()),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def access_details_for_user(user: dict) -> dict:
+    """Return paid, complimentary, and effective access without mutating DB state.
+
+    ``users.plan`` remains the Stripe-owned paid-plan mirror. Every caller
+    that authorizes product features should use the returned ``plan`` (the
+    effective plan), while billing code can use ``paid_plan`` explicitly.
+    Expired grants stop applying immediately without a cleanup job.
+    """
+    paid_plan = user.get("plan") if user.get("plan") in USER_PLANS else "free"
+    conn = get_conn()
+    try:
+        comp = _active_complimentary_entitlement_for_conn(conn, user["id"])
+        inherited_org = None
+        inherited_rows = conn.execute(
+            "SELECT o.id AS org_id, owner.id AS owner_user_id, COALESCE(owner.plan, 'free') AS paid_plan "
+            "FROM org_members m JOIN orgs o ON o.id=m.org_id JOIN users owner ON owner.id=o.owner_user_id "
+            "WHERE m.user_id=? ORDER BY o.created_at ASC",
+            (user["id"],),
+        ).fetchall()
+        for row in inherited_rows:
+            owner_comp = _active_complimentary_entitlement_for_conn(conn, row["owner_user_id"])
+            owner_direct_plan = max(
+                (row["paid_plan"], owner_comp["plan"] if owner_comp else "free"),
+                key=lambda plan: _PLAN_RANK.get(plan, 0),
+            )
+            if owner_direct_plan == "team":
+                inherited_org = row["org_id"]
+                break
+    finally:
+        conn.close()
+    complimentary_plan = comp["plan"] if comp else None
+    if complimentary_plan and _PLAN_RANK[complimentary_plan] > _PLAN_RANK[paid_plan]:
+        effective_plan = complimentary_plan
+        source = "complimentary"
+    elif paid_plan != "free":
+        effective_plan = paid_plan
+        source = "stripe"
+    elif complimentary_plan:
+        effective_plan = complimentary_plan
+        source = "complimentary"
+    else:
+        effective_plan = "free"
+        source = "free"
+    if inherited_org and _PLAN_RANK[effective_plan] < _PLAN_RANK["team"]:
+        effective_plan = "team"
+        source = "team_org"
+    return {
+        **user,
+        "paid_plan": paid_plan,
+        "plan": effective_plan,
+        "plan_source": source,
+        "complimentary_plan": complimentary_plan,
+        "complimentary_expires_at": comp["expires_at"] if comp else None,
+        "team_org_id": inherited_org,
+    }
+
+
+def grant_complimentary_entitlement(
+    user_id: str,
+    plan: str,
+    expires_at: str,
+    reason: str,
+    actor: dict,
+) -> dict | None:
+    if plan not in COMPLIMENTARY_PLANS:
+        raise ValueError("complimentary plan must be pro or team")
+    now = _now()
+    conn = get_conn()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        user = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+        if user is None:
+            conn.rollback()
+            return None
+        old = _active_complimentary_entitlement_for_conn(conn, user["id"], now)
+        conn.execute(
+            "UPDATE complimentary_entitlements SET revoked_at=?, revoked_by_user_id=?, revoke_reason=? "
+            "WHERE user_id=? AND revoked_at IS NULL AND expires_at > ?",
+            (now, actor["id"], "Superseded by a newer complimentary grant", user["id"], now),
+        )
+        entitlement_id = str(uuid.uuid4())
+        conn.execute(
+            "INSERT INTO complimentary_entitlements "
+            "(id, user_id, plan, reason, granted_by_user_id, granted_at, expires_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (entitlement_id, user["id"], plan, reason, actor["id"], now, expires_at),
+        )
+        new_value = {"entitlement_id": entitlement_id, "plan": plan, "expires_at": expires_at}
+        old_value = (
+            {"entitlement_id": old["id"], "plan": old["plan"], "expires_at": old["expires_at"]}
+            if old
+            else None
+        )
+        conn.execute(
+            "INSERT INTO admin_audit_log "
+            "(id, actor_user_id, actor_email, target_user_id, target_email, action, "
+            "old_value, new_value, reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                str(uuid.uuid4()), actor["id"], actor["email"], user["id"], user["email"],
+                "complimentary_entitlement_granted", json.dumps(old_value, sort_keys=True),
+                json.dumps(new_value, sort_keys=True), reason, now,
+            ),
+        )
+        conn.commit()
+        return {**new_value, "user_id": user["id"], "email": user["email"], "reason": reason}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def revoke_complimentary_entitlement(entitlement_id: str, reason: str, actor: dict) -> dict | None:
+    now = _now()
+    conn = get_conn()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            "SELECT e.*, u.email FROM complimentary_entitlements e "
+            "JOIN users u ON u.id=e.user_id WHERE e.id=? AND e.revoked_at IS NULL",
+            (entitlement_id,),
+        ).fetchone()
+        if row is None:
+            conn.rollback()
+            return None
+        conn.execute(
+            "UPDATE complimentary_entitlements SET revoked_at=?, revoked_by_user_id=?, revoke_reason=? "
+            "WHERE id=? AND revoked_at IS NULL",
+            (now, actor["id"], reason, entitlement_id),
+        )
+        old_value = {"entitlement_id": row["id"], "plan": row["plan"], "expires_at": row["expires_at"]}
+        new_value = {**old_value, "revoked_at": now}
+        conn.execute(
+            "INSERT INTO admin_audit_log "
+            "(id, actor_user_id, actor_email, target_user_id, target_email, action, "
+            "old_value, new_value, reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                str(uuid.uuid4()), actor["id"], actor["email"], row["user_id"], row["email"],
+                "complimentary_entitlement_revoked", json.dumps(old_value, sort_keys=True),
+                json.dumps(new_value, sort_keys=True), reason, now,
+            ),
+        )
+        conn.commit()
+        return {**new_value, "user_id": row["user_id"], "email": row["email"], "reason": reason}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def list_complimentary_entitlements(user_id: str) -> list[dict]:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT id, plan, reason, granted_at, expires_at, revoked_at, revoke_reason "
+            "FROM complimentary_entitlements WHERE user_id=? ORDER BY granted_at DESC",
+            (user_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def list_admin_audit(limit: int = 100) -> list[dict]:
+    limit = max(1, min(int(limit), 500))
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT id, actor_email, target_email, action, old_value, new_value, reason, created_at "
+            "FROM admin_audit_log ORDER BY created_at DESC, id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        out = []
+        for row in rows:
+            entry = dict(row)
+            for key in ("old_value", "new_value"):
+                entry[key] = json.loads(entry[key]) if entry[key] else None
+            out.append(entry)
+        return out
+    finally:
+        conn.close()
+
+
+def org_has_active_team_access(org_id: str) -> bool:
+    conn = get_conn()
+    try:
+        owner = conn.execute(
+            "SELECT u.* FROM orgs o JOIN users u ON u.id=o.owner_user_id WHERE o.id=?",
+            (org_id,),
+        ).fetchone()
+        if owner is None:
+            return False
+        if (owner["plan"] or "free") == "team":
+            return True
+        comp = _active_complimentary_entitlement_for_conn(conn, owner["id"])
+        return bool(comp and comp["plan"] == "team")
+    finally:
+        conn.close()
+
+
 def get_user_by_id(user_id: str) -> dict | None:
     conn = get_conn()
     try:
@@ -1862,6 +2174,134 @@ def set_stripe_customer_id(user_id: str, customer_id: str) -> bool:
         conn.close()
 
 
+def set_stripe_subscription_state(
+    user_id: str, plan: str, subscription_id: str | None, status: str | None
+) -> bool:
+    if plan not in USER_PLANS:
+        raise ValueError(f"unknown plan {plan!r}")
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            "UPDATE users SET plan=?, stripe_subscription_id=?, stripe_subscription_status=?, "
+            "stripe_plan_updated_at=? WHERE id=?",
+            (plan, subscription_id, status, _now(), user_id),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def replace_stripe_customer_subscriptions(
+    user_id: str, customer_id: str, subscriptions: list[dict]
+) -> str:
+    """Atomically replace Stripe's subscription snapshot for one customer.
+
+    The webhook obtains this snapshot from Stripe's API rather than trusting
+    an individual (possibly delayed) event payload. That makes duplicate and
+    out-of-order lifecycle deliveries converge on Stripe's current state and
+    correctly handles more than one subscription for the same customer.
+    """
+    now = _now()
+    conn = get_conn()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        old_org_ids = {
+            row["org_id"]
+            for row in conn.execute(
+                "SELECT org_id FROM stripe_subscriptions WHERE user_id=? AND org_id IS NOT NULL",
+                (user_id,),
+            ).fetchall()
+        }
+        conn.execute("DELETE FROM stripe_subscriptions WHERE user_id=?", (user_id,))
+        for sub in subscriptions:
+            conn.execute(
+                "INSERT INTO stripe_subscriptions "
+                "(subscription_id, user_id, customer_id, plan, status, org_id, seat_limit, synced_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    sub["subscription_id"], user_id, customer_id, sub["plan"], sub["status"],
+                    sub.get("org_id"), sub.get("seat_limit"), now,
+                ),
+            )
+        active = [s for s in subscriptions if s["status"] in {"active", "trialing", "past_due"}]
+        paid_plan = max((s["plan"] for s in active), key=lambda p: _PLAN_RANK[p], default="free")
+        chosen = next((s for s in active if s["plan"] == paid_plan), None)
+        conn.execute(
+            "UPDATE users SET plan=?, stripe_customer_id=?, stripe_subscription_id=?, "
+            "stripe_subscription_status=?, stripe_plan_updated_at=? WHERE id=?",
+            (
+                paid_plan,
+                customer_id,
+                chosen["subscription_id"] if chosen else None,
+                chosen["status"] if chosen else None,
+                now,
+                user_id,
+            ),
+        )
+        active_org_ids = {s.get("org_id") for s in active if s.get("org_id")}
+        for org_id in old_org_ids - active_org_ids:
+            conn.execute("UPDATE orgs SET seat_limit=NULL WHERE id=?", (org_id,))
+        for sub in active:
+            if sub.get("org_id") and sub.get("seat_limit") is not None:
+                conn.execute("UPDATE orgs SET seat_limit=? WHERE id=?", (sub["seat_limit"], sub["org_id"]))
+        conn.commit()
+        return paid_plan
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def stripe_subscription_org_id(subscription_id: str) -> str | None:
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT org_id FROM stripe_subscriptions WHERE subscription_id=?", (subscription_id,)
+        ).fetchone()
+        return row["org_id"] if row and row["org_id"] else None
+    finally:
+        conn.close()
+
+
+def bind_stripe_subscription_org(subscription_id: str, user_id: str, org_id: str) -> bool:
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            "UPDATE stripe_subscriptions SET org_id=? WHERE subscription_id=? AND user_id=? AND plan='team' "
+            "AND (org_id IS NULL OR org_id=?)",
+            (org_id, subscription_id, user_id, org_id),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def stripe_event_processed(event_id: str) -> bool:
+    conn = get_conn()
+    try:
+        return conn.execute(
+            "SELECT 1 FROM stripe_webhook_events WHERE event_id=?", (event_id,)
+        ).fetchone() is not None
+    finally:
+        conn.close()
+
+
+def record_stripe_event(event_id: str, event_type: str) -> bool:
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO stripe_webhook_events (event_id, event_type, processed_at) VALUES (?, ?, ?)",
+            (event_id, event_type, _now()),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
 def get_user_by_stripe_customer(customer_id: str) -> dict | None:
     if not customer_id:
         return None
@@ -1869,6 +2309,19 @@ def get_user_by_stripe_customer(customer_id: str) -> dict | None:
     try:
         row = conn.execute("SELECT * FROM users WHERE stripe_customer_id=?", (customer_id,)).fetchone()
         return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def list_users_with_stripe_customer() -> list[dict]:
+    conn = get_conn()
+    try:
+        return [
+            dict(row)
+            for row in conn.execute(
+                "SELECT * FROM users WHERE stripe_customer_id IS NOT NULL ORDER BY created_at ASC"
+            ).fetchall()
+        ]
     finally:
         conn.close()
 
@@ -2014,7 +2467,14 @@ def list_route_events_for_user(user_id: str, limit: int = 100) -> list[dict]:
         conn.close()
 
 
-def admin_user_stats() -> list[dict]:
+def _stripe_customer_url(customer_id: str | None) -> str | None:
+    if not customer_id or not re.fullmatch(r"cus_[A-Za-z0-9]+", customer_id):
+        return None
+    prefix = "test/" if os.getenv("STRIPE_DASHBOARD_TEST_MODE", "").lower() in {"1", "true", "yes"} else ""
+    return f"https://dashboard.stripe.com/{prefix}customers/{customer_id}"
+
+
+def admin_user_stats(q: str = "", limit: int = 50, offset: int = 0) -> list[dict]:
     """Per-user rollup for the admin dashboard: signup info, login provider,
     plan/quota/billing state, tier/outcome breakdown, average latency/tokens,
     and favorites/installs/private-skill/pro-feature counts. One row per user,
@@ -2022,7 +2482,17 @@ def admin_user_stats() -> list[dict]:
     month = _usage_month()
     conn = get_conn()
     try:
-        users = conn.execute("SELECT * FROM users ORDER BY created_at DESC").fetchall()
+        limit = max(1, min(int(limit), 200))
+        offset = max(0, int(offset))
+        if q.strip():
+            needle = f"%{q.strip()}%"
+            users = conn.execute(
+                "SELECT * FROM users WHERE email LIKE ? COLLATE NOCASE OR name LIKE ? COLLATE NOCASE "
+                "ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                (needle, needle, limit, offset),
+            ).fetchall()
+        else:
+            users = conn.execute("SELECT * FROM users ORDER BY created_at DESC LIMIT ? OFFSET ?", (limit, offset)).fetchall()
         stats = []
         for user in users:
             user_id = user["id"]
@@ -2049,11 +2519,6 @@ def admin_user_stats() -> list[dict]:
                 "SELECT outcome, COUNT(*) AS c FROM route_events WHERE user_id=? AND outcome IS NOT NULL GROUP BY outcome",
                 (user_id,),
             ).fetchall()
-            last_ip = conn.execute(
-                "SELECT ip_address FROM route_events WHERE user_id=? AND ip_address IS NOT NULL "
-                "ORDER BY created_at DESC LIMIT 1",
-                (user_id,),
-            ).fetchone()
             favorites_count = conn.execute("SELECT COUNT(*) FROM favorites WHERE user_id=?", (user_id,)).fetchone()[0]
             installs_count = conn.execute("SELECT COUNT(*) FROM installs WHERE user_id=?", (user_id,)).fetchone()[0]
             private_skills_count = conn.execute(
@@ -2072,8 +2537,14 @@ def admin_user_stats() -> list[dict]:
                 "JOIN orgs o ON o.id = m.org_id WHERE m.user_id=? ORDER BY m.created_at ASC",
                 (user_id,),
             ).fetchall()
-            plan = user["plan"] or "free"
+            access = access_details_for_user(dict(user))
+            plan = access["plan"]
             plan_cap = FREE_ROUTES_PER_MONTH if plan == "free" else PRO_ROUTES_PER_MONTH
+            routes_used = int(usage_row["count"]) if usage_row else 0
+            if plan == "team":
+                team_pool = team_route_pool(user_id)
+                if team_pool is not None:
+                    routes_used, plan_cap = team_pool
             stats.append(
                 {
                     "id": user_id,
@@ -2081,14 +2552,22 @@ def admin_user_stats() -> list[dict]:
                     "name": user["name"],
                     "created_at": user["created_at"],
                     "login_provider": provider["provider"] if provider else None,
-                    "plan": plan,
+                    "paid_plan": access["paid_plan"],
+                    "effective_plan": plan,
+                    "plan_source": access["plan_source"],
+                    "complimentary_plan": access["complimentary_plan"],
+                    "complimentary_expires_at": access["complimentary_expires_at"],
+                    "team_org_id": access["team_org_id"],
                     "billing_linked": bool(user["stripe_customer_id"]),
-                    "routes_this_month": int(usage_row["count"]) if usage_row else 0,
+                    "stripe_customer_url": _stripe_customer_url(user["stripe_customer_id"]),
+                    "stripe_subscription_status": user["stripe_subscription_status"],
+                    "stripe_plan_updated_at": user["stripe_plan_updated_at"],
+                    "complimentary_entitlements": list_complimentary_entitlements(user_id),
+                    "routes_this_month": routes_used,
                     "routes_limit": plan_cap or None,
                     "orgs": [{"org_id": row["org_id"], "name": row["name"], "role": row["role"]} for row in org_rows],
                     "run_count": totals["run_count"] or 0,
                     "last_run": totals["last_run"],
-                    "last_ip": last_ip["ip_address"] if last_ip else None,
                     "avg_latency_ms": round(totals["avg_latency_ms"]) if totals["avg_latency_ms"] is not None else None,
                     "avg_skill_find_ms": round(totals["avg_skill_find_ms"])
                     if totals["avg_skill_find_ms"] is not None
@@ -2124,6 +2603,13 @@ def admin_plan_summary() -> dict:
         plans = {plan: 0 for plan in USER_PLANS}
         for row in conn.execute("SELECT COALESCE(plan, 'free') AS plan, COUNT(*) AS c FROM users GROUP BY 1"):
             plans[row["plan"]] = row["c"]
+        effective_plans = {plan: 0 for plan in USER_PLANS}
+        for user in conn.execute("SELECT * FROM users"):
+            effective_plans[access_details_for_user(dict(user))["plan"]] += 1
+        active_comps = conn.execute(
+            "SELECT COUNT(*) FROM complimentary_entitlements WHERE revoked_at IS NULL AND expires_at > ?",
+            (_now(),),
+        ).fetchone()[0]
         billing_linked = conn.execute(
             "SELECT COUNT(*) FROM users WHERE stripe_customer_id IS NOT NULL"
         ).fetchone()[0]
@@ -2138,15 +2624,19 @@ def admin_plan_summary() -> dict:
         ).fetchone()
         free_users_at_quota = 0
         if FREE_ROUTES_PER_MONTH > 0:
-            free_users_at_quota = conn.execute(
-                "SELECT COUNT(*) FROM route_usage ru JOIN users u ON u.id = ru.user_id "
-                "WHERE ru.month=? AND COALESCE(u.plan, 'free')='free' AND ru.count >= ?",
+            for row in conn.execute(
+                "SELECT u.*, ru.count AS route_count FROM route_usage ru JOIN users u ON u.id=ru.user_id "
+                "WHERE ru.month=? AND ru.count >= ?",
                 (month, FREE_ROUTES_PER_MONTH),
-            ).fetchone()[0]
+            ):
+                if access_details_for_user(dict(row))["plan"] == "free":
+                    free_users_at_quota += 1
         return {
             "month": month,
-            "plans": plans,
+            "paid_plans": plans,
+            "effective_plans": effective_plans,
             "paying_users": plans.get("pro", 0) + plans.get("team", 0),
+            "active_complimentary_entitlements": active_comps,
             "billing_linked_users": billing_linked,
             "orgs": orgs_row["orgs"],
             "org_seats": int(orgs_row["seats"]),
@@ -2177,9 +2667,7 @@ def admin_recent_events(limit: int = 100) -> list[dict]:
                    r.candidate_tokens, r.content_tokens, r.injected_tokens,
                    r.response_tokens, r.guard_delivery, r.capsule_chars,
                    r.meaningfulness_score, r.config_version, r.outcome,
-                   r.outcome_at, r.feedback_source, r.warnings, r.ip_address,
-                   CASE WHEN r.anonymous_id_hash IS NOT NULL
-                        THEN substr(r.anonymous_id_hash, 1, 12) END AS anonymous_installation,
+                   r.outcome_at, r.feedback_source, r.warnings,
                    u.email AS user_email
             FROM route_events r
             LEFT JOIN users u ON u.id = r.user_id

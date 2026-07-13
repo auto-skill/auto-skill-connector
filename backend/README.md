@@ -160,9 +160,9 @@ does not expose it.
 Anonymous installation hashes and IP addresses expire from route events after
 `AUTOSKILL_ANONYMOUS_ID_RETENTION_DAYS` (90 days by default). The hash
 identifies a persisted installation for coarse retention/conversion metrics,
-not a person; authenticated `user_id` remains the authoritative identity. IPs
-back per-user abuse attribution in the operator dashboard (`/admin/stats`
-shows each user's most recent IP) and are never exposed publicly.
+not a person; authenticated `user_id` remains the authoritative identity.
+The restrained admin API does not return route IPs, raw prompts, private skill
+content, bearer tokens, or token hashes.
 
 Default warning budgets are 750 ms total latency, 500 ms skill-find time,
 1000 injected tokens, and 3500 response tokens.
@@ -217,6 +217,8 @@ becoming searchable.
 `deploy/docker-compose.yml` is a small VPS-oriented stack:
 
 - `api`: public/read-oriented FastAPI service.
+- `admin-local`: founder admin UI/API bound to droplet `127.0.0.1:8002` on an
+  internal network; reach it only through SSH port forwarding.
 - `mcp`: authenticated streamable-HTTP connector with no skill/filesystem
   write tool, routed to the API
   over the compose network.
@@ -225,6 +227,15 @@ becoming searchable.
 - `litestream`: SQLite WAL replication to Cloudflare R2.
 - `library-backup`: daily R2 tarballs for `skills_library/` until all content is
   stored in SQLite.
+- `db-inspector`: an on-demand, read-only Datasette profile bound to
+  `127.0.0.1:8001`; reach it only through SSH port forwarding.
+
+The public API hard-disables `/admin`. The separate `admin-local` service
+serves it only on `ADMIN_HOST=127.0.0.1`; SSH key possession and an Auto-Skill
+bearer for an exact `ADMIN_EMAILS` address are required. The UI keeps that
+token in `sessionStorage` only. Admin mutations are limited to expiring
+complimentary access grants/revocations with an append-only audit trail; paid
+plan and seat changes remain Stripe-owned.
 
 The hosted MCP connector must never register a filesystem install tool. MCP
 OAuth establishes caller identity; it does not make server-host writes a safe

@@ -14,9 +14,8 @@ Endpoints:
   POST /auth/logout                           -> revoke the bearer token
   GET  /runs                                  -> current user's recent route_events (dashboard metrics)
   GET  /skills-catalog                        -> paginated skill browse (account-only)
-  GET  /admin/stats                           -> operator-only: all users' stats + recent activity feed
-  POST /admin/set-plan                        -> operator-only: manual free/pro/team plan flip
-  POST /admin/set-org-seats                   -> operator-only: manual paid-seat bump for a team workspace
+  GET  /admin, /admin/{stats,users,audit}      -> SSH-local + bearer protected operations UI/data
+  POST /admin/entitlements/{grant,.../revoke} -> expiring complimentary access with audit trail
   GET/POST/DELETE /favorites[/{skill_id}]     -> per-user favorited skills
   GET/POST        /installs                   -> per-user install history (audited to the user's orgs)
   GET/POST/DELETE /private-skills[/{id}]      -> per-user private skill submissions (free plan capped)
@@ -41,12 +40,16 @@ Endpoints:
 """
 import json
 import os
+import secrets
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from urllib.parse import parse_qsl, quote, urlencode, urlparse, urlsplit, urlunparse, urlunsplit
 
 from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
+import admin_security
 import auth
 import local_store as store
 import mcp_oauth
@@ -89,17 +92,19 @@ def _require_user(authorization: str | None) -> dict:
     return user
 
 
-def _admin_emails() -> set[str]:
-    return {e.strip().lower() for e in os.environ.get("ADMIN_EMAILS", "").split(",") if e.strip()}
-
-
-def _require_admin(authorization: str | None) -> dict:
-    """Same bearer check as every other account endpoint, plus an email
-    allowlist -- there's no is_admin column, and this dashboard only ever
-    needs to serve the product's own operator(s), not a general role system."""
+def _require_admin(
+    request: Request,
+    authorization: str | None,
+    access_assertion: str | None,
+) -> dict:
+    """Require the private admin surface and an allowlisted bearer identity."""
+    access_email = admin_security.require_admin_surface(request, access_assertion)
     user = _require_user(authorization)
-    if (user.get("email") or "").lower() not in _admin_emails():
+    bearer_email = (user.get("email") or "").lower()
+    if bearer_email not in admin_security.admin_emails():
         raise HTTPException(status_code=403, detail="not an admin account")
+    if access_email is not None and bearer_email != access_email:
+        raise HTTPException(status_code=403, detail="admin identities do not match")
     return user
 
 
@@ -313,6 +318,9 @@ async def whoami(authorization: str | None = Header(None)):
         "name": user["name"],
         "avatar_url": user["avatar_url"],
         "plan": plan,
+        "paid_plan": user.get("paid_plan") or "free",
+        "plan_source": user.get("plan_source") or "free",
+        "complimentary_expires_at": user.get("complimentary_expires_at"),
         "routes_used_this_month": store.get_route_usage(user["id"]),
         "routes_limit": limit,
     }
@@ -336,57 +344,135 @@ async def skills_catalog(
     return store.list_skills_catalog(q=q, limit=limit, offset=offset, sort=sort if sort == "recent" else "popular")
 
 
-@router.get("/admin/stats")
-async def admin_stats(events_limit: int = 100, authorization: str | None = Header(None)):
-    """Operator-only rollup: every user's signup/login-provider/tier/outcome/
-    token stats, plus a live feed of the most recent route_events across all
-    users. Metadata-only, same as every other route_events consumer -- see
-    ROUTE_EVENT_FORBIDDEN_LEGACY_COLUMNS. Gated by ADMIN_EMAILS, not a public
-    feature -- see _require_admin."""
-    _require_admin(authorization)
+def _admin_security_headers(nonce: str) -> dict[str, str]:
     return {
-        "users": store.admin_user_stats(),
+        "Cache-Control": "no-store, max-age=0",
+        "Content-Security-Policy": (
+            "default-src 'none'; base-uri 'none'; frame-ancestors 'none'; "
+            f"style-src 'nonce-{nonce}'; script-src 'nonce-{nonce}'; connect-src 'self'; form-action 'self'"
+        ),
+        "Referrer-Policy": "no-referrer",
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "DENY",
+    }
+
+
+@router.get("/admin", response_class=HTMLResponse)
+async def admin_page(
+    request: Request,
+    access_assertion: str | None = Header(None, alias="Cf-Access-Jwt-Assertion"),
+):
+    admin_security.require_admin_surface(request, access_assertion)
+    nonce = secrets.token_urlsafe(18)
+    html = (Path(__file__).parent / "admin.html").read_text(encoding="utf-8").replace("__CSP_NONCE__", nonce)
+    return HTMLResponse(html, headers=_admin_security_headers(nonce))
+
+
+@router.get("/admin/stats")
+async def admin_stats(
+    request: Request,
+    events_limit: int = 50,
+    authorization: str | None = Header(None),
+    access_assertion: str | None = Header(None, alias="Cf-Access-Jwt-Assertion"),
+):
+    _require_admin(request, authorization, access_assertion)
+    return {
         "recent_events": store.admin_recent_events(events_limit),
-        # Keep anonymous cohort counts behind the existing operator gate. The
-        # response contains only aggregate counts and short installation
-        # prefixes; it never exposes raw IDs or prompt-derived data.
         "route_metrics": store.route_event_summary(hours=24),
         "plan_summary": store.admin_plan_summary(),
     }
 
 
-class SetPlanRequest(BaseModel):
-    email: str = Field(min_length=3, max_length=320)
+@router.get("/admin/users")
+async def admin_users(
+    request: Request,
+    q: str = "",
+    limit: int = 50,
+    offset: int = 0,
+    authorization: str | None = Header(None),
+    access_assertion: str | None = Header(None, alias="Cf-Access-Jwt-Assertion"),
+):
+    _require_admin(request, authorization, access_assertion)
+    if len(q) > 200:
+        raise HTTPException(status_code=400, detail="search is too long")
+    return {"users": store.admin_user_stats(q=q, limit=limit, offset=offset)}
+
+
+@router.get("/admin/audit")
+async def admin_audit(
+    request: Request,
+    limit: int = 100,
+    authorization: str | None = Header(None),
+    access_assertion: str | None = Header(None, alias="Cf-Access-Jwt-Assertion"),
+):
+    _require_admin(request, authorization, access_assertion)
+    return {"events": store.list_admin_audit(limit)}
+
+
+class GrantEntitlementRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    target_user_id: str = Field(min_length=1, max_length=100)
     plan: str
+    expires_at: datetime
+    reason: str = Field(min_length=3, max_length=500)
 
 
-@router.post("/admin/set-plan")
-async def admin_set_plan(body: SetPlanRequest, authorization: str | None = Header(None)):
-    """Operator-only manual plan flip for comps and support. Paid plan
-    changes normally arrive through the Stripe webhook (billing_api.py)."""
-    _require_admin(authorization)
-    if body.plan not in store.USER_PLANS:
-        raise HTTPException(status_code=400, detail=f"unknown plan; choose one of {', '.join(store.USER_PLANS)}")
-    if not store.set_user_plan(body.email, body.plan):
-        raise HTTPException(status_code=404, detail="no user with that email")
-    return {"ok": True, "email": body.email, "plan": body.plan}
+@router.post("/admin/entitlements/grant")
+async def admin_grant_entitlement(
+    request: Request,
+    body: GrantEntitlementRequest,
+    authorization: str | None = Header(None),
+    access_assertion: str | None = Header(None, alias="Cf-Access-Jwt-Assertion"),
+):
+    admin = _require_admin(request, authorization, access_assertion)
+    if body.plan not in store.COMPLIMENTARY_PLANS:
+        raise HTTPException(status_code=400, detail="complimentary plan must be pro or team")
+    if body.expires_at.tzinfo is None or body.expires_at.utcoffset() is None:
+        raise HTTPException(status_code=400, detail="expires_at must include a timezone")
+    expires_at = body.expires_at.astimezone(timezone.utc)
+    now = datetime.now(timezone.utc)
+    if expires_at <= now:
+        raise HTTPException(status_code=400, detail="expires_at must be in the future")
+    if expires_at > now + timedelta(days=5 * 366):
+        raise HTTPException(status_code=400, detail="expires_at must be within five years")
+    reason = body.reason.strip()
+    if len(reason) < 3:
+        raise HTTPException(status_code=400, detail="reason must contain at least 3 characters")
+    entitlement = store.grant_complimentary_entitlement(
+        body.target_user_id,
+        body.plan,
+        expires_at.isoformat(),
+        reason,
+        admin,
+    )
+    if entitlement is None:
+        raise HTTPException(status_code=404, detail="no such user")
+    return {"ok": True, "entitlement": entitlement}
 
 
-class SetOrgSeatsRequest(BaseModel):
-    org_id: str
-    seats: int = Field(ge=1, le=1000)
+class RevokeEntitlementRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(min_length=3, max_length=500)
 
 
-@router.post("/admin/set-org-seats")
-async def admin_set_org_seats(body: SetOrgSeatsRequest, authorization: str | None = Header(None)):
-    """Operator-only paid-seat override for comps and support. The team plan
-    includes TEAM_INCLUDED_MEMBERS members per workspace; self-serve seat
-    purchases go through /billing/seats (billing_api.py)."""
-    admin = _require_admin(authorization)
-    if not store.set_org_seat_limit(body.org_id, body.seats):
-        raise HTTPException(status_code=404, detail="no such org")
-    store.record_org_audit(body.org_id, admin["id"], "seats_changed", str(body.seats))
-    return {"ok": True, "org_id": body.org_id, "seat_limit": body.seats}
+@router.post("/admin/entitlements/{entitlement_id}/revoke")
+async def admin_revoke_entitlement(
+    request: Request,
+    entitlement_id: str,
+    body: RevokeEntitlementRequest,
+    authorization: str | None = Header(None),
+    access_assertion: str | None = Header(None, alias="Cf-Access-Jwt-Assertion"),
+):
+    admin = _require_admin(request, authorization, access_assertion)
+    reason = body.reason.strip()
+    if len(reason) < 3:
+        raise HTTPException(status_code=400, detail="reason must contain at least 3 characters")
+    revoked = store.revoke_complimentary_entitlement(entitlement_id, reason, admin)
+    if revoked is None:
+        raise HTTPException(status_code=404, detail="active entitlement not found")
+    return {"ok": True, "entitlement": revoked}
 
 
 @router.post("/auth/logout")
@@ -690,6 +776,8 @@ def _require_org_member(org_id: str, user: dict) -> str:
     if role is None:
         # 404 (not 403) for non-members so org ids aren't probeable.
         raise HTTPException(status_code=404, detail="no such org")
+    if not store.org_has_active_team_access(org_id):
+        raise HTTPException(status_code=402, detail="this workspace requires active team access")
     return role
 
 
@@ -707,7 +795,10 @@ async def create_org(body: CreateOrgRequest, authorization: str | None = Header(
     user = _require_user(authorization)
     if (user.get("plan") or "free") != "team":
         raise HTTPException(status_code=402, detail="orgs require the team plan")
-    return {"org": store.create_org(body.name.strip(), user["id"])}
+    org = store.create_org(body.name.strip(), user["id"])
+    if user.get("paid_plan") == "team" and user.get("stripe_subscription_id"):
+        store.bind_stripe_subscription_org(user["stripe_subscription_id"], user["id"], org["id"])
+    return {"org": org}
 
 
 @router.get("/orgs")
