@@ -120,7 +120,9 @@ class SeatsRequest(BaseModel):
 
 
 def _active_team_subscription(client, customer_id: str) -> dict | None:
-    subs = client.Subscription.list(customer=customer_id, status="active", limit=10)
+    # See billing_webhook's to_dict() note: list responses are SDK objects
+    # too, and don't support .get() the way the rest of this module assumes.
+    subs = client.Subscription.list(customer=customer_id, status="active", limit=10).to_dict()
     for sub in subs.get("data", []):
         if (sub.get("metadata") or {}).get("plan") == "team":
             return sub
@@ -216,6 +218,11 @@ async def billing_webhook(request: Request, stripe_signature: str | None = Heade
     except Exception:
         raise HTTPException(status_code=400, detail="invalid webhook signature")
 
+    # construct_event returns SDK objects, not plain dicts -- StripeObject
+    # supports attribute/item access but not .get(), which every handler
+    # below relies on. to_dict() recursively converts the whole tree once,
+    # up front, so the rest of this module can stay plain-dict code.
+    event = event.to_dict()
     kind = event.get("type") or ""
     obj = (event.get("data") or {}).get("object") or {}
 

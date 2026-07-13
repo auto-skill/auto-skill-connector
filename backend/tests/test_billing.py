@@ -21,6 +21,20 @@ STRIPE_ENV = {
 }
 
 
+class _FakeStripeObject(dict):
+    """Models the one real-SDK incompatibility that caused a production
+    500: stripe.StripeObject supports bracket access and .to_dict(), but
+    NOT .get() (it raises AttributeError via __getattr__). A plain dict
+    mock would silently hide that gap; this makes the same mistake fail
+    the test the same way it failed in production."""
+
+    def to_dict(self):
+        return dict(self)
+
+    def get(self, *_args, **_kwargs):
+        raise AttributeError("get")
+
+
 class BillingEndpointTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
@@ -98,10 +112,12 @@ class BillingEndpointTests(unittest.TestCase):
     def test_webhook_checkout_completed_flips_plan(self) -> None:
         user, _ = self._login("a@example.com")
         mock = self._mock_stripe()
-        mock.Webhook.construct_event.return_value = {
-            "type": "checkout.session.completed",
-            "data": {"object": {"client_reference_id": user["id"], "metadata": {"plan": "pro"}}},
-        }
+        mock.Webhook.construct_event.return_value = _FakeStripeObject(
+            {
+                "type": "checkout.session.completed",
+                "data": {"object": {"client_reference_id": user["id"], "metadata": {"plan": "pro"}}},
+            }
+        )
         with patch.object(billing_api, "stripe", mock), patch.dict("os.environ", STRIPE_ENV):
             r = self.client.post("/billing/webhook", content=b"{}")
             self.assertEqual(r.status_code, 200)
@@ -119,10 +135,12 @@ class BillingEndpointTests(unittest.TestCase):
             "metadata": {"plan": "team", "user_id": user["id"], "org_id": org["id"]},
             "items": {"data": [{"id": "si_1", "price": {"id": "price_seat"}, "quantity": 3}]},
         }
-        mock.Webhook.construct_event.return_value = {
-            "type": "customer.subscription.updated",
-            "data": {"object": sub},
-        }
+        mock.Webhook.construct_event.return_value = _FakeStripeObject(
+            {
+                "type": "customer.subscription.updated",
+                "data": {"object": sub},
+            }
+        )
         with patch.object(billing_api, "stripe", mock), patch.dict("os.environ", STRIPE_ENV):
             self.client.post("/billing/webhook", content=b"{}")
             self.assertEqual(
@@ -131,10 +149,12 @@ class BillingEndpointTests(unittest.TestCase):
             )
 
             cancelled = dict(sub, status="canceled")
-            mock.Webhook.construct_event.return_value = {
-                "type": "customer.subscription.deleted",
-                "data": {"object": cancelled},
-            }
+            mock.Webhook.construct_event.return_value = _FakeStripeObject(
+                {
+                    "type": "customer.subscription.deleted",
+                    "data": {"object": cancelled},
+                }
+            )
             self.client.post("/billing/webhook", content=b"{}")
 
         self.assertEqual(local_store.get_user_by_id(user["id"])["plan"], "free")
@@ -156,22 +176,24 @@ class BillingEndpointTests(unittest.TestCase):
             )
             self.assertEqual(deny.status_code, 403)
 
-            mock.Subscription.list.return_value = {"data": []}
+            mock.Subscription.list.return_value = _FakeStripeObject({"data": []})
             no_sub = self.client.post(
                 "/billing/seats", json={"org_id": org["id"], "extra_seats": 2}, headers=owner_headers
             )
             self.assertEqual(no_sub.status_code, 402)
 
-            mock.Subscription.list.return_value = {
-                "data": [
-                    {
-                        "id": "sub_1",
-                        "status": "active",
-                        "metadata": {"plan": "team", "user_id": owner["id"]},
-                        "items": {"data": [{"id": "si_base", "price": {"id": "price_team"}, "quantity": 1}]},
-                    }
-                ]
-            }
+            mock.Subscription.list.return_value = _FakeStripeObject(
+                {
+                    "data": [
+                        {
+                            "id": "sub_1",
+                            "status": "active",
+                            "metadata": {"plan": "team", "user_id": owner["id"]},
+                            "items": {"data": [{"id": "si_base", "price": {"id": "price_team"}, "quantity": 1}]},
+                        }
+                    ]
+                }
+            )
             ok = self.client.post(
                 "/billing/seats", json={"org_id": org["id"], "extra_seats": 2}, headers=owner_headers
             )
