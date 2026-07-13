@@ -7,3 +7,4 @@ onnxruntime
 tokenizers
 huggingface_hub
 mcp>=1.0
+stripe

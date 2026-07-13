@@ -87,6 +87,16 @@ PUBLIC_GET_PATHS = frozenset(
         "/admin/stats",
         "/signup",
         "/account",
+        # Pro/team account features (each enforces its own bearer auth in
+        # accounts_api.py / billing_api.py, same as /favorites above).
+        "/pins",
+        "/watches",
+        "/alerts",
+        "/collections",
+        "/preferences",
+        "/analytics",
+        "/orgs",
+        "/billing/status",
         # Only the two browser-facing MCP OAuth pages are public. The
         # server-to-server pieces (/mcp-oauth/clients, /codes/{code}, /token)
         # stay loopback-only: the connector reaches them via AUTOSKILL_URL on
@@ -97,12 +107,37 @@ PUBLIC_GET_PATHS = frozenset(
         "/mcp-oauth/choose",
     }
 )
-PUBLIC_GET_PREFIXES = ("/content/", "/auth/")
+# "/skills/" (with the slash) deliberately does not match the loopback-only
+# GET /skills corpus dump; it exposes only /skills/{id}/versions and friends.
+PUBLIC_GET_PREFIXES = ("/content/", "/auth/", "/skills/", "/collections/", "/orgs/")
 PUBLIC_POST_PATHS = frozenset(
-    {"/route", "/find-semantic", "/route-feedback", "/favorites", "/installs", "/private-skills"}
+    {
+        "/route",
+        "/find-semantic",
+        "/route-feedback",
+        "/favorites",
+        "/installs",
+        "/private-skills",
+        "/pins",
+        "/watches",
+        "/collections",
+        "/orgs",
+        "/billing/checkout",
+        "/billing/seats",
+        "/billing/portal",
+        "/billing/webhook",
+    }
 )
-PUBLIC_POST_PREFIXES = ("/auth/",)
-PUBLIC_DELETE_PREFIXES = ("/favorites/", "/private-skills/")
+PUBLIC_POST_PREFIXES = ("/auth/", "/alerts/", "/collections/", "/orgs/")
+PUBLIC_PUT_PATHS = frozenset({"/preferences"})
+PUBLIC_DELETE_PREFIXES = (
+    "/favorites/",
+    "/private-skills/",
+    "/pins/",
+    "/watches/",
+    "/collections/",
+    "/orgs/",
+)
 
 
 def public_api_allows(method: str, path: str) -> bool:
@@ -112,6 +147,8 @@ def public_api_allows(method: str, path: str) -> bool:
         return path in PUBLIC_GET_PATHS or any(path.startswith(prefix) for prefix in PUBLIC_GET_PREFIXES)
     if method == "POST":
         return path in PUBLIC_POST_PATHS or any(path.startswith(prefix) for prefix in PUBLIC_POST_PREFIXES)
+    if method == "PUT":
+        return path in PUBLIC_PUT_PATHS
     if method == "DELETE":
         return any(path.startswith(prefix) for prefix in PUBLIC_DELETE_PREFIXES)
     return False
@@ -140,7 +177,9 @@ async def public_readonly_guard(request, call_next):
 # gets bounced to /signup; anything else (curl, the MCP connector, a tool
 # call) gets a 401 with a signup_url to act on.
 ACCOUNT_EXEMPT_PATHS = frozenset(
-    {"/", "/healthz", "/readyz", "/status", "/signup", "/account"}
+    # /billing/webhook is Stripe server-to-server: no bearer token, but the
+    # handler rejects anything without a valid webhook signature.
+    {"/", "/healthz", "/readyz", "/status", "/signup", "/account", "/billing/webhook"}
 )
 ACCOUNT_EXEMPT_PREFIXES = ("/auth/", "/mcp-oauth/", "/content/")
 
@@ -232,6 +271,11 @@ app.include_router(local_db_router)
 # skills, all backed by the same local SQLite store -- see auth.py.
 from accounts_api import router as accounts_router  # noqa: E402
 app.include_router(accounts_router)
+
+# Stripe billing: checkout/portal/webhook -> plan and seat sync. See
+# billing_api.py; returns 503s until the STRIPE_* env vars are configured.
+from billing_api import router as billing_router  # noqa: E402
+app.include_router(billing_router)
 
 # MCP OAuth authorization server endpoints for the hosted connector -- see
 # mcp_oauth.py.

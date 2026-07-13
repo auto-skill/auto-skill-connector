@@ -1,9 +1,13 @@
 # Auto-Skill Plans
 
-Three plans. Billing is not integrated yet: plans are flipped by hand with
-`POST /admin/set-plan`, and paid team seats with `POST /admin/set-org-seats`
-(both operator-only, gated by `ADMIN_EMAILS`). Prices below are the launch
-pricing; nothing in code depends on the dollar amounts.
+Three plans. Billing runs through Stripe (`backend/billing_api.py`): the
+dashboard starts a Stripe-hosted Checkout session (`POST /billing/checkout`),
+the signature-verified webhook (`POST /billing/webhook`) mirrors subscription
+state into `plan`/`seat_limit`, and the customer portal
+(`POST /billing/portal`) handles cancels and card changes. Extra team seats
+are `POST /billing/seats` ($10/seat/month). `POST /admin/set-plan` and
+`POST /admin/set-org-seats` remain the manual override for comps and support.
+Dollar amounts live only in the Stripe price objects, never in code.
 
 ## Free — $0
 
@@ -65,3 +69,20 @@ self-hosted deployments):
 - `AUTOSKILL_PRO_ROUTES_PER_MONTH` — internal pro/team fair-use cap (default 15000)
 - `AUTOSKILL_FREE_PRIVATE_SKILLS` — free private-skill cap (default 10)
 - `AUTOSKILL_TEAM_INCLUDED_MEMBERS` — seats included per workspace (default 5)
+
+## Stripe configuration
+
+Billing endpoints return 503 (and the dashboard shows a manual-upgrade note)
+until all five are set on the API host:
+
+- `STRIPE_SECRET_KEY` — restricted or standard secret key
+- `STRIPE_WEBHOOK_SECRET` — signing secret for the `/billing/webhook` endpoint
+- `STRIPE_PRICE_PRO` — recurring monthly price id for Pro ($7)
+- `STRIPE_PRICE_TEAM` — recurring monthly price id for Team ($49)
+- `STRIPE_PRICE_TEAM_SEAT` — recurring monthly price id per extra seat ($10)
+
+Stripe dashboard setup: create products Pro/Team/Team extra seat with those
+monthly prices, then add a webhook endpoint for
+`https://skills.autoskill.dev/billing/webhook` subscribed to
+`checkout.session.completed`, `customer.subscription.created`,
+`customer.subscription.updated`, and `customer.subscription.deleted`.

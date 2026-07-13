@@ -429,6 +429,9 @@ CLI_TOKEN_COLUMN_DEFAULTS = {
 
 USER_COLUMN_DEFAULTS = {
     "plan": "TEXT DEFAULT 'free'",
+    # Stripe is the source of truth for subscription state; this is the only
+    # billing identifier we persist (never card or invoice data).
+    "stripe_customer_id": "TEXT",
 }
 
 # NULL org_id = personal submission; a real org_id shares the skill with
@@ -1828,6 +1831,48 @@ def set_user_plan(email: str, plan: str) -> bool:
         conn.close()
 
 
+def set_user_plan_by_id(user_id: str, plan: str) -> bool:
+    if plan not in USER_PLANS:
+        raise ValueError(f"unknown plan {plan!r}; choose one of {', '.join(USER_PLANS)}")
+    conn = get_conn()
+    try:
+        cur = conn.execute("UPDATE users SET plan=? WHERE id=?", (plan, user_id))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def get_user_by_id(user_id: str) -> dict | None:
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def set_stripe_customer_id(user_id: str, customer_id: str) -> bool:
+    conn = get_conn()
+    try:
+        cur = conn.execute("UPDATE users SET stripe_customer_id=? WHERE id=?", (customer_id, user_id))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def get_user_by_stripe_customer(customer_id: str) -> dict | None:
+    if not customer_id:
+        return None
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT * FROM users WHERE stripe_customer_id=?", (customer_id,)).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
 def increment_route_usage(user_id: str) -> int:
     """Count one route against the user's current calendar month and return
     the new total. Kept in a bare (user_id, month, count) table rather than on
@@ -2314,12 +2359,16 @@ def org_member_count(org_id: str) -> int:
         conn.close()
 
 
-def set_org_seat_limit(org_id: str, seats: int) -> bool:
-    if seats < 1:
+def set_org_seat_limit(org_id: str, seats: int | None) -> bool:
+    """None resets the org to the plan's included seat count."""
+    if seats is not None and seats < 1:
         raise ValueError("seat limit must be at least 1")
     conn = get_conn()
     try:
-        cur = conn.execute("UPDATE orgs SET seat_limit=? WHERE id=?", (int(seats), org_id))
+        cur = conn.execute(
+            "UPDATE orgs SET seat_limit=? WHERE id=?",
+            (int(seats) if seats is not None else None, org_id),
+        )
         conn.commit()
         return cur.rowcount > 0
     finally:
