@@ -35,6 +35,18 @@ class _FakeStripeObject(dict):
         raise AttributeError("get")
 
 
+class _FakeStripeError(Exception):
+    """Stand-in for stripe.StripeError. Must be a real exception class --
+    billing_api.py's `except stripe.StripeError` binds to whatever `stripe`
+    is patched to, and Python raises TypeError if that isn't an actual
+    exception type, so a bare MagicMock attribute would break these tests
+    before they ever reach the assertion."""
+
+    def __init__(self, message: str = "stripe error") -> None:
+        super().__init__(message)
+        self.user_message = message
+
+
 class BillingEndpointTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
@@ -62,6 +74,7 @@ class BillingEndpointTests(unittest.TestCase):
 
     def _mock_stripe(self) -> MagicMock:
         mock = MagicMock()
+        mock.StripeError = _FakeStripeError
         mock.Customer.create.return_value = {"id": "cus_1"}
         mock.checkout.Session.create.return_value = {"url": "https://checkout.stripe.com/test"}
         mock.billing_portal.Session.create.return_value = {"url": "https://billing.stripe.com/test"}
@@ -219,6 +232,74 @@ class BillingEndpointTests(unittest.TestCase):
             r = self.client.post("/billing/portal", headers=headers)
             self.assertEqual(r.status_code, 200)
             self.assertEqual(r.json()["url"], "https://billing.stripe.com/test")
+
+    def test_billing_status_self_heals_a_missed_webhook_grant(self) -> None:
+        """Reproduces the 2026-07-13 incident directly: payment succeeded on
+        Stripe, but the local plan is still free because webhook delivery
+        never landed. /billing/status must notice and fix it without anyone
+        needing to click Resend in the Stripe dashboard."""
+        user, headers = self._login("a@example.com")
+        local_store.set_stripe_customer_id(user["id"], "cus_1")
+        mock = self._mock_stripe()
+        mock.Subscription.list.return_value = _FakeStripeObject(
+            {
+                "data": [
+                    {
+                        "id": "sub_1",
+                        "status": "active",
+                        "metadata": {"plan": "pro", "user_id": user["id"]},
+                    }
+                ]
+            }
+        )
+        with patch.object(billing_api, "stripe", mock), patch.dict("os.environ", STRIPE_ENV):
+            r = self.client.get("/billing/status", headers=headers)
+            self.assertEqual(r.status_code, 200)
+            self.assertEqual(r.json()["plan"], "pro")
+        self.assertEqual(local_store.get_user_by_id(user["id"])["plan"], "pro")
+
+    def test_billing_status_never_auto_downgrades(self) -> None:
+        """Reconciliation only heals a missed grant; it must never read an
+        empty/errored Stripe response as grounds to revoke a plan someone
+        is already correctly on -- cancellation must always go through the
+        webhook, never a side effect of a status-check hiccup."""
+        user, headers = self._login("a@example.com", "pro")
+        local_store.set_stripe_customer_id(user["id"], "cus_1")
+        mock = self._mock_stripe()
+        mock.Subscription.list.return_value = _FakeStripeObject({"data": []})
+        with patch.object(billing_api, "stripe", mock), patch.dict("os.environ", STRIPE_ENV):
+            r = self.client.get("/billing/status", headers=headers)
+            self.assertEqual(r.status_code, 200)
+            self.assertEqual(r.json()["plan"], "pro")
+        self.assertEqual(local_store.get_user_by_id(user["id"])["plan"], "pro")
+
+    def test_billing_status_swallows_stripe_errors_during_reconciliation(self) -> None:
+        user, headers = self._login("a@example.com")
+        local_store.set_stripe_customer_id(user["id"], "cus_1")
+        mock = self._mock_stripe()
+        mock.Subscription.list.side_effect = _FakeStripeError("stripe is down")
+        with patch.object(billing_api, "stripe", mock), patch.dict("os.environ", STRIPE_ENV):
+            r = self.client.get("/billing/status", headers=headers)
+            self.assertEqual(r.status_code, 200)
+            self.assertEqual(r.json()["plan"], "free")
+
+    def test_checkout_surfaces_a_clean_error_on_stripe_failure(self) -> None:
+        _, headers = self._login("a@example.com")
+        mock = self._mock_stripe()
+        mock.checkout.Session.create.side_effect = _FakeStripeError("your card was declined")
+        with patch.object(billing_api, "stripe", mock), patch.dict("os.environ", STRIPE_ENV):
+            r = self.client.post("/billing/checkout", json={"plan": "pro"}, headers=headers)
+            self.assertEqual(r.status_code, 502)
+            self.assertIn("your card was declined", r.json()["detail"])
+
+    def test_portal_surfaces_a_clean_error_on_stripe_failure(self) -> None:
+        user, headers = self._login("a@example.com")
+        local_store.set_stripe_customer_id(user["id"], "cus_1")
+        mock = self._mock_stripe()
+        mock.billing_portal.Session.create.side_effect = _FakeStripeError("temporarily unavailable")
+        with patch.object(billing_api, "stripe", mock), patch.dict("os.environ", STRIPE_ENV):
+            r = self.client.post("/billing/portal", headers=headers)
+            self.assertEqual(r.status_code, 502)
 
 
 if __name__ == "__main__":

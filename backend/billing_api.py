@@ -66,19 +66,57 @@ def _stripe():
     return stripe
 
 
+def _call_stripe(fn, *args, **kwargs):
+    """Run one outward Stripe API call, turning a network/API hiccup into a
+    clean 502 instead of an unhandled 500 -- the 2026-07-13 incident was a
+    different bug (a local .get() crash), but this closes the adjacent gap:
+    nothing here was handling Stripe itself being slow, rate-limited, or
+    briefly unreachable."""
+    try:
+        return fn(*args, **kwargs)
+    except stripe.StripeError as exc:
+        raise HTTPException(status_code=502, detail=f"Stripe request failed: {exc.user_message or str(exc)}")
+
+
 def _customer_id_for(user: dict) -> str:
     """Reuse the stored Stripe customer, creating one on first billing touch."""
     existing = user.get("stripe_customer_id")
     if existing:
         return existing
-    customer = _stripe().Customer.create(email=user["email"], metadata={"user_id": user["id"]})
+    client = _stripe()
+    customer = _call_stripe(client.Customer.create, email=user["email"], metadata={"user_id": user["id"]})
     store.set_stripe_customer_id(user["id"], customer["id"])
     return customer["id"]
+
+
+def _reconcile_missed_grant(user: dict) -> dict:
+    """Self-heal a paid-but-still-free account: this is exactly the failure
+    mode from the 2026-07-13 incident (webhook delivery failed silently while
+    the payment succeeded), so the dashboard's own status check doubles as
+    the backstop instead of depending solely on webhook delivery ever
+    working. Only heals a MISSED GRANT -- never auto-downgrades, since a real
+    cancellation should always go through the webhook, and a transient
+    Stripe API hiccup here must never look like a revoked entitlement."""
+    if (user.get("plan") or "free") != "free" or not user.get("stripe_customer_id") or not billing_configured():
+        return user
+    try:
+        client = _stripe()
+        active = _call_stripe(
+            client.Subscription.list, customer=user["stripe_customer_id"], status="active", limit=10
+        ).to_dict()
+        for sub in active.get("data", []):
+            if (sub.get("metadata") or {}).get("plan") in ("pro", "team"):
+                _sync_subscription(sub)
+                return store.get_user_by_id(user["id"]) or user
+    except Exception:
+        pass  # best-effort; a reconciliation failure must not break /billing/status itself
+    return user
 
 
 @router.get("/billing/status")
 async def billing_status(authorization: str | None = Header(None)):
     user = _require_user(authorization)
+    user = _reconcile_missed_grant(user)
     return {
         "configured": billing_configured(),
         "plan": user.get("plan") or "free",
@@ -96,7 +134,8 @@ async def billing_checkout(body: CheckoutRequest, authorization: str | None = He
     if body.plan not in CHECKOUT_PLANS:
         raise HTTPException(status_code=400, detail="plan must be pro or team")
     client = _stripe()
-    session = client.checkout.Session.create(
+    session = _call_stripe(
+        client.checkout.Session.create,
         mode="subscription",
         customer=_customer_id_for(user),
         line_items=[{"price": os.environ[CHECKOUT_PLANS[body.plan]], "quantity": 1}],
@@ -122,7 +161,7 @@ class SeatsRequest(BaseModel):
 def _active_team_subscription(client, customer_id: str) -> dict | None:
     # See billing_webhook's to_dict() note: list responses are SDK objects
     # too, and don't support .get() the way the rest of this module assumes.
-    subs = client.Subscription.list(customer=customer_id, status="active", limit=10).to_dict()
+    subs = _call_stripe(client.Subscription.list, customer=customer_id, status="active", limit=10).to_dict()
     for sub in subs.get("data", []):
         if (sub.get("metadata") or {}).get("plan") == "team":
             return sub
@@ -154,7 +193,12 @@ async def billing_seats(body: SeatsRequest, authorization: str | None = Header(N
     else:
         items = []
     if items:
-        client.Subscription.modify(sub["id"], items=items, metadata={**(sub.get("metadata") or {}), "org_id": body.org_id})
+        _call_stripe(
+            client.Subscription.modify,
+            sub["id"],
+            items=items,
+            metadata={**(sub.get("metadata") or {}), "org_id": body.org_id},
+        )
     seat_limit = store.TEAM_INCLUDED_MEMBERS + body.extra_seats
     store.set_org_seat_limit(body.org_id, seat_limit)
     store.record_org_audit(body.org_id, user["id"], "seats_changed", str(seat_limit))
@@ -167,7 +211,8 @@ async def billing_portal(authorization: str | None = Header(None)):
     customer_id = user.get("stripe_customer_id")
     if not customer_id:
         raise HTTPException(status_code=404, detail="no billing history for this account")
-    session = _stripe().billing_portal.Session.create(customer=customer_id, return_url=DASHBOARD_URL)
+    client = _stripe()
+    session = _call_stripe(client.billing_portal.Session.create, customer=customer_id, return_url=DASHBOARD_URL)
     return {"url": session["url"]}
 
 
