@@ -62,9 +62,11 @@ format. Client code owns the native install destination:
 - Codex: `~/.agents/skills`
 - Cursor: `~/.agents/skills` (Cursor also supports `~/.cursor/skills`)
 
-MCP exposes explicit routing. It cannot invisibly intercept every client
-prompt. Auto Mode therefore requires a client-specific, explicitly enabled
-adapter; only the Claude Code adapter ships in the launch scope.
+MCP cannot invisibly intercept every client prompt, but its server instructions
+ask capable clients to call the read-only `route_task` once for substantial
+work using a privacy-minimized summary. Raw-prompt Auto Mode still requires a
+client-specific, explicitly enabled adapter; only the Claude Code adapter ships
+in the launch scope.
 
 ## Quality and Integrity Gate
 

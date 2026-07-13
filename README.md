@@ -4,7 +4,7 @@ Trusted, compatible skill discovery and lifecycle foundations for Claude Code,
 Codex, Cursor, and GitHub Copilot.
 
 Auto-Skill finds portable Agent Skills, checks their structure and provenance,
-routes an explicit task to a compatible `SKILL.md`, and supports careful local
+routes a privacy-minimized task to a compatible `SKILL.md`, and supports careful local
 installation. The launch product is deliberately not a claim to have the
 largest scraped catalog. Existing registries already compete on breadth;
 Auto-Skill is focused on integrity, compatibility, predictable routing, and a
@@ -23,8 +23,9 @@ What ships now:
   GitHub Copilot.
 - An optional Claude Code prompt adapter for users who deliberately enable Auto
   Mode.
-- A hosted MCP connector with no skill/filesystem writes; optional enum-only
-  route feedback.
+- A hosted MCP connector that asks capable clients to preflight substantial
+  tasks proactively using concise summaries, with no skill/filesystem writes;
+  optional enum-only route feedback.
 - Health, readiness, eval, smoke-test, backup, and deploy checks.
 - No server-side retention of raw prompts or prompt snippets.
 
@@ -52,9 +53,9 @@ around `SKILL.md`. Their native discovery locations differ:
 | Client | Auto-Skill default user location | Launch behavior |
 | --- | --- | --- |
 | Claude Code | `~/.claude/skills` | Manual install; optional opt-in prompt adapter |
-| Codex | `~/.agents/skills` | Manual install and explicit MCP/CLI routing |
-| Cursor | `~/.agents/skills` | Manual install and explicit MCP/CLI routing |
-| GitHub Copilot | `~/.agents/skills` | Manual install and explicit MCP routing |
+| Codex | `~/.agents/skills` | Manual install; MCP-guided proactive task-summary routing |
+| Cursor | `~/.agents/skills` | Manual install; MCP-guided proactive task-summary routing |
+| GitHub Copilot | `~/.agents/skills` | Manual install; MCP-guided proactive task-summary routing |
 
 Cursor also recognizes `~/.cursor/skills`, and Copilot also recognizes
 `~/.copilot/skills`. Auto-Skill uses the portable `~/.agents/skills` location
@@ -76,11 +77,26 @@ Vendor references:
 
 ## Routing Modes
 
-### On-demand mode (default)
+### CLI on-demand mode
 
 Nothing intercepts prompts. A user or agent explicitly calls `search`,
-`route`, `preview`, `route_prompt`, or the corresponding MCP tool. This is the
-default for every client.
+`route`, `preview`, or `route_prompt`.
+
+### Connected MCP proactive routing
+
+Adding the MCP connector deliberately makes its routing tools available. Its
+server instructions ask capable client models to call the read-only
+`route_task` once near the start of substantial work, without waiting for the
+user to ask for a skill. The model must send a concise task summary and omit
+secrets, personal data, pasted content, and irrelevant conversation history.
+This improves recall but is not a prompt interceptor, so a client may still
+ignore the instruction.
+
+The routing tools advertise read-only, non-destructive, idempotent semantics.
+Auto-Skill itself does not require per-task approval and never executes or
+installs anything, although a client may display tool activity. Any later
+shell, network, filesystem, deployment, or other side effect still follows the
+client's normal permission and approval rules.
 
 ### Auto Mode (opt-in adapter)
 
@@ -98,8 +114,8 @@ content is not injected. Normal client permissions still govern every tool,
 script, network call, and side effect mentioned by those instructions.
 
 MCP servers cannot invisibly intercept every prompt. Codex and Cursor can use
-the explicit router today, but true Auto Mode for those clients requires a
-separate, tested adapter and is P1 work.
+the proactive task-summary instruction above, but true raw-prompt Auto Mode for
+those clients still requires a separate, tested adapter and is P1 work.
 
 ## Repo Layout
 
@@ -320,7 +336,7 @@ connector is untested; use the local stdio server with Copilot for now.
 
 ### Launch-facing tools
 
-- `route_task(task)` explicitly routes a cleaned-up task and returns `full`,
+- `route_task(task)` routes a cleaned-up, privacy-minimized task and returns `full`,
   `hint`, or no route. A full route may be delivered as a bounded context
   capsule when the selected skill is too large for the current client.
 - `route_prompt(prompt)` locally preflights a raw prompt, then routes only when
@@ -333,8 +349,9 @@ should use `route_task`. The supported persistent-install flow is the explicit
 local CLI. MCP exposes no skill/filesystem write tool over either local stdio or
 hosted streamable HTTP; enum-only route feedback is optional.
 
-Adding an MCP server makes these tools available. It does not cause a client to
-call them on every prompt.
+Adding an MCP server opts into model-directed task-summary routing. Capable
+clients are instructed to call `route_task` once for substantial tasks, but
+MCP cannot force or invisibly intercept calls.
 
 ## Hosted Read-only Connector
 
@@ -416,8 +433,9 @@ Disable the adapter at any time:
 auto-skill disable-hook
 ```
 
-There is no invisible prompt interceptor for Codex or Cursor. Use explicit
-CLI/MCP routing on those clients until a tested client-specific adapter exists.
+There is no invisible prompt interceptor for Codex or Cursor. Their connected
+MCP models can proactively call `route_task`, but raw-prompt interception still
+requires a tested client-specific adapter.
 When a client cannot isolate a large skill, Auto-Skill falls back to a
 deterministic capsule rather than silently injecting the full document.
 

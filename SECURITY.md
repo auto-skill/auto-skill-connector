@@ -6,11 +6,15 @@ instructions trustworthy.
 
 ## Default Behavior
 
-Auto-Skill is on-demand by default. Installing the CLI or MCP server does not
-intercept prompts and does not make a route call automatically. Prompt text is
-sent to a route service only when:
+The CLI is on-demand and never intercepts prompts. Adding the MCP server is an
+explicit opt-in to model-directed task-summary routing: capable clients are
+instructed to call the read-only `route_task` once for substantial work. MCP
+still cannot intercept prompts or force the client to call it. Text is sent to
+a route service only when:
 
 - a user or agent explicitly calls a search or routing command/tool; or
+- a connected MCP client proactively submits a concise task summary with
+  secrets, personal data, pasted content, and irrelevant history omitted; or
 - the user has deliberately enabled a client-specific Auto Mode adapter.
 
 An MCP server cannot intercept every client prompt by itself.
@@ -52,8 +56,9 @@ answers. Enabling it has privacy and latency consequences, so it requires an
 explicit user action and confirmation.
 
 The launch build includes a Claude Code adapter only. Codex and Cursor can use
-explicit CLI/MCP routing, but no Auto Mode adapter is claimed for those clients
-yet. MCP availability alone does not make routing automatic.
+MCP-guided proactive task-summary routing, but no raw-prompt Auto Mode adapter
+is claimed for those clients yet. MCP availability cannot guarantee a call;
+the client model must honor the server instruction.
 
 Auto Mode applies only to the current task. It never installs a skill
 persistently.
