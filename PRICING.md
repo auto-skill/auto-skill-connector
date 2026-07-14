@@ -17,7 +17,7 @@ For individual users trying Auto-Skill.
 | --- | --- |
 | Claude, Codex, Cursor, and MCP support | connector adapters |
 | Deterministic skill recommendations | `POST /route` (deterministic for every plan) |
-| 1,000 routes/month | `AUTOSKILL_FREE_ROUTES_PER_MONTH` (default 1000, 0 disables); over-quota routes degrade to a `tier: none` payload with upgrade info |
+| 250 routes/month | `AUTOSKILL_FREE_ROUTES_PER_MONTH` (default 250, 0 disables); over-quota routes degrade to a `tier: none` payload with upgrade info |
 | Public verified skill catalog | `GET /skills-catalog` |
 | Basic install and compatibility checks | connector-side |
 | Up to 10 personal private skills | `AUTOSKILL_FREE_PRIVATE_SKILLS` (default 10); the 11th `POST /private-skills` returns 402 |
@@ -66,7 +66,7 @@ override).
 All metering knobs are env-overridable; `0` disables that limit (for
 self-hosted deployments):
 
-- `AUTOSKILL_FREE_ROUTES_PER_MONTH` — free monthly route quota (default 1000)
+- `AUTOSKILL_FREE_ROUTES_PER_MONTH` — free monthly route quota (default 250)
 - `AUTOSKILL_PRO_ROUTES_PER_MONTH` — internal pro/team fair-use cap (default 15000)
 - `AUTOSKILL_FREE_PRIVATE_SKILLS` — free private-skill cap (default 10)
 - `AUTOSKILL_TEAM_INCLUDED_MEMBERS` — seats included per workspace (default 5)

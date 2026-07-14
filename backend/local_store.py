@@ -536,7 +536,7 @@ COMPLIMENTARY_PLANS = ("pro", "team")
 _PLAN_RANK = {"free": 0, "pro": 1, "team": 2}
 
 # 0 disables metering entirely (self-hosted deployments).
-FREE_ROUTES_PER_MONTH = int(os.getenv("AUTOSKILL_FREE_ROUTES_PER_MONTH", "1000"))
+FREE_ROUTES_PER_MONTH = int(os.getenv("AUTOSKILL_FREE_ROUTES_PER_MONTH", "250"))
 
 # Pro is marketed as unlimited fair-use routing; this is the internal abuse
 # cap behind that promise, never shown on the pricing page. 0 disables.
