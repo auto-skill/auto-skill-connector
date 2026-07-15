@@ -55,6 +55,7 @@
       <label for="grant-plan">Plan</label><select id="grant-plan"><option value="pro">Pro</option><option value="team">Team</option></select>
       <label for="grant-expiry">Expires</label><input id="grant-expiry" type="datetime-local" required>
       <label for="grant-reason">Reason</label><input id="grant-reason" maxlength="500" required placeholder="Why this access is being granted">
+      <div id="grant-error" class="error"></div>
       <div class="row"><button value="cancel">Cancel</button><button class="primary" id="confirm-grant" value="default">Grant</button></div>
     </form>
   </dialog>
@@ -92,15 +93,26 @@
       data.users.forEach(u => { const tr=document.createElement('tr'); const who=document.createElement('td'); who.append(text('div',u.email),text('div',u.name,'muted')); const access=td(u.effective_plan+' ('+u.plan_source+'), paid: '+u.paid_plan); const usage=td(u.routes_this_month+' / '+(u.routes_limit == null?'fair use':u.routes_limit)); const billing=document.createElement('td'); if(u.stripe_customer_url){const a=text('a','Open Stripe customer');a.href=u.stripe_customer_url;a.target='_blank';a.rel='noopener noreferrer';billing.append(a,text('div',u.stripe_subscription_status,'muted'))}else billing.textContent='Not linked'; const action=document.createElement('td'); const grant=text('button','Grant comp','primary'); grant.type='button'; grant.addEventListener('click',()=>openGrant(u)); action.append(grant); tr.append(who,access,usage,billing,entitlementCell(u),action); $('users').append(tr) });
     }
     async function loadAudit() { const data=await api('/admin/audit?limit=100'); clear($('audit')); data.events.forEach(e=>{const tr=document.createElement('tr');tr.append(td(fmt(e.created_at)),td(e.actor_email),td(e.target_email),td(e.action),td(e.reason),td(JSON.stringify({old:e.old_value,new:e.new_value})));$('audit').append(tr)}) }
-    function openGrant(user){$('grant-user-id').value=user.id;$('grant-user').textContent=user.email;const d=new Date(Date.now()+30*86400000);$('grant-expiry').value=d.toISOString().slice(0,16);$('grant-reason').value='';$('grant-dialog').showModal()}
-    async function grant(){const expiry=new Date($('grant-expiry').value);await api('/admin/entitlements/grant',{method:'POST',body:JSON.stringify({target_user_id:$('grant-user-id').value,plan:$('grant-plan').value,expires_at:expiry.toISOString(),reason:$('grant-reason').value})});await Promise.all([searchUsers(),loadOverview(),loadAudit()]);setStatus('Complimentary access granted')}
+    const maxExpiryDate = () => new Date(Date.now()+5*366*86400000);
+    function openGrant(user){$('grant-user-id').value=user.id;$('grant-user').textContent=user.email;const d=new Date(Date.now()+30*86400000);$('grant-expiry').value=d.toISOString().slice(0,16);$('grant-expiry').max=maxExpiryDate().toISOString().slice(0,16);$('grant-reason').value='';$('grant-error').textContent='';$('grant-dialog').showModal()}
+    async function grant(){
+      $('grant-error').textContent='';
+      const expiry=new Date($('grant-expiry').value);
+      if(expiry > maxExpiryDate()){$('grant-error').textContent='Expires must be within five years from today.';return}
+      try{
+        await api('/admin/entitlements/grant',{method:'POST',body:JSON.stringify({target_user_id:$('grant-user-id').value,plan:$('grant-plan').value,expires_at:expiry.toISOString(),reason:$('grant-reason').value})});
+        await Promise.all([searchUsers(),loadOverview(),loadAudit()]);
+        setStatus('Complimentary access granted');
+        $('grant-dialog').close();
+      }catch(e){$('grant-error').textContent=e.message}
+    }
     async function revoke(id){const reason=prompt('Reason for revocation:');if(!reason)return;try{await api('/admin/entitlements/'+encodeURIComponent(id)+'/revoke',{method:'POST',body:JSON.stringify({reason})});await Promise.all([searchUsers(),loadOverview(),loadAudit()]);setStatus('Complimentary access revoked')}catch(e){setStatus(e.message,true)}}
     async function start(){if(!token)return;$('auth-panel').hidden=true;$('app').hidden=false;try{await Promise.all([loadOverview(),searchUsers(),loadAudit()]);setStatus('Operational data loaded')}catch(e){$('app').hidden=true;$('auth-panel').hidden=false;setStatus(e.message,true)}}
     $('save-token').addEventListener('click',()=>{token=$('token').value.trim();if(!token)return;sessionStorage.setItem(storageKey,token);$('token').value='';start()});
     $('forget').addEventListener('click',()=>{sessionStorage.removeItem(storageKey);token='';$('app').hidden=true;$('auth-panel').hidden=false;setStatus('Token forgotten')});
     $('search-button').addEventListener('click',()=>searchUsers().catch(e=>setStatus(e.message,true)));
     $('search').addEventListener('keydown',e=>{if(e.key==='Enter')searchUsers().catch(err=>setStatus(err.message,true))});
-    $('grant-form').addEventListener('submit',e=>{if(e.submitter && e.submitter.value==='cancel')return;e.preventDefault();grant().then(()=>$('grant-dialog').close()).catch(err=>setStatus(err.message,true))});
+    $('grant-form').addEventListener('submit',e=>{if(e.submitter && e.submitter.value==='cancel')return;e.preventDefault();grant()});
     start();
   })();
   </script>
