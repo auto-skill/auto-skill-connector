@@ -30,6 +30,77 @@ def test_doctor_outputs_setup(
     assert ".agents" in out
 
 
+def _hook_ns(config_path: Path, *, target: str = "codex", yes: bool = True) -> argparse.Namespace:
+    return argparse.Namespace(target=target, yes=yes, settings_path=str(config_path))
+
+
+def test_enable_hook_codex_appends_to_existing_config(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text('model = "gpt-5-codex"\n\n[sandbox]\nmode = "workspace-write"\n', encoding="utf-8")
+
+    result = cli._command_enable_hook(_hook_ns(config_path))
+    out = capsys.readouterr().out
+
+    assert result == 0
+    assert "enabled: wrote hook entry" in out
+    text = config_path.read_text(encoding="utf-8")
+    assert 'model = "gpt-5-codex"' in text  # untouched pre-existing content
+    assert "[[hooks.UserPromptSubmit]]" in text
+    assert str(cli.HOOK_SCRIPT_PATH) in text
+
+    tomllib = pytest.importorskip("tomllib")  # stdlib only on Python 3.11+
+    parsed = tomllib.loads(text)
+    assert parsed["model"] == "gpt-5-codex"
+    hook_entry = parsed["hooks"]["UserPromptSubmit"][0]["hooks"][0]
+    assert hook_entry["command"] == f'python "{cli.HOOK_SCRIPT_PATH}"'
+
+
+def test_enable_hook_codex_is_idempotent(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config_path = tmp_path / "config.toml"
+    cli._command_enable_hook(_hook_ns(config_path))
+    capsys.readouterr()
+
+    result = cli._command_enable_hook(_hook_ns(config_path))
+    out = capsys.readouterr().out
+
+    assert result == 0
+    assert "already enabled" in out
+    assert config_path.read_text(encoding="utf-8").count("BEGIN auto-skill hook") == 1
+
+
+def test_disable_hook_codex_removes_block_and_preserves_rest(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text('model = "gpt-5-codex"\n', encoding="utf-8")
+    cli._command_enable_hook(_hook_ns(config_path))
+    capsys.readouterr()
+
+    result = cli._command_disable_hook(_hook_ns(config_path))
+    out = capsys.readouterr().out
+
+    assert result == 0
+    assert "disabled: removed hook entry" in out
+    text = config_path.read_text(encoding="utf-8")
+    assert "BEGIN auto-skill hook" not in text
+    assert 'model = "gpt-5-codex"' in text
+
+
+def test_disable_hook_codex_reports_not_enabled(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config_path = tmp_path / "config.toml"
+    result = cli._command_disable_hook(_hook_ns(config_path))
+    out = capsys.readouterr().out
+
+    assert result == 0
+    assert "not enabled" in out
+
+
 def test_route_outputs_selected_skill(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

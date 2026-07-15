@@ -104,12 +104,13 @@ client's normal permission and approval rules.
 
 ### Auto Mode (opt-in adapter)
 
-Auto Mode is a client integration, not a property of MCP. The launch build
-only includes a Claude Code `UserPromptSubmit` adapter. Enabling it allows the
-adapter to inspect eligible prompts, call the route service, and add verified
-task-specific context for the current turn. Tiny acknowledgements, commands,
-meta/status prompts, and pasted context are filtered locally without a server
-call.
+Auto Mode is a client integration, not a property of MCP: a client-side hook
+locally preflights the raw prompt and calls the route service directly,
+instead of depending on a model choosing to call an MCP tool. Enabling it
+allows the adapter to inspect eligible prompts, call the route service, and
+add verified task-specific context for the current turn. Tiny
+acknowledgements, commands, meta/status prompts, and pasted context are
+filtered locally without a server call.
 
 Auto Mode never means automatic persistent installation. It can use
 high-confidence, content-hash-verified, risk-0, static instructions in the current task
@@ -117,9 +118,32 @@ without a modal; ambiguous matches stay as candidate hints, and unverifiable
 content is not injected. Normal client permissions still govern every tool,
 script, network call, and side effect mentioned by those instructions.
 
-MCP servers cannot invisibly intercept every prompt. Codex and Cursor can use
-the proactive task-summary instruction above, but true raw-prompt Auto Mode for
-those clients still requires a separate, tested adapter and is P1 work.
+Supported clients today:
+
+- **Claude Code** — `auto-skill enable-hook` registers `hooks/skill_suggest.py`
+  as a `UserPromptSubmit` hook in `~/.claude/settings.json`.
+- **Codex CLI** — `auto-skill enable-hook --target codex` registers the same
+  script as a `UserPromptSubmit` hook in `~/.codex/config.toml`. Codex's hook
+  contract accepts the identical stdin shape (`{"prompt": "..."}`) and treats
+  plain stdout as injected context, so the hook script itself is unmodified;
+  only the registration format (TOML block vs. JSON entry) differs. Run
+  `auto-skill disable-hook --target codex` to remove it.
+
+Not supported yet, blocked on the vendor, not on this project:
+
+- **Cursor CLI** — its `beforeSubmitPrompt` hook (added to the CLI in July
+  2026) can only allow/block a prompt (`{"continue": bool, "user_message":
+  str}`); it has no field for injecting context or skill content. There is an
+  open Cursor forum request asking for this.
+- **GitHub Copilot CLI** — its `userPromptSubmitted` hook is explicitly
+  fire-and-forget; stdout is never read. Only `sessionStart`,
+  `subagentStart`, `postToolUse`, and `notification` support
+  `additionalContext`, and none of those fire per-prompt with the task text
+  available.
+
+Both clients still benefit from the MCP proactive task-summary instruction
+above; they just can't get deterministic raw-prompt interception until their
+hook APIs add a context-injection field.
 
 ## Repo Layout
 

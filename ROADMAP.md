@@ -44,9 +44,18 @@ not the moat.
 
 ### Client adapters
 
-- A Codex `UserPromptSubmit` adapter built on the client's trusted hook flow.
-- A Cursor adapter only after its supported hook/plugin contract can safely add
-  task context; until then, explicit routing remains the honest integration.
+- Shipped: a Codex CLI `UserPromptSubmit` adapter (`auto-skill enable-hook
+  --target codex`), built on the client's trusted hook flow. Codex's
+  contract matches Claude Code's closely enough that `hooks/skill_suggest.py`
+  runs unmodified for both; only the registration format differs
+  (`~/.codex/config.toml` vs. `~/.claude/settings.json`).
+- Blocked on the vendor, not on this project: a Cursor CLI adapter and a
+  GitHub Copilot CLI adapter. Neither client's prompt-submission hook can
+  inject context today (Cursor's `beforeSubmitPrompt` is allow/block only;
+  Copilot's `userPromptSubmitted` output is never read at all). Re-evaluate
+  when either ships a context-injection field; until then, explicit routing
+  and the MCP proactive task-summary instruction remain the honest
+  integration for those two clients.
 - Shared adapter conformance tests for local filtering, privacy, timeouts, and
   full/hint/none behavior.
 - Clear UI disclosure of which skill was selected and why.

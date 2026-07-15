@@ -530,7 +530,124 @@ def _find_hook_entry(settings: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
+def _default_codex_config_path() -> Path:
+    return Path.home() / ".codex" / "config.toml"
+
+
+# Codex's UserPromptSubmit hook takes the same stdin contract as Claude
+# Code's (a JSON payload with a "prompt" key) and explicitly accepts plain
+# stdout as injected context, so hooks/skill_suggest.py runs unmodified --
+# only the registration format differs (TOML config.toml vs JSON
+# settings.json). config.toml has no stdlib writer, and this repo has no TOML
+# dependency, so the managed block is inserted/removed by text markers
+# rather than parsed and re-serialized, to avoid disturbing unrelated Codex
+# config a full round-trip parse could reformat or drop.
+_CODEX_HOOK_BEGIN = "# BEGIN auto-skill hook (managed by `auto-skill enable-hook --target codex`; do not edit by hand)"
+_CODEX_HOOK_END = "# END auto-skill hook"
+_CODEX_COMMAND_RE = re.compile(r"command\s*=\s*'python\s+\"([^\"]+)\"'")
+
+
+def _codex_hook_block(hook_script_path: Path) -> str:
+    return (
+        f"{_CODEX_HOOK_BEGIN}\n"
+        "[[hooks.UserPromptSubmit]]\n\n"
+        "[[hooks.UserPromptSubmit.hooks]]\n"
+        'type = "command"\n'
+        f"command = 'python \"{hook_script_path}\"'\n"
+        "timeout = 15\n"
+        'statusMessage = "Routing prompt through auto-skill..."\n'
+        f"{_CODEX_HOOK_END}\n"
+    )
+
+
+def _find_codex_hook_block(text: str) -> tuple[int, int] | None:
+    """Return (start, end) character offsets of the managed block -- end is
+    exclusive and absorbs one trailing newline -- or None if absent."""
+    start = text.find(_CODEX_HOOK_BEGIN)
+    if start == -1:
+        return None
+    end_marker = text.find(_CODEX_HOOK_END, start)
+    if end_marker == -1:
+        return None
+    end = end_marker + len(_CODEX_HOOK_END)
+    if end < len(text) and text[end] == "\n":
+        end += 1
+    return start, end
+
+
+def _codex_registered_path(text: str) -> Path | None:
+    bounds = _find_codex_hook_block(text)
+    if bounds is None:
+        return None
+    match = _CODEX_COMMAND_RE.search(text[bounds[0] : bounds[1]])
+    return Path(match.group(1)) if match else None
+
+
+def _command_enable_hook_codex(args: argparse.Namespace) -> int:
+    config_path = Path(args.settings_path) if args.settings_path else _default_codex_config_path()
+    if not HOOK_SCRIPT_PATH.exists():
+        print(f"error: hook script not found at {HOOK_SCRIPT_PATH}", file=sys.stderr)
+        return 1
+
+    text = config_path.read_text(encoding="utf-8") if config_path.exists() else ""
+    existing_path = _codex_registered_path(text)
+    if existing_path is not None:
+        if existing_path == HOOK_SCRIPT_PATH:
+            print(f"already enabled: {config_path} points at {HOOK_SCRIPT_PATH}")
+            return 0
+        print(f"a hook entry already exists pointing at {existing_path}, will replace it with {HOOK_SCRIPT_PATH}")
+
+    print(
+        "Privacy note: Auto Mode is optional. It locally skips non-task prompts, then sends each "
+        "eligible task to the "
+        f"configured search backend ({get_autoskill_url() or 'disabled'}) to look "
+        "up a matching skill. The hosted backend processes task text transiently and does not "
+        "retain it. Diagnostics are off by default and never include prompt text. See SECURITY.md."
+    )
+    if not args.yes:
+        if not sys.stdin.isatty():
+            print("error: refusing to enable non-interactively without --yes", file=sys.stderr)
+            return 1
+        answer = input("Enable the auto-skill routing hook? [y/N] ").strip().lower()
+        if answer not in {"y", "yes"}:
+            print("cancelled")
+            return 1
+
+    block = _codex_hook_block(HOOK_SCRIPT_PATH)
+    bounds = _find_codex_hook_block(text)
+    if bounds is not None:
+        new_text = text[: bounds[0]] + block + text[bounds[1] :]
+    else:
+        prefix = text if not text or text.endswith("\n") else text + "\n"
+        new_text = (prefix + "\n" if prefix else "") + block
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(new_text, encoding="utf-8")
+    print(f"enabled: wrote hook entry to {config_path}")
+    print("Restart Codex CLI (or run /hooks once) for the change to take effect.")
+    return 0
+
+
+def _command_disable_hook_codex(args: argparse.Namespace) -> int:
+    config_path = Path(args.settings_path) if args.settings_path else _default_codex_config_path()
+    if not config_path.exists():
+        print(f"not enabled: no auto-skill hook entry found in {config_path}")
+        return 0
+
+    text = config_path.read_text(encoding="utf-8")
+    bounds = _find_codex_hook_block(text)
+    if bounds is None:
+        print(f"not enabled: no auto-skill hook entry found in {config_path}")
+        return 0
+
+    new_text = text[: bounds[0]] + text[bounds[1] :]
+    config_path.write_text(new_text, encoding="utf-8")
+    print(f"disabled: removed hook entry from {config_path}")
+    return 0
+
+
 def _command_enable_hook(args: argparse.Namespace) -> int:
+    if getattr(args, "target", "claude") == "codex":
+        return _command_enable_hook_codex(args)
     settings_path = Path(args.settings_path) if args.settings_path else _default_settings_path()
     if not HOOK_SCRIPT_PATH.exists():
         print(f"error: hook script not found at {HOOK_SCRIPT_PATH}", file=sys.stderr)
@@ -585,6 +702,8 @@ def _command_enable_hook(args: argparse.Namespace) -> int:
 
 
 def _command_disable_hook(args: argparse.Namespace) -> int:
+    if getattr(args, "target", "claude") == "codex":
+        return _command_disable_hook_codex(args)
     settings_path = Path(args.settings_path) if args.settings_path else _default_settings_path()
     try:
         settings = _load_settings(settings_path)
@@ -895,13 +1014,15 @@ def build_parser() -> argparse.ArgumentParser:
     doctor.add_argument("--settings-path", default="", help="Override the Claude Code settings.json path (for testing).")
     doctor.set_defaults(func=_command_doctor)
 
-    enable_hook = subparsers.add_parser("enable-hook", help="Register the auto-skill routing hook in Claude Code settings.")
+    enable_hook = subparsers.add_parser("enable-hook", help="Register the auto-skill routing hook in Claude Code or Codex CLI.")
+    enable_hook.add_argument("--target", choices=["claude", "codex"], default="claude", help="Which client to register the hook for.")
     enable_hook.add_argument("--yes", action="store_true", help="Approve without an interactive prompt.")
-    enable_hook.add_argument("--settings-path", default="", help="Override the Claude Code settings.json path (for testing).")
+    enable_hook.add_argument("--settings-path", default="", help="Override the settings.json/config.toml path (for testing).")
     enable_hook.set_defaults(func=_command_enable_hook)
 
-    disable_hook = subparsers.add_parser("disable-hook", help="Remove the auto-skill routing hook from Claude Code settings.")
-    disable_hook.add_argument("--settings-path", default="", help="Override the Claude Code settings.json path (for testing).")
+    disable_hook = subparsers.add_parser("disable-hook", help="Remove the auto-skill routing hook from Claude Code or Codex CLI.")
+    disable_hook.add_argument("--target", choices=["claude", "codex"], default="claude", help="Which client to remove the hook from.")
+    disable_hook.add_argument("--settings-path", default="", help="Override the settings.json/config.toml path (for testing).")
     disable_hook.set_defaults(func=_command_disable_hook)
 
     login = subparsers.add_parser("login", help="Log in with Google or GitHub to get your own auto-skill account.")
