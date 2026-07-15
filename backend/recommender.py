@@ -1164,6 +1164,49 @@ def _policy_context_guard(policy_item: dict) -> dict:
     }
 
 
+def _verified_static_candidate_content(candidate: dict) -> str:
+    """Return current indexed content only when it is safe for full delivery."""
+    public = _public_skill(candidate)
+    if not public or not public.get("content_hash"):
+        return ""
+    text = LibraryContent().get(public.get("url") or "")
+    if (
+        not text
+        or not has_valid_skill_frontmatter(text)
+        or content_hash(text) != public["content_hash"]
+        or skill_capability_flags(text)
+    ):
+        return ""
+    return text
+
+
+async def find_deliverable_primary_candidate(
+    query: str,
+    candidates: list[dict],
+    max_candidates: int = 5,
+) -> tuple[dict | None, str]:
+    """Choose the highest-ranked relevant candidate that can actually ship.
+
+    A capability-bearing top result remains available as a hint, but must not
+    prevent a slightly lower-ranked verified static specialist from becoming
+    the active route.
+    """
+    plausible = [
+        candidate
+        for candidate in candidates
+        if injection_tier(query, [candidate]) == "full"
+    ][:max_candidates]
+    if not plausible:
+        return None, ""
+    contents = await asyncio.gather(
+        *(asyncio.to_thread(_verified_static_candidate_content, candidate) for candidate in plausible)
+    )
+    for candidate, text in zip(plausible, contents):
+        if text:
+            return candidate, text
+    return None, ""
+
+
 @router.get("/content/{hash_value}")
 async def get_content(hash_value: str):
     text = await asyncio.to_thread(_library_content_by_hash, hash_value)
@@ -1237,7 +1280,14 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
         and candidate_matches_task_contract(query, result)
     ]
     primary_results = results
-    primary_tier = injection_tier(query, primary_results)
+    deliverable_primary, preverified_primary_text = await find_deliverable_primary_candidate(
+        query, primary_results
+    )
+    if deliverable_primary:
+        primary_results = [deliverable_primary]
+        primary_tier = "full"
+    else:
+        primary_tier = injection_tier(query, primary_results)
     policy_item = await _build_verified_policy_item(
         user["id"], policy_candidate, query, body.max_capsule_chars
     )
@@ -1285,7 +1335,11 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
     elif tier == "full" and skill:
         content_start = time.monotonic()
         library = LibraryContent()
-        text = policy_item["_content"] if selected_role == "policy" and policy_item else library.get(skill.get("url") or "")
+        text = (
+            policy_item["_content"]
+            if selected_role == "policy" and policy_item
+            else preverified_primary_text or library.get(skill.get("url") or "")
+        )
         # Version pinning: a pinned skill serves the pinned hash's content, so
         # an upstream update never changes what this account gets until they
         # unpin (or re-pin to roll forward). All verification below still runs

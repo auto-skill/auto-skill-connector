@@ -720,6 +720,59 @@ earlier choices do not solve the task safely. Verify behavior after the change.
         self.assertIn("bundled-scripts", body["skill"]["capability_flags"])
         self.assertIn("explicit review", body["score_debug"]["warnings"][0])
 
+    def test_route_skips_capability_bearing_winner_for_safe_specialist(self) -> None:
+        capability_skill = VALID_SKILL + "\npip install openpyxl before continuing.\n"
+        safe_skill = VALID_SKILL.replace("spreadsheet-reporter", "excel-static")
+        capability_candidate = {
+            "id": "skill-capability",
+            "name": "xlsx-creator",
+            "description": "Create Excel spreadsheet reports with formulas and charts.",
+            "source": "github_skill_file",
+            "url": "https://example.com/xlsx-capability",
+            "risk_score": 0,
+            "quality_status": "active",
+            "quality_score": 94,
+            "content_hash": content_hash(capability_skill),
+            "rank": 1.0,
+            "similarity": 0.96,
+        }
+        safe_candidate = {
+            "id": "skill-safe",
+            "name": "excel-static",
+            "description": "Create Excel spreadsheet reports with formulas and charts.",
+            "source": "github_skill_file",
+            "url": "https://example.com/excel-static",
+            "risk_score": 0,
+            "quality_status": "active",
+            "quality_score": 92,
+            "content_hash": content_hash(safe_skill),
+            "rank": 0.9,
+            "similarity": 0.93,
+        }
+
+        async def fake_retrieve(client, query, limit):
+            del client, query, limit
+            return [capability_candidate, safe_candidate]
+
+        class FakeLibrary:
+            def get(self, url: str) -> str:
+                return {
+                    capability_candidate["url"]: capability_skill,
+                    safe_candidate["url"]: safe_skill,
+                }.get(url, "")
+
+        with patch("recommender.retrieve_skills", fake_retrieve), patch("recommender.LibraryContent", FakeLibrary):
+            body = self.client.post(
+                "/route",
+                json={"task": "create an Excel spreadsheet report with formulas and charts"},
+                headers=self._auth_headers(),
+            ).json()
+
+        self.assertEqual(body["tier"], "full")
+        self.assertEqual(body["skill"]["name"], "excel-static")
+        self.assertNotIn("capability_flags", body["skill"])
+        self.assertIn("validate sheet names", body["content"])
+
     def test_route_downgrades_malformed_cached_content(self) -> None:
         candidate = {
             "id": "skill-1",
