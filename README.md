@@ -1,26 +1,35 @@
 # Auto-Skill
 
-Trusted, compatible skill discovery and lifecycle foundations for Claude Code,
-Codex, Cursor, and GitHub Copilot.
+Just-in-time skill orchestration for Claude Code, Codex, Cursor, and GitHub
+Copilot. No skill installation required.
 
-Auto-Skill finds portable Agent Skills, checks their structure and provenance,
-routes a privacy-minimized task to a compatible `SKILL.md`, and supports careful local
-installation. The launch product is deliberately not a claim to have the
-largest scraped catalog. Existing registries already compete on breadth;
-Auto-Skill is focused on integrity, compatibility, predictable routing, and a
-safe path toward update, rollback, and team policy.
+Auto-Skill classifies a privacy-minimized task, chooses an ordered skill plan,
+fetches verified instructions from its hosted catalog, and supplies only the
+bounded context needed for that turn. A plan can combine an always-on policy
+with a task specialist—for example, Ponytail for minimal safe code plus
+frontend-design for a React interface—without making either skill compete for
+the same ranking slot.
+
+Auto-Skill is not another skill directory. Its product is the universal
+router: deciding which guidance matters now, composing compatible skills, and
+delivering them safely at runtime.
 
 ## Launch Scope
 
 What ships now:
 
-- Deterministic task ranking with quality and platform gates.
+- Deterministic task-family classification, role-aware ranking, and platform
+  gates.
+- Ordered multi-skill plans: task-family policies first, one primary
+  specialist, then bounded supporting skills as the plan contract expands.
+- A curated Ponytail coding-policy lane. Policy skills cannot self-promote into
+  this lane through semantic similarity alone.
+- Integration skills require an explicit integration, service, or platform
+  signal; a generic integration listing cannot displace a coding specialist.
 - Source provenance and normalized content hashes.
 - Full in-turn use only for high-confidence, risk-0 public content whose
   canonical hash and returned raw digest verify; ambiguous matches return hints.
-- Explicit search, route, preview, and manual persistent install commands.
-- Native `SKILL.md` install targets for Claude Code, Codex, Cursor, and
-  GitHub Copilot.
+- Explicit search, route, and preview commands for inspection and testing.
 - An optional Claude Code prompt adapter for users who deliberately enable Auto
   Mode.
 - A hosted MCP connector that asks capable clients to preflight substantial
@@ -37,36 +46,31 @@ skill.
 
 Not shipped yet:
 
-- Automatic persistent installation.
+- Supporting-skill selection beyond the current policy + primary-specialist
+  slice.
 - A one-time publisher/permission trust policy.
 - Publisher identity verification or signed releases.
-- Managed updates, uninstall, or rollback.
+- Managed local skill installation, updates, uninstall, or rollback. These are
+  unnecessary for normal just-in-time routing.
 - Auto Mode adapters for Codex or Cursor.
 - Complete installation of skill bundles that require scripts, dependencies,
   references, or assets.
 
 ## Client Compatibility
 
-Claude Code, Codex, Cursor, and GitHub Copilot all support Agent Skills built
-around `SKILL.md`. Their native discovery locations differ:
+Auto-Skill routes to clients through a connector or adapter; it does not copy
+catalog skills into each client's native skill directory.
 
-| Client | Auto-Skill default user location | Launch behavior |
+| Client | Current delivery path | Skill install required? |
 | --- | --- | --- |
-| Claude Code | `~/.claude/skills` | Manual install; optional opt-in prompt adapter |
-| Codex | `~/.agents/skills` | Manual install; MCP-guided proactive task-summary routing |
-| Cursor | `~/.agents/skills` | Manual install; MCP-guided proactive task-summary routing |
-| GitHub Copilot | `~/.agents/skills` | Manual install; MCP-guided proactive task-summary routing |
+| Claude Code | Hosted/local MCP; optional prompt adapter | No |
+| Codex | Hosted/local MCP proactive task-summary routing | No |
+| Cursor | Hosted/local MCP proactive task-summary routing | No |
+| GitHub Copilot | Local MCP proactive task-summary routing | No |
 
-Cursor also recognizes `~/.cursor/skills`, and Copilot also recognizes
-`~/.copilot/skills`. Auto-Skill uses the portable `~/.agents/skills` location
-by default for Codex, Cursor, and Copilot, so one installed copy serves all
-three. `SKILLS_HOME` can override the selected destination.
-
-Copilot also discovers project-level skills from `.github/skills`,
-`.agents/skills`, or `.claude/skills` inside a repository. Auto-Skill installs
-user-level only today; user-level skills reach Copilot CLI and IDE agent mode
-but not the Copilot cloud agent or Copilot code review, which read skills from
-the repository.
+Repository-owned skills and always-on instruction files still take precedence.
+That lets teams keep their non-negotiable standards local while Auto-Skill
+adds verified policies and specialists just in time.
 
 Vendor references:
 
@@ -143,63 +147,52 @@ repository's top-level `.github/workflows/backend-ci.yml`, not under
 
 ## Demo
 
-These example searches were run against the live index on 2026-07-07:
+The important output is a route plan, not a directory result:
 
 ```text
-$ auto-skill search "create an excel report with formulas and charts"
-backend: self-hosted
-best match:
-1. xlsx-creator
-   Create, edit, and analyze Excel spreadsheets (.xlsx, .xlsm, .csv, .tsv files)...
-   stars=4, risk=0
-   https://github.com/jignesh-ponamwar/skills-mcp/tree/HEAD/skill_mcp/skills_data/xlsx-creator
+$ auto-skill route "build a React landing page with Tailwind"
+backend: self-hosted-route
+route: skill
+tier: full
+skill plan (coding):
+  policy: ponytail
+  primary: frontend-design
 
-$ auto-skill search "extract text and tables from a pdf"
-backend: self-hosted
-best match:
-1. pdf-text-extract
-   Extract text and simple table-like rows from a PDF for downstream AI without OCR binaries...
-   stars=0, risk=0
-   https://github.com/baronguyen001/ai-automation-skills/tree/HEAD/skills/pdf-text-extract
-
-$ auto-skill search "build a react landing page with tailwind"
-backend: self-hosted
-best match:
+compatibility selection:
 1. frontend-design
-   Guidance for distinctive, intentional visual design when building new UI or reshaping an existing one...
-   stars=11503, risk=0
-   https://github.com/xiaomimimo/mimo-code/tree/HEAD/packages/opencode/src/skill/builtin/.bundle/frontend-design
+
+next action: apply the returned skill plan in-turn; no skill installation is required
 ```
 
-Search results are candidates, not endorsements. A `risk=0` result only means
-the current pattern scanner found no flagged indicator.
+The policy and primary have different jobs. Ponytail constrains implementation
+choices across the coding task; frontend-design supplies the domain workflow.
+More specific user, project, and team instructions win if guidance conflicts.
 
 ## Prerequisites
 
 - Python 3.10+
-- `git`, for cloning this repository or using the `uvx --from git+...` path
-- [`uv`](https://docs.astral.sh/uv/getting-started/installation/) for the
-  `uvx` MCP setup below
+- `git`, for cloning this repository
 
-## Install the CLI
+## Connect the CLI
 
 ```bash
 git clone https://github.com/auto-skill/auto-skill-connector
 cd auto-skill-connector
 python -m venv .venv
 .venv\Scripts\python -m pip install -e ".[dev]"
+auto-skill login
 ```
 
 Start in explicit mode:
 
 ```bash
 auto-skill doctor
-auto-skill search "create an excel report with formulas and charts"
-auto-skill route "create an excel report with formulas and charts" --show-content
-auto-skill preview "extract text and tables from a pdf"
+auto-skill route "create an excel report with formulas and charts"
 ```
 
-No prompt hook is enabled by installation or by `doctor`.
+Installing the connector is not installing skills. Catalog skills remain in
+Auto-Skill's hosted database and are retrieved for the current task. No prompt
+hook is enabled by connector installation or by `doctor`.
 
 ## Commands
 
@@ -209,9 +202,6 @@ auto-skill route "<task>"
 auto-skill route "<task>" --json --show-content
 auto-skill route-prompt "<raw-user-prompt>"
 auto-skill preview "<task-or-url>"
-auto-skill install "<task-or-url>" --target claude --dry-run
-auto-skill install "<task-or-url>" --target codex --dry-run
-auto-skill install "<task-or-url>" --target cursor --dry-run
 auto-skill feedback "<route-id>" used
 auto-skill metrics --base-url http://127.0.0.1:8000
 auto-skill doctor
@@ -228,10 +218,11 @@ time, injected-token estimates, and response-token estimates. The aggregate
 `/route-metrics` endpoint is host-local and is intended for operational smoke
 checks, not a consumer analytics product.
 
-## Manual Persistent Install
+## Optional Developer Export
 
-Persistent installation is a separate action from using a skill in the
-current task:
+Normal Auto-Skill users do not install catalog skills. The legacy `install`
+command remains available for authors and developers who explicitly want to
+export and inspect a static `SKILL.md` locally:
 
 ```bash
 auto-skill install "<task-or-url>" --target claude --dry-run
@@ -247,7 +238,7 @@ After reviewing the source, destination, and content, repeat without
 - A visible source URL and destination before writing.
 - No automatic install from Auto Mode or hosted MCP.
 
-The launch installer is for static, instruction-only `SKILL.md` content. It
+This developer export is for static, instruction-only `SKILL.md` content. It
 does not promise to fetch a complete bundle of scripts, references, assets, or
 dependencies. Do not install an unfamiliar skill that relies on those
 capabilities until they can be reviewed as a bundle. Managed update and
@@ -336,18 +327,18 @@ connector is untested; use the local stdio server with Copilot for now.
 
 ### Launch-facing tools
 
-- `route_task(task)` routes a cleaned-up, privacy-minimized task and returns `full`,
-  `hint`, or no route. A full route may be delivered as a bounded context
-  capsule when the selected skill is too large for the current client.
+- `route_task(task)` classifies a cleaned-up, privacy-minimized task and
+  returns an ordered `skill_plan` plus `full`, `hint`, or no-route delivery.
+  A full coding plan can contain a verified policy and a separate primary
+  specialist. Large instructions are reduced to bounded context capsules.
 - `route_prompt(prompt)` locally preflights a raw prompt, then routes only when
   it is task-shaped.
 - `record_feedback(route_id, outcome)` records an enum-only privacy-safe
   outcome; it accepts no free-form notes.
 
 `recommend_skill` is a deprecated compatibility preview surface. New clients
-should use `route_task`. The supported persistent-install flow is the explicit
-local CLI. MCP exposes no skill/filesystem write tool over either local stdio or
-hosted streamable HTTP; enum-only route feedback is optional.
+should use `route_task`. MCP exposes no skill/filesystem write tool over either
+local stdio or hosted streamable HTTP; enum-only route feedback is optional.
 
 Adding an MCP server opts into model-directed task-summary routing. Capable
 clients are instructed to call `route_task` once for substantial tasks, but
@@ -442,20 +433,29 @@ deterministic capsule rather than silently injecting the full document.
 ## How Routing Works
 
 Routing uses the service configured by `AUTOSKILL_URL`, defaulting to
-`https://skills.autoskill.dev`. The backend performs local embedding retrieval
-and deterministic reranking with lexical overlap, quality, platform mismatch,
-provenance, evaluation/feedback evidence, and a log-scaled popularity prior.
-Popularity is only a soft signal; relevance, verified static content, and
-meaningfulness gates decide whether a route is full, a hint, or no route.
-Routing does not install skills or write them to disk.
+`https://skills.autoskill.dev`. The backend follows a role-aware pipeline:
+
+1. Classify the task family and action using the summary plus optional coarse
+   language, framework, and project tags.
+2. Select curated task-family policies through an allowlisted policy lane.
+   Semantic similarity alone cannot make a skill an always-on policy.
+3. Rank the primary specialist using relevance, quality, platform fit,
+   provenance, evaluation/feedback evidence, and a soft popularity prior.
+4. Gate integrations unless the task explicitly calls for an integration,
+   service, platform, or external action.
+5. Verify hashes and static capabilities, then compose a bounded ordered plan.
+
+The precedence order is user/project/team instructions, policy, primary
+specialist, then supporting skills. A conflict or failed verification removes
+the lower-trust item instead of blindly merging instructions. Routing never
+installs catalog skills or writes them to a client's skill directory.
 
 The response tiers are:
 
-- `full`: a high-confidence, risk-0 public match whose local snapshot matches
-  its canonical hash and served digest, and passes the static capability
-  screen. Content is
-  eligible for current-task use; normal client tool and permission controls
-  still apply.
+- `full`: a verified plan whose active items cleared role, relevance, quality,
+  hash, and static-capability gates. A plan may contain both a task-family
+  policy and a primary specialist. Normal client permissions still govern all
+  tools and side effects.
 - `hint`: an ambiguous, unverified, risky, incomplete, platform-specific, or
   capability-bearing match. The response contains metadata and up to three
   candidates, not active instructions.

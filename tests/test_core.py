@@ -211,6 +211,67 @@ def test_route_task_payload_returns_router_decision(monkeypatch: pytest.MonkeyPa
     assert "make a spreadsheet" not in json.dumps(result)
 
 
+def test_route_task_payload_composes_policy_before_primary_skill() -> None:
+    policy_capsule = "Prefer existing code, then the standard library, then native platform capabilities."
+
+    class PlanClient:
+        async def post(self, url: str, **kwargs: object) -> FakeResponse:
+            assert url.endswith("/route")
+            return FakeResponse(
+                200,
+                {
+                    "tier": "full",
+                    "skill": {
+                        "name": "frontend-design",
+                        "description": "Build distinctive frontend interfaces.",
+                        "url": "https://github.com/example/frontend-design",
+                        "risk_score": 0,
+                        "content_hash": "frontend-hash",
+                        "verification": {"content_hash_verified": True, "static_instruction_only": True},
+                    },
+                    "content": VALID_SKILL,
+                    "context_guard": {"delivery": "full", "policy": "hybrid-v1"},
+                    "task_analysis": {"family": "coding", "action": "implement"},
+                    "skill_plan": {
+                        "task_family": "coding",
+                        "policy_skills": [
+                            {
+                                "name": "ponytail",
+                                "description": "Minimal safe coding policy.",
+                                "url": "https://github.com/DietrichGebert/ponytail",
+                                "content_hash": "policy-hash",
+                                "capsule": policy_capsule,
+                                "verification": {
+                                    "content_hash_verified": True,
+                                    "static_instruction_only": True,
+                                },
+                            }
+                        ],
+                        "primary_skill": {
+                            "name": "frontend-design",
+                            "url": "https://github.com/example/frontend-design",
+                            "role": "specialist",
+                            "routing_tier": "full",
+                        },
+                        "selected_roles": ["policy", "specialist"],
+                        "precedence": ["user-project-team", "policy", "primary", "supporting"],
+                    },
+                    "score_debug": {"tier": "full", "metrics": {"injected_tokens": 80}},
+                },
+            )
+
+    result = asyncio.run(core.route_task_payload("build a React landing page", client=PlanClient()))
+    assert result["skill_plan"]["task_family"] == "coding"
+    assert result["skill_plan"]["policy_skills"][0]["name"] == "ponytail"
+    assert result["skill_plan"]["primary_skill"]["name"] == "frontend-design"
+    assert result["route_summary"]["skill_count"] == 2
+    context = core.build_route_context(result)
+    assert "Task-family policy: ponytail" in context
+    assert "Route selected: frontend-design" in context
+    assert context.index("Task-family policy: ponytail") < context.index("Route selected: frontend-design")
+    assert policy_capsule in context
+
+
 def test_route_task_payload_downgrades_oversized_backend_content(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AUTOSKILL_MAX_INJECTED_CHARS", "260")
 

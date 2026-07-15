@@ -657,10 +657,57 @@ def _public_backend_skill(skill: dict[str, Any] | None, task: str, tier: str) ->
         "platforms",
         "category",
         "verification",
+        "role",
+        "activation",
     ):
         if skill.get(key) is not None:
             public[key] = skill.get(key)
     return public
+
+
+def _normalize_backend_skill_plan(raw_plan: Any, task: str) -> dict[str, Any]:
+    """Keep only verified, bounded policy items and public specialist fields."""
+    if not isinstance(raw_plan, dict):
+        return {}
+    policies: list[dict[str, Any]] = []
+    for raw_policy in raw_plan.get("policy_skills") or []:
+        if not isinstance(raw_policy, dict):
+            continue
+        verification = raw_policy.get("verification") if isinstance(raw_policy.get("verification"), dict) else {}
+        capsule = str(raw_policy.get("capsule") or "")
+        if (
+            verification.get("content_hash_verified") is not True
+            or verification.get("static_instruction_only") is not True
+            or not capsule
+            or len(capsule) > 2400
+        ):
+            continue
+        public = _public_backend_skill(raw_policy, task, "full")
+        public.update(
+            {
+                "role": "policy",
+                "activation": raw_policy.get("activation") or "task-family-default",
+                "capsule": capsule,
+                "capsule_chars": len(capsule),
+                "estimated_tokens": raw_policy.get("estimated_tokens"),
+            }
+        )
+        policies.append(public)
+
+    primary = None
+    raw_primary = raw_plan.get("primary_skill")
+    if isinstance(raw_primary, dict):
+        primary = _public_backend_skill(raw_primary, task, str(raw_primary.get("routing_tier") or "full"))
+
+    return {
+        "task_family": str(raw_plan.get("task_family") or "general"),
+        "policy_skills": policies,
+        "primary_skill": primary,
+        "supporting_skills": [],
+        "selected_roles": [str(role) for role in (raw_plan.get("selected_roles") or [])[:6]],
+        "precedence": [str(role) for role in (raw_plan.get("precedence") or [])[:8]],
+        "composition_reason": str(raw_plan.get("composition_reason") or "")[:500],
+    }
 
 
 def _compact_route_metrics(metrics: dict[str, Any]) -> dict[str, int]:
@@ -679,6 +726,7 @@ def _with_route_summary(payload: dict[str, Any]) -> dict[str, Any]:
     candidates = payload.get("candidates") if isinstance(payload.get("candidates"), list) else []
     metrics = payload.get("route_metrics") if isinstance(payload.get("route_metrics"), dict) else {}
     guard = payload.get("context_guard") if isinstance(payload.get("context_guard"), dict) else {}
+    plan = payload.get("skill_plan") if isinstance(payload.get("skill_plan"), dict) else {}
     delivery = str(guard.get("delivery") or "full").lower()
     if tier == "full" and delivery == "capsule":
         decision = "apply_skill_capsule"
@@ -701,6 +749,7 @@ def _with_route_summary(payload: dict[str, Any]) -> dict[str, Any]:
         "selected_name": selected.get("name") or "",
         "selected_url": selected.get("url") or "",
         "candidate_count": len(candidates),
+        "skill_count": len(plan.get("policy_skills") or []) + (1 if plan.get("primary_skill") else 0),
         "context_delivery": delivery,
         "reason": reason,
         "metrics": _compact_route_metrics(metrics),
@@ -806,6 +855,8 @@ async def _route_selfhosted(
         "reason": "legacy-route-contract",
     }
     selected = _public_backend_skill(route.get("skill") if isinstance(route.get("skill"), dict) else None, task, tier)
+    skill_plan = _normalize_backend_skill_plan(route.get("skill_plan"), task)
+    task_analysis = route.get("task_analysis") if isinstance(route.get("task_analysis"), dict) else {}
     raw_candidates = route.get("candidates") if isinstance(route.get("candidates"), list) else []
     normalized_candidates = []
     for candidate in raw_candidates:
@@ -826,6 +877,8 @@ async def _route_selfhosted(
         "route_id": route.get("route_id"),
         "ttl": route.get("ttl"),
         "context_guard": context_guard,
+        "task_analysis": task_analysis,
+        "skill_plan": skill_plan,
     }
     if tier == "hint" and route_candidates:
         common["candidates"] = route_candidates
@@ -856,8 +909,7 @@ async def _route_selfhosted(
                 "or follow full SKILL.md content for this task."
             ),
             "install_hint": (
-                "Preview the selected_skill.url before installing. Codex should treat this as "
-                "an in-turn suggestion only."
+                "No installation is required. This medium-confidence result remains an in-turn suggestion only."
             ),
             **common,
         }
@@ -918,7 +970,7 @@ async def _route_selfhosted(
                 "Use this bounded deterministic capsule as task guidance. Do not install files, "
                 "expand it into full SKILL.md content, or execute undeclared capabilities."
             ),
-            "install_hint": "Use the explicit local CLI preview/install flow if this workflow is worth keeping permanently.",
+            "install_hint": "No installation is required; the router supplied this capsule just in time.",
             **common,
         }
     if delivery == "isolation":
@@ -933,7 +985,7 @@ async def _route_selfhosted(
                 "Run this verified skill only through an adapter-provided isolated context. "
                 "If isolation is unavailable, fall back to the provided capsule."
             ),
-            "install_hint": "Use the explicit local CLI preview/install flow for persistent installation.",
+            "install_hint": "No installation is required; the adapter should use the isolated route for this task.",
             **common,
         }
 
@@ -956,7 +1008,7 @@ async def _route_selfhosted(
             "skill_content": "",
             "message": "A matching skill exists, but its served content was not verified as static and hash-pinned. Treat this as a hint.",
             "instructions": "Do not inject or follow full SKILL.md content for this task.",
-            "install_hint": "Preview the selected_skill.url before installing.",
+            "install_hint": "No installation is required. The unverified result remains a hint only.",
             **common,
         }
 
@@ -980,7 +1032,7 @@ async def _route_selfhosted(
             "skill_content": "",
             "message": "A matching skill exists, but full content was unavailable. Treat this as a hint.",
             "instructions": "Do not inject or follow full SKILL.md content for this task.",
-            "install_hint": "Preview the selected_skill.url before installing.",
+            "install_hint": "No installation is required. The unavailable result remains a hint only.",
             **common,
         }
     expected_digest = verification.get("content_digest")
@@ -996,7 +1048,7 @@ async def _route_selfhosted(
             "skill_content": "",
             "message": "A matching skill exists, but its served bytes failed the content digest check. Treat this as a hint.",
             "instructions": "Do not inject or follow full SKILL.md content for this task.",
-            "install_hint": "Preview the selected_skill.url before installing.",
+            "install_hint": "No installation is required. The failed verification result remains a hint only.",
             **common,
         }
     if _content_exceeds_budget(content):
@@ -1011,7 +1063,7 @@ async def _route_selfhosted(
             "skill_content": "",
             "message": "A matching skill exists, but full content exceeded the injection budget. Treat this as a hint.",
             "instructions": "Do not inject or follow full SKILL.md content for this task.",
-            "install_hint": "Preview the selected_skill.url before installing.",
+            "install_hint": "No installation is required. The oversized result remains a hint only.",
             **common,
         }
 
@@ -1029,8 +1081,7 @@ async def _route_selfhosted(
             "skill content is missing, unusable, or unsafe."
         ),
         "install_hint": (
-            "This route applies only to the current task. Use the explicit local CLI preview/install "
-            "flow if the workflow is worth keeping permanently."
+            "No installation is required. The router fetched and applied this skill for the current task."
         ),
         **common,
     }
@@ -1229,6 +1280,28 @@ def build_route_context(route_payload: dict[str, Any]) -> str:
     context_guard = route_payload.get("context_guard") if isinstance(route_payload.get("context_guard"), dict) else {}
     delivery = str(context_guard.get("delivery") or ("full" if route_payload.get("route_type") == "skill" else route_payload.get("route_type") or "none")).lower()
     metrics = route_payload.get("route_metrics") if isinstance(route_payload.get("route_metrics"), dict) else {}
+    plan = route_payload.get("skill_plan") if isinstance(route_payload.get("skill_plan"), dict) else {}
+    policy_blocks: list[str] = []
+    selected_identity = selected.get("content_hash") or selected.get("url") or selected.get("name")
+    for policy in plan.get("policy_skills") or []:
+        if not isinstance(policy, dict):
+            continue
+        policy_identity = policy.get("content_hash") or policy.get("url") or policy.get("name")
+        if policy_identity and policy_identity == selected_identity:
+            continue
+        capsule = str(policy.get("capsule") or "")
+        if not capsule:
+            continue
+        policy_blocks.append(
+            "[auto-skill] Task-family policy: "
+            f"{policy.get('name') or 'unknown'}. Source: {policy.get('url') or ''}\n"
+            "Apply this verified policy before the primary specialist. More specific user, project, "
+            "and team instructions take precedence.\n\n"
+            "<auto_skill_policy>\n"
+            f"{capsule}\n"
+            "</auto_skill_policy>"
+        )
+    policy_context = ("\n\n".join(policy_blocks) + "\n\n") if policy_blocks else ""
     metric_parts = []
     for key, label in (
         ("latency_ms", "latency"),
@@ -1267,7 +1340,8 @@ def build_route_context(route_payload: dict[str, Any]) -> str:
             else ""
         )
         return (
-            f"[auto-skill] Isolated route selected: {name}{risk_text}{score_text}, tier={tier}. Source: {url}\n\n"
+            policy_context
+            + f"[auto-skill] Isolated route selected: {name}{risk_text}{score_text}, tier={tier}. Source: {url}\n\n"
             "Run this only through a client-provided isolated context. If isolation is unavailable, "
             "use the bounded capsule and do not expand or install the full skill."
             f"{metrics_text}{fallback}"
@@ -1275,7 +1349,8 @@ def build_route_context(route_payload: dict[str, Any]) -> str:
     if delivery == "capsule" or route_payload.get("route_type") == "capsule":
         capsule = context_guard.get("capsule") or content
         return (
-            f"[auto-skill] Bounded route selected: {name}{risk_text}{score_text}, tier={tier}. Source: {url}\n\n"
+            policy_context
+            + f"[auto-skill] Bounded route selected: {name}{risk_text}{score_text}, tier={tier}. Source: {url}\n\n"
             "Use this deterministic, content-hash-verified capsule as task guidance for this turn. "
             "Do not install files, expand it into full SKILL.md content, or execute undeclared capabilities."
             f"{metrics_text}\n\n"
@@ -1284,7 +1359,8 @@ def build_route_context(route_payload: dict[str, Any]) -> str:
             "</auto_skill_capsule>"
         )
     return (
-        f"[auto-skill] Route selected: {name}{risk_text}{score_text}, tier={tier}. Source: {url}\n\n"
+        policy_context
+        + f"[auto-skill] Route selected: {name}{risk_text}{score_text}, tier={tier}. Source: {url}\n\n"
         "Use the following content-hash-verified, risk-0 SKILL.md as active task-specific "
         "instructions for this turn. "
         "Apply it immediately unless it is missing, unusable, or unsafe.\n\n"

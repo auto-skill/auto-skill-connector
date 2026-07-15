@@ -161,8 +161,20 @@ async def _command_route(args: argparse.Namespace) -> int:
         print(payload.get("message", "No matching skill found."))
         return 1
 
+    plan = payload.get("skill_plan") if isinstance(payload.get("skill_plan"), dict) else {}
+    policy_skills = plan.get("policy_skills") or []
+    primary_skill = plan.get("primary_skill") if isinstance(plan.get("primary_skill"), dict) else None
+    if policy_skills or primary_skill:
+        print(f"skill plan ({plan.get('task_family') or 'general'}):")
+        for policy in policy_skills:
+            if isinstance(policy, dict):
+                print(f"  policy: {policy.get('name') or 'unknown'}")
+        if primary_skill:
+            print(f"  primary: {primary_skill.get('name') or 'unknown'}")
+        print()
+
     skill = payload.get("selected_skill") or {}
-    print("selected skill:")
+    print("compatibility selection:")
     _print_candidate(1, skill)
     print()
     if payload.get("route_type") == "hint":
@@ -175,7 +187,7 @@ async def _command_route(args: argparse.Namespace) -> int:
         print("next action: treat this as a suggestion; do not inject full skill content")
         return 0
 
-    print("next action: apply the returned skill_content in-turn")
+    print("next action: apply the returned skill plan in-turn; no skill installation is required")
     if args.show_content:
         print()
         content = payload.get("skill_content") or ""

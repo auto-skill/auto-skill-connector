@@ -37,6 +37,7 @@ from context_guard import (
     DEFAULT_CAPSULE_CHARS,
     DEFAULT_INLINE_CHARS,
     POLICY_VERSION as CONTEXT_GUARD_POLICY,
+    build_capsule,
     build_context_guard,
     estimate_tokens as estimate_guard_tokens,
 )
@@ -91,6 +92,58 @@ EMBED_BATCH = min(32, max(1, int(os.getenv("EMBED_BATCH_SIZE", "8"))))
 # Each upserted row triggers an HNSW index update, so keep statements small
 # enough to stay well under any statement_timeout.
 EMBED_UPSERT_CHUNK = min(100, max(1, int(os.getenv("EMBED_UPSERT_CHUNK", "50"))))
+
+# Task-family policies are deliberately curated rather than discovered from a
+# similarity search alone.  They shape every task in a family, so a malicious
+# or merely popular skill must not be able to self-promote into this lane by
+# stuffing its description with generic coding terms.
+CODING_POLICY_QUERY = os.getenv(
+    "AUTOSKILL_CODING_POLICY_QUERY",
+    "ponytail coding policy minimal safe code reuse standard library native platform existing dependencies",
+).strip()
+CODING_POLICY_NAMES = tuple(
+    name.strip().casefold()
+    for name in os.getenv("AUTOSKILL_CODING_POLICY_NAMES", "ponytail").split(",")
+    if name.strip()
+)
+CODING_POLICY_SOURCE_MARKERS = tuple(
+    marker.strip().casefold()
+    for marker in os.getenv(
+        "AUTOSKILL_CODING_POLICY_SOURCE_MARKERS",
+        "github.com/DietrichGebert/ponytail",
+    ).split(",")
+    if marker.strip()
+)
+POLICY_CAPSULE_CHARS = min(
+    DEFAULT_CAPSULE_CHARS,
+    max(400, int(os.getenv("AUTOSKILL_POLICY_CAPSULE_CHARS", "1200"))),
+)
+
+_TASK_TOKEN_RE = re.compile(r"[a-z0-9+#.-]+")
+_CODING_TERMS = frozenset(
+    {
+        "code", "coding", "function", "class", "method", "component", "frontend", "backend",
+        "website", "webapp", "landing", "page", "ui", "ux", "design", "app", "bug", "debug",
+        "refactor", "repository", "repo", "test",
+        "python", "javascript", "typescript", "java", "rust", "golang", "react", "vue", "angular",
+        "nextjs", "fastapi", "django", "flask", "html", "css", "sql", "api", "endpoint",
+    }
+)
+_INTEGRATION_REQUEST_TERMS = frozenset(
+    {
+        "integrate", "integration", "connect", "connector", "sync", "webhook", "oauth", "api",
+        "mcp", "send", "post", "publish", "deploy", "import", "export",
+    }
+)
+_GENERIC_INTEGRATION_NAME_TERMS = frozenset(
+    {"auto", "automatic", "integration", "integrations", "skill", "mcp", "server", "tool", "agent", "workflow"}
+)
+_POLICY_MARKERS = (
+    "always-on",
+    "always on",
+    "coding policy",
+    "decision ladder",
+)
 
 router = APIRouter()
 
@@ -280,6 +333,152 @@ def injection_tier(query_text: str, results: list[dict]) -> str:
     return tier_for_prompt(query_text, results, RECOMMEND_GAP)
 
 
+def _task_tokens(text: str) -> set[str]:
+    return {token.casefold() for token in _TASK_TOKEN_RE.findall(text or "")}
+
+
+def analyze_task(
+    query: str,
+    *,
+    requested_family: str = "",
+    languages: list[str] | None = None,
+    frameworks: list[str] | None = None,
+    project_tags: list[str] | None = None,
+) -> dict:
+    """Return a privacy-safe, deterministic task classification.
+
+    Clients may provide coarse project tags, but never need to send source code
+    or file contents.  Explicit supported families win over inference.
+    """
+    explicit = (requested_family or "").strip().casefold()
+    supported = {"coding", "research", "documents", "data", "general"}
+    context = [*(languages or []), *(frameworks or []), *(project_tags or [])]
+    tokens = _task_tokens(" ".join([query, *context]))
+    signals: list[str] = []
+    if explicit in supported:
+        family = explicit
+        signals.append("client-task-family")
+    elif tokens & _CODING_TERMS or any(
+        suffix in query.casefold()
+        for suffix in (".py", ".js", ".jsx", ".ts", ".tsx", ".rs", ".go", ".java", ".html", ".css")
+    ):
+        family = "coding"
+        signals.append("coding-language-or-artifact")
+    elif tokens & {"research", "competitor", "sources", "citations", "browse", "web"}:
+        family = "research"
+        signals.append("research-intent")
+    elif tokens & {"document", "docx", "pdf", "slides", "presentation", "report"}:
+        family = "documents"
+        signals.append("document-artifact")
+    elif tokens & {"spreadsheet", "excel", "csv", "dataset", "analytics", "dashboard", "kpi"}:
+        family = "data"
+        signals.append("data-artifact")
+    else:
+        family = "general"
+
+    action = "work"
+    for candidate, markers in (
+        ("review", {"review", "audit", "inspect"}),
+        ("debug", {"debug", "bug", "fix", "repair"}),
+        ("test", {"test", "verify", "validate"}),
+        ("refactor", {"refactor", "simplify", "cleanup"}),
+        ("implement", {"build", "create", "implement", "write", "add"}),
+    ):
+        if tokens & markers:
+            action = candidate
+            break
+    return {
+        "family": family,
+        "action": action,
+        "signals": signals,
+        "languages": sorted({str(v).strip().casefold() for v in (languages or []) if str(v).strip()})[:8],
+        "frameworks": sorted({str(v).strip().casefold() for v in (frameworks or []) if str(v).strip()})[:8],
+        "project_tags": sorted({str(v).strip().casefold() for v in (project_tags or []) if str(v).strip()})[:12],
+    }
+
+
+def skill_role(candidate: dict) -> str:
+    name = str(candidate.get("name") or "").strip().casefold()
+    description = str(candidate.get("description") or "").casefold()
+    text = f"{name} {description}"
+    if (
+        name in CODING_POLICY_NAMES
+        or candidate.get("category") == "policy"
+        or any(marker in text for marker in _POLICY_MARKERS)
+    ):
+        return "policy"
+    platforms = candidate.get("platforms") or []
+    if candidate.get("category") == "integration" or platforms or "integration" in name:
+        return "integration"
+    if any(marker in text for marker in ("debug", "review", "testing", "workflow", "migration", "deployment")):
+        return "workflow"
+    return "specialist"
+
+
+def _integration_is_explicit(query: str, candidate: dict) -> bool:
+    prompt_tokens = _task_tokens(query)
+    if prompt_tokens & _INTEGRATION_REQUEST_TERMS:
+        return True
+    platforms = {
+        token
+        for platform in (candidate.get("platforms") or [])
+        for token in _task_tokens(str(platform))
+    }
+    if platforms & prompt_tokens:
+        return True
+    name_tokens = _task_tokens(str(candidate.get("name") or "")) - _GENERIC_INTEGRATION_NAME_TERMS
+    return bool(name_tokens & prompt_tokens)
+
+
+def candidate_matches_task_contract(query: str, candidate: dict) -> bool:
+    """Apply role-level gates before confidence scoring.
+
+    Policies are selected through a curated lane. Integrations require an
+    explicit service/tool/action signal so generic catalog entries such as
+    ``auto-integration`` cannot displace a real coding specialist.
+    """
+    role = skill_role(candidate)
+    if role == "policy":
+        return False
+    if role == "integration":
+        return _integration_is_explicit(query, candidate)
+    return True
+
+
+def _policy_candidate_allowed(candidate: dict, family: str, routing_filters: dict) -> bool:
+    if family != "coding" or skill_role(candidate) != "policy":
+        return False
+    name = str(candidate.get("name") or "").strip().casefold()
+    url = str(candidate.get("url") or candidate.get("source_url") or "").casefold()
+    if name not in CODING_POLICY_NAMES:
+        return False
+    if not CODING_POLICY_SOURCE_MARKERS or not any(marker in url for marker in CODING_POLICY_SOURCE_MARKERS):
+        return False
+    if not _passes_routing_filters(candidate, routing_filters):
+        return False
+    return (
+        (candidate.get("quality_status") or "active") == "active"
+        and int(candidate.get("quality_score") or 0) >= 70
+        and int(candidate.get("risk_score") or 0) == 0
+        and bool(candidate.get("content_hash"))
+    )
+
+
+async def find_default_policy_candidate(
+    client: httpx.AsyncClient,
+    task_analysis: dict,
+    routing_filters: dict,
+) -> dict | None:
+    if task_analysis.get("family") != "coding" or not CODING_POLICY_QUERY:
+        return None
+    candidates = await retrieve_skills(client, CODING_POLICY_QUERY, 8)
+    candidates = rerank_candidates(CODING_POLICY_QUERY, candidates)
+    return next(
+        (candidate for candidate in candidates if _policy_candidate_allowed(candidate, "coding", routing_filters)),
+        None,
+    )
+
+
 async def retrieve_skills(client: httpx.AsyncClient, query_text: str, limit: int = 10) -> list[dict]:
     """Hybrid FTS+vector retrieval against the local DB. The frozen Supabase
     corpus was fully migrated into local_skills.db (migrate_state.json:
@@ -447,6 +646,10 @@ class RouteRequest(BaseModel):
     max_inline_chars: int = DEFAULT_INLINE_CHARS
     max_capsule_chars: int = DEFAULT_CAPSULE_CHARS
     anonymous_id: str | None = None
+    task_family: str = ""
+    languages: list[str] = []
+    frameworks: list[str] = []
+    project_tags: list[str] = []
 
 
 class SemanticSearchRequest(BaseModel):
@@ -885,6 +1088,82 @@ def _library_content_by_hash(target_hash: str) -> str:
     return LibraryContent().get_by_hash(target_hash)
 
 
+def _public_plan_item(item: dict | None) -> dict | None:
+    """Remove serving-only fields before returning a composed plan item."""
+    if not item:
+        return None
+    return {key: value for key, value in item.items() if not key.startswith("_")}
+
+
+async def _build_verified_policy_item(
+    user_id: str,
+    candidate: dict | None,
+    task: str,
+    max_capsule_chars: int,
+) -> dict | None:
+    """Verify and bound a curated policy independently from the primary skill."""
+    if not candidate:
+        return None
+    public = _public_skill(candidate)
+    if not public:
+        return None
+    text = await asyncio.to_thread(LibraryContent().get, public.get("url") or "")
+    pin = await asyncio.to_thread(store.get_pin, user_id, str(public.get("id") or ""))
+    if pin and text and pin["content_hash"] != public.get("content_hash"):
+        pinned_text = await asyncio.to_thread(_library_content_by_hash, pin["content_hash"])
+        if pinned_text:
+            text = pinned_text
+            public["content_hash"] = pin["content_hash"]
+            public["pinned"] = True
+    if (
+        not text
+        or not has_valid_skill_frontmatter(text)
+        or not public.get("content_hash")
+        or content_hash(text) != public.get("content_hash")
+        or skill_capability_flags(text)
+    ):
+        return None
+    capsule_budget = max(200, min(POLICY_CAPSULE_CHARS, int(max_capsule_chars or POLICY_CAPSULE_CHARS)))
+    capsule = build_capsule(task, text, capsule_budget)
+    if not capsule:
+        return None
+    digest = content_digest(text)
+    public.update(
+        {
+            "role": "policy",
+            "activation": "task-family-default",
+            "routing_tier": "full",
+            "capsule": capsule,
+            "capsule_chars": len(capsule),
+            "estimated_tokens": estimate_guard_tokens(capsule),
+            "verification": {
+                "content_hash_verified": True,
+                "static_instruction_only": True,
+                "hash_kind": "canonical_normalized",
+                "content_digest": digest,
+                "source": "indexed-local-copy",
+                "publisher_verified": False,
+            },
+            "_content": text,
+            "_row": candidate,
+        }
+    )
+    return public
+
+
+def _policy_context_guard(policy_item: dict) -> dict:
+    return {
+        "policy": CONTEXT_GUARD_POLICY,
+        "delivery": "capsule",
+        "reason": "task_family_policy",
+        "capsule": policy_item["capsule"],
+        "capsule_chars": policy_item["capsule_chars"],
+        "estimated_tokens": policy_item["estimated_tokens"],
+        "content_hash": policy_item.get("content_hash"),
+        "content_digest": (policy_item.get("verification") or {}).get("content_digest"),
+    }
+
+
 @router.get("/content/{hash_value}")
 async def get_content(hash_value: str):
     text = await asyncio.to_thread(_library_content_by_hash, hash_value)
@@ -932,21 +1211,44 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
     await asyncio.to_thread(store.increment_route_usage, user["id"])
 
     limit = max(2, min(int(body.limit or 8), 20))
+    task_analysis = analyze_task(
+        query,
+        requested_family=body.task_family,
+        languages=body.languages,
+        frameworks=body.frameworks,
+        project_tags=body.project_tags,
+    )
+    routing_filters = await asyncio.to_thread(store.routing_filters_for_user, user["id"])
     retrieval_start = time.monotonic()
     async with httpx.AsyncClient() as client:
         results = await retrieve_skills(client, query, limit)
+        try:
+            policy_candidate = await find_default_policy_candidate(client, task_analysis, routing_filters)
+        except Exception:
+            # A missing curated policy must never take the primary route down.
+            policy_candidate = None
     retrieval_ms = int((time.monotonic() - retrieval_start) * 1000)
     rerank_start = time.monotonic()
     results = rerank_candidates(query, results)
-    routing_filters = await asyncio.to_thread(store.routing_filters_for_user, user["id"])
-    results = [r for r in results if _passes_routing_filters(r, routing_filters)]
-    tier = injection_tier(query, results)
+    results = [
+        result
+        for result in results
+        if _passes_routing_filters(result, routing_filters)
+        and candidate_matches_task_contract(query, result)
+    ]
+    primary_results = results
+    primary_tier = injection_tier(query, primary_results)
+    policy_item = await _build_verified_policy_item(
+        user["id"], policy_candidate, query, body.max_capsule_chars
+    )
+    tier = primary_tier
     rerank_ms = int((time.monotonic() - rerank_start) * 1000)
     skill_find_ms = int((time.monotonic() - retrieval_start) * 1000)
     warnings: list[str] = []
     content = None
     content_url = None
-    skill = _public_skill(results[0]) if results else None
+    skill = _public_skill(primary_results[0]) if primary_results else None
+    selected_role = skill_role(primary_results[0]) if primary_results else None
     content_ms = 0
     route_id = str(uuid.uuid4())
     context_guard = _empty_context_guard("no-route")
@@ -959,8 +1261,19 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
     private_match = store.list_routable_private_skills(user["id"]) if user else []
     private_match = _best_private_skill_match(query, private_match) if private_match else None
 
+    # A verified family policy is still useful when no specialist clears the
+    # full-injection bar. It becomes the compatibility top-level selection so
+    # older clients receive useful guidance instead of an unrelated hint.
+    if not private_match and tier != "full" and policy_item:
+        skill = _public_plan_item(policy_item)
+        selected_role = "policy"
+        tier = "full"
+        results = [policy_item["_row"]]
+
     if private_match:
+        policy_item = None
         skill = _public_skill(_private_skill_as_row(private_match))
+        selected_role = "private"
         private_content = private_match["content"]
         skill["content_hash"] = content_hash(private_content)
         tier = "hint"
@@ -972,12 +1285,14 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
     elif tier == "full" and skill:
         content_start = time.monotonic()
         library = LibraryContent()
-        text = library.get(skill.get("url") or "")
+        text = policy_item["_content"] if selected_role == "policy" and policy_item else library.get(skill.get("url") or "")
         # Version pinning: a pinned skill serves the pinned hash's content, so
         # an upstream update never changes what this account gets until they
         # unpin (or re-pin to roll forward). All verification below still runs
         # against the pinned text.
-        pin = await asyncio.to_thread(store.get_pin, user["id"], str(skill.get("id") or ""))
+        pin = None if selected_role == "policy" else await asyncio.to_thread(
+            store.get_pin, user["id"], str(skill.get("id") or "")
+        )
         if pin and text and pin["content_hash"] != skill.get("content_hash"):
             pinned_text = await asyncio.to_thread(_library_content_by_hash, pin["content_hash"])
             if pinned_text:
@@ -1022,16 +1337,19 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
                 "publisher_verified": False,
             }
             if CONTEXT_GUARD_ENABLED:
-                context_guard = build_context_guard(
-                    task=query,
-                    content=text,
-                    content_hash=chash,
-                    content_digest=digest,
-                    supports_isolation=bool(body.supports_isolation),
-                    max_inline_chars=(0 if body.guard_mode == "capsule_only" else body.max_inline_chars),
-                    max_capsule_chars=body.max_capsule_chars,
-                    force_capsule=body.guard_mode == "capsule_only",
-                )
+                if selected_role == "policy" and policy_item:
+                    context_guard = _policy_context_guard(policy_item)
+                else:
+                    context_guard = build_context_guard(
+                        task=query,
+                        content=text,
+                        content_hash=chash,
+                        content_digest=digest,
+                        supports_isolation=bool(body.supports_isolation),
+                        max_inline_chars=(0 if body.guard_mode == "capsule_only" else body.max_inline_chars),
+                        max_capsule_chars=body.max_capsule_chars,
+                        force_capsule=body.guard_mode == "capsule_only",
+                    )
             else:
                 context_guard = {
                     "policy": "disabled",
@@ -1056,6 +1374,50 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
                 tier = "hint"
                 warnings.append("Verified content could not be delivered within the context guard; downgraded to hint.")
 
+    if not private_match and tier != "full" and policy_item and selected_role != "policy":
+        skill = _public_plan_item(policy_item)
+        selected_role = "policy"
+        tier = "full"
+        results = [policy_item["_row"]]
+        content = None
+        content_url = None
+        context_guard = _policy_context_guard(policy_item)
+        warnings.append("The specialist did not clear delivery gates; serving the verified task-family policy only.")
+
+    if skill:
+        skill["role"] = selected_role or "specialist"
+        skill["activation"] = "task-family-default" if selected_role == "policy" else (
+            "private-hint" if selected_role == "private" else "primary"
+        )
+        skill["routing_tier"] = tier
+
+    policy_skills = [_public_plan_item(policy_item)] if policy_item else []
+    primary_plan = None
+    if selected_role not in {"policy", "private"} and tier == "full" and skill:
+        primary_plan = dict(skill)
+    elif selected_role == "private" and skill:
+        primary_plan = dict(skill)
+    selected_roles = ["policy"] if policy_skills else []
+    if primary_plan:
+        selected_roles.append(primary_plan.get("role") or "specialist")
+    skill_plan = {
+        "task_family": task_analysis["family"],
+        "policy_skills": policy_skills,
+        "primary_skill": primary_plan,
+        "supporting_skills": [],
+        "selected_roles": selected_roles,
+        "precedence": ["user-project-team", "policy", "primary", "supporting"],
+        "composition_reason": (
+            "Verified task-family policy plus the highest-confidence relevant specialist."
+            if policy_skills and primary_plan
+            else "Verified task-family policy; no specialist cleared all relevance and delivery gates."
+            if policy_skills
+            else "Highest-confidence relevant specialist; no verified task-family policy was available."
+            if primary_plan
+            else "No skill cleared the route gates."
+        ),
+    }
+
     if tier == "hint" and context_guard.get("delivery") == "none":
         context_guard = _empty_context_guard("confidence_or_safety_gate")
         context_guard["delivery"] = "hint"
@@ -1073,9 +1435,14 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
     candidate_tokens = _estimate_candidate_tokens(candidates)
     content_tokens = _estimate_tokens(content)
     guard_tokens = estimate_guard_tokens(context_guard.get("capsule"))
+    policy_tokens = sum(
+        int(policy.get("estimated_tokens") or 0)
+        for policy in policy_skills
+        if selected_role != "policy"
+    )
     injected_tokens = 0
     if tier == "full":
-        injected_tokens = hint_tokens + (content_tokens or guard_tokens)
+        injected_tokens = hint_tokens + (content_tokens or guard_tokens) + policy_tokens
     elif tier == "hint":
         injected_tokens = candidate_tokens
     response_preview = {
@@ -1085,6 +1452,8 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
         "content": content,
         "content_url": content_url,
         "context_guard": context_guard,
+        "task_analysis": task_analysis,
+        "skill_plan": skill_plan,
         "config_version": CONFIG_VERSION,
     }
     metrics = {
@@ -1098,6 +1467,8 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
         "hint_tokens": hint_tokens,
         "candidate_tokens": candidate_tokens,
         "content_tokens": content_tokens,
+        "policy_tokens": policy_tokens,
+        "skill_count": len(policy_skills) + (1 if primary_plan else 0),
         "injected_tokens": injected_tokens,
         "response_tokens": _estimate_tokens(response_preview),
         "latency_warn_ms": ROUTE_LATENCY_WARN_MS,
@@ -1153,6 +1524,8 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
         "content": content,
         "content_url": content_url,
         "context_guard": context_guard,
+        "task_analysis": task_analysis,
+        "skill_plan": skill_plan,
         "route_id": route_id,
         "score_debug": debug,
         "config_version": CONFIG_VERSION,

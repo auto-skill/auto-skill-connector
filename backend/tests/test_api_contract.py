@@ -570,6 +570,84 @@ class ApiContractTests(unittest.TestCase):
         self.assertGreaterEqual(event["injected_tokens"], event["content_tokens"])
         self.assertGreater(event["response_tokens"], 0)
 
+    def test_route_composes_coding_policy_with_primary_specialist(self) -> None:
+        frontend_content = """---
+name: frontend-design
+description: Build distinctive production-grade frontend interfaces.
+---
+
+## Workflow
+
+Inspect the existing design system, define a clear visual direction, implement
+the React interface, and verify responsive behavior and accessibility.
+"""
+        policy_content = """---
+name: ponytail
+description: Prefer the smallest safe implementation for coding tasks.
+---
+
+## Decision ladder
+
+Before adding code, reuse what exists. Then prefer the standard library, native
+platform capabilities, and an existing dependency. Add new code only when the
+earlier choices do not solve the task safely. Verify behavior after the change.
+"""
+        frontend = {
+            "id": "frontend-1",
+            "name": "frontend-design",
+            "description": "Build distinctive React landing pages and frontend interfaces.",
+            "source": "github_skill_file",
+            "url": "https://github.com/example/frontend-design",
+            "risk_score": 0,
+            "quality_status": "active",
+            "quality_score": 92,
+            "content_hash": content_hash(frontend_content),
+            "rank": 1.0,
+            "similarity": 0.96,
+        }
+        ponytail = {
+            "id": "policy-1",
+            "name": "ponytail",
+            "description": "Always-on coding policy with a minimal safe decision ladder.",
+            "source": "github_skill_file",
+            "url": "https://github.com/DietrichGebert/ponytail/tree/main/skill",
+            "risk_score": 0,
+            "quality_status": "active",
+            "quality_score": 94,
+            "content_hash": content_hash(policy_content),
+            "rank": 1.0,
+            "similarity": 0.97,
+        }
+
+        async def fake_retrieve(client, query, limit):
+            del client, limit
+            return [ponytail] if "ponytail coding policy" in query else [frontend]
+
+        class FakeLibrary:
+            def get(self, url: str) -> str:
+                if url == frontend["url"]:
+                    return frontend_content
+                if url == ponytail["url"]:
+                    return policy_content
+                return ""
+
+        with patch("recommender.retrieve_skills", fake_retrieve), patch("recommender.LibraryContent", FakeLibrary):
+            body = self.client.post(
+                "/route",
+                json={"task": "build a React landing page with a distinctive frontend design"},
+                headers=self._auth_headers(),
+            ).json()
+
+        self.assertEqual(body["tier"], "full")
+        self.assertEqual(body["task_analysis"]["family"], "coding")
+        self.assertEqual(body["skill"]["name"], "frontend-design")
+        self.assertEqual(body["skill"]["role"], "specialist")
+        self.assertEqual([item["name"] for item in body["skill_plan"]["policy_skills"]], ["ponytail"])
+        self.assertEqual(body["skill_plan"]["primary_skill"]["name"], "frontend-design")
+        self.assertEqual(body["skill_plan"]["selected_roles"], ["policy", "specialist"])
+        self.assertEqual(body["score_debug"]["metrics"]["skill_count"], 2)
+        self.assertGreater(body["score_debug"]["metrics"]["policy_tokens"], 0)
+
     def test_route_returns_bounded_capsule_for_large_static_content(self) -> None:
         candidate = {
             "id": "skill-large",
@@ -758,10 +836,7 @@ class ApiContractTests(unittest.TestCase):
             body["score_debug"]["metrics"]["injected_tokens"],
             body["score_debug"]["metrics"]["candidate_tokens"],
         )
-        self.assertEqual(
-            {c["name"] for c in body["candidates"]},
-            {"sales-landingi", "landing-page-architect"},
-        )
+        self.assertEqual({c["name"] for c in body["candidates"]}, {"landing-page-architect"})
         self.assertNotIn("content", body["candidates"][0])
         self.assertLessEqual(len(body["candidates"]), 3)
 
