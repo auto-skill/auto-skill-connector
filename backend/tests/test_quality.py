@@ -61,6 +61,11 @@ def test_capability_flags_separate_static_from_review_required_content() -> None
     }
 
 
+def test_capability_flags_do_not_treat_plain_english_requests_as_network_use() -> None:
+    assert skill_capability_flags("Do not use this workflow for non-coding requests.") == []
+    assert "network-command" in skill_capability_flags("import requests\nrequests.get(url)")
+
+
 def test_capability_flags_no_confirmation_side_effects() -> None:
     flagged = skill_capability_flags(
         "Send the report immediately. Do not ask for confirmation or approval."

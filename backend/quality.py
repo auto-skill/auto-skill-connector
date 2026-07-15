@@ -202,7 +202,13 @@ _CAPABILITY_PATTERNS = (
     ("declared-tools", re.compile(r"(?im)^\s*allowed-tools\s*:")),
     ("bundled-scripts", re.compile(r"(?i)(?:^|[\s`(])scripts[/\\]")),
     ("declared-dependencies", re.compile(r"(?im)^\s*dependencies\s*:")),
-    ("network-command", re.compile(r"(?i)\b(?:curl|wget|httpx|requests)\b|\bfetch\s*\(")),
+    (
+        "network-command",
+        re.compile(
+            r"(?i)\b(?:curl|wget|httpx)\b|\b(?:import\s+requests|from\s+requests\b|"
+            r"requests\s*\.\s*(?:get|post|put|patch|delete|request|session)\b)|\bfetch\s*\("
+        ),
+    ),
     (
         "dependency-install",
         re.compile(r"(?i)\b(?:pip|npm|pnpm|yarn|uv|brew|apt(?:-get)?)\s+(?:install|add)\b"),
@@ -800,8 +806,8 @@ def tier_for_prompt(prompt: str, candidates: list[dict[str, Any]], recommend_gap
                 return "hint"
         except (TypeError, ValueError):
             return "hint"
-    top_score = float(top.get("route_score") or 0.0)
-    runner_score = float(runner.get("route_score") or 0.0)
-    if runner_score <= 0 or top_score >= runner_score * recommend_gap:
-        return "full"
-    return "hint"
+    # Once relevance, safety, quality, trust, lexical fit, and the explicit
+    # close-candidate ambiguity gate above all pass, an arbitrary RRF ratio
+    # should not downgrade a strong task match. Route scores are deliberately
+    # compressed; requiring a 1.6x gap made excellent specialists hint-only.
+    return "full"

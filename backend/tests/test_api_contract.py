@@ -530,6 +530,7 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertEqual(body["tier"], "full")
+        self.assertEqual(body["task_analysis"]["family"], "data")
         self.assertEqual(body["skill"]["name"], "spreadsheet-reporter")
         self.assertTrue(body["skill"]["verification"]["content_hash_verified"])
         self.assertTrue(body["skill"]["verification"]["static_instruction_only"])

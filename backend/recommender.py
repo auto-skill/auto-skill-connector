@@ -367,12 +367,12 @@ def analyze_task(
     elif tokens & {"research", "competitor", "sources", "citations", "browse", "web"}:
         family = "research"
         signals.append("research-intent")
-    elif tokens & {"document", "docx", "pdf", "slides", "presentation", "report"}:
-        family = "documents"
-        signals.append("document-artifact")
     elif tokens & {"spreadsheet", "excel", "csv", "dataset", "analytics", "dashboard", "kpi"}:
         family = "data"
         signals.append("data-artifact")
+    elif tokens & {"document", "docx", "pdf", "slides", "presentation", "report"}:
+        family = "documents"
+        signals.append("document-artifact")
     else:
         family = "general"
 
