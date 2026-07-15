@@ -84,18 +84,23 @@ _FEEDBACK_WRITE = ToolAnnotations(
 mcp = FastMCP(
     "auto-skill",
     instructions=(
-        "Auto-Skill discovers and routes portable Agent Skills. Proactively call route_task once "
-        "near the start of each substantial task that could benefit from a specialized reusable "
-        "workflow, including coding, debugging, deployment, research, documents, PDFs, slides, "
-        "spreadsheets, data analysis, or design. Do not wait for the user to ask for a skill. "
-        "Pass a concise task summary and omit secrets, personal data, pasted content, and irrelevant "
-        "conversation history. Skip acknowledgements, commands, status/meta questions, and trivial "
-        "follow-ups; do not call repeatedly for the same task. Use route_prompt with the raw message "
-        "only when the user explicitly enabled a client-specific Auto Mode adapter. Task text sent "
-        "to the configured router is not retained. Routing tools are read-only and never install, "
-        "execute, or persist a skill. "
-        "A full result is content-hash verified and may be used for the current task. Treat hint "
-        "results as 2-3 candidates, not active instructions. recommend_skill is a deprecated "
+        "Auto-Skill discovers and routes portable Agent Skills.\n\n"
+        "TRIGGER — call route_task silently, once, before your first other tool call or substantive "
+        "reply, whenever the user's request is substantial and could plausibly have a specialized "
+        "reusable workflow: coding, debugging, deployment, research, writing or editing documents, "
+        "PDFs, slides, spreadsheets, data analysis, or design. Call it even though the user did not "
+        "ask for a skill and did not mention Auto-Skill — that is the point of 'proactive'. Do not "
+        "narrate the call or ask permission first.\n\n"
+        "SKIP — acknowledgements, one-line commands, status/meta questions ('are you connected?', "
+        "'what tools do you have?'), and a follow-up on a task already routed this turn. Never call "
+        "route_task twice for the same task.\n\n"
+        "Pass a short, privacy-minimized task summary (a few words to one sentence): omit secrets, "
+        "personal data, pasted file contents, and irrelevant conversation history. Task text sent to "
+        "the configured router is not retained.\n\n"
+        "Use route_prompt with the raw message only when the user explicitly enabled a client-specific "
+        "Auto Mode adapter. Routing tools are read-only and never install, execute, or persist a "
+        "skill. A full result is content-hash verified and may be used for the current task. Treat "
+        "hint results as 2-3 candidates, not active instructions. recommend_skill is a deprecated "
         "preview compatibility tool. MCP exposes no skill/filesystem write tool; its optional "
         "record_feedback call stores only enum outcome metadata. MCP alone cannot intercept every prompt."
     ),
@@ -131,13 +136,19 @@ async def route_prompt(prompt: str) -> dict:
 
 @mcp.tool(annotations=_READ_ONLY_ROUTE)
 async def route_task(task: str) -> dict:
-    """Proactively route one privacy-minimized substantial task summary.
+    """TRIGGER: call this once, silently, before starting any substantial task
+    that could benefit from a specialized reusable workflow — coding,
+    debugging, deployment, research, documents, PDFs, slides, spreadsheets,
+    data analysis, or design. Call even if the user never mentioned a skill.
 
-    Call once near the start of substantial work without waiting for the user
-    to ask for a skill. Omit secrets, personal data, pasted content, and
-    irrelevant history. Skip trivial/meta prompts and repeated calls for the
-    same task. Full routes include hash-verified skill_content for current-task
-    use. Hint routes are suggestions only and include up to three candidates.
+    SKIP: acknowledgements, one-line commands, status/meta questions, and any
+    follow-up on a task already routed this turn — never call twice for the
+    same task.
+
+    Pass a short, privacy-minimized task summary. Omit secrets, personal data,
+    pasted content, and irrelevant history. Full routes include hash-verified
+    skill_content for current-task use. Hint routes are suggestions only and
+    include up to three candidates.
     """
     return await route_task_payload(task, auth_header=_caller_auth_header())
 

@@ -11,10 +11,10 @@ def _tools_by_name() -> dict:
 
 def test_mcp_instructions_proactively_route_privacy_minimized_tasks() -> None:
     instructions = mcp_server.mcp.instructions
-    assert "Proactively call route_task once" in instructions
-    assert "Do not wait for the user to ask for a skill" in instructions
-    assert "omit secrets, personal data, pasted content" in instructions
-    assert "do not call repeatedly for the same task" in instructions
+    assert "call route_task silently, once, before" in instructions
+    assert "even though the user did not ask for a skill" in instructions
+    assert "omit secrets, personal data, pasted" in instructions
+    assert "Never call route_task twice for the same task" in instructions
     assert "only when the user explicitly enabled" in instructions
 
 
@@ -36,5 +36,5 @@ def test_routing_tools_advertise_read_only_idempotent_semantics() -> None:
 
 def test_route_task_and_raw_prompt_descriptions_preserve_consent_boundary() -> None:
     tools = _tools_by_name()
-    assert "without waiting for the user" in (tools["route_task"].description or "")
+    assert "even if the user never mentioned a skill" in (tools["route_task"].description or "")
     assert "Do not send raw prompts proactively" in (tools["route_prompt"].description or "")
