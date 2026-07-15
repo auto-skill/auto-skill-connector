@@ -225,7 +225,8 @@ becoming searchable.
 - `mcp`: authenticated streamable-HTTP connector with no skill/filesystem
   write tool, routed to the API
   over the compose network.
-- `worker`: scraper and embedding loop, writing through the local REST surface.
+- `worker`: an off-by-default `collector` profile for a single trusted
+  discovery/embedding pass; it is not a production service.
 - `cloudflared`: tunnel to the API and MCP connector.
 - `litestream`: SQLite WAL replication to Cloudflare R2.
 - `library-backup`: daily R2 tarballs for `skills_library/` until all content is

@@ -28,7 +28,7 @@ def _parse_time(value: str | None) -> datetime | None:
         return None
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Clean stale scrape_runs rows.")
     parser.add_argument("--apply", action="store_true", help="write changes; otherwise print a dry run")
     parser.add_argument(
@@ -43,11 +43,16 @@ def parse_args() -> argparse.Namespace:
         default=True,
         help="mark all but the newest running row stale; default: true",
     )
-    return parser.parse_args()
+    parser.add_argument(
+        "--retire-all",
+        action="store_true",
+        help="mark every running row stale after all scraper processes have been stopped",
+    )
+    return parser.parse_args(argv)
 
 
-def main() -> int:
-    args = parse_args()
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
     init_db()
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(seconds=args.max_age_seconds)
@@ -62,6 +67,8 @@ def main() -> int:
         for index, row in enumerate(rows):
             started = _parse_time(row["started_at"])
             reasons: list[str] = []
+            if args.retire_all:
+                reasons.append("production scraping retired")
             if started and started < cutoff:
                 reasons.append(f"older than {args.max_age_seconds}s")
             if args.keep_newest_running and index > 0:

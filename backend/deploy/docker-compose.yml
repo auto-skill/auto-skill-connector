@@ -35,6 +35,10 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
     command: uvicorn scraper:app --host 0.0.0.0 --port 8000
+    init: true
+    mem_limit: 1536m
+    cpus: "1.50"
+    pids_limit: 256
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
       interval: 30s
@@ -53,6 +57,9 @@ services:
       LOCAL_DB_PATH: /data/local_skills.db
       AUTO_START_SCRAPER: "0"
       AUTO_START_EMBEDDER: "0"
+      # The founder UI does not serve route requests; do not duplicate the
+      # API's ONNX model plus vector/lexical caches in this process.
+      AUTOSKILL_WARM_SEARCH_RUNTIME: "0"
       ENABLE_OLLAMA_CHAT: "0"
       AUTOSKILL_FREE_ROUTES_PER_MONTH: ${AUTOSKILL_FREE_ROUTES_PER_MONTH:-250}
       ADMIN_ACCESS_MODE: ssh
@@ -67,6 +74,10 @@ services:
     networks:
       - admin-isolation
     command: uvicorn scraper:app --host 0.0.0.0 --port 8000
+    init: true
+    mem_limit: 768m
+    cpus: "0.50"
+    pids_limit: 192
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
       interval: 30s
@@ -96,6 +107,10 @@ services:
     ports:
       - "127.0.0.1:8765:8765"
     command: auto-skill-mcp
+    init: true
+    mem_limit: 256m
+    cpus: "0.50"
+    pids_limit: 128
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/healthz', timeout=3)"]
       interval: 30s
@@ -106,7 +121,10 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
-    restart: always
+    # Explicit local/off-host collector only. It is never part of the default
+    # production stack and cannot enter an automatic OOM restart loop.
+    profiles: ["collector"]
+    restart: "no"
     depends_on:
       api:
         condition: service_healthy
@@ -116,14 +134,22 @@ services:
       AUTO_START_EMBEDDER: "0"
       SCRAPE_INTERVAL_SECONDS: ${SCRAPE_INTERVAL_SECONDS:-3600}
       STALE_SCRAPE_RUN_SECONDS: ${STALE_SCRAPE_RUN_SECONDS:-7200}
+      WORKER_ONCE: "1"
+      EMBED_PAGE_SIZE: ${EMBED_PAGE_SIZE:-64}
+      EMBED_BATCH_SIZE: ${EMBED_BATCH_SIZE:-8}
+      EMBED_UPSERT_CHUNK: ${EMBED_UPSERT_CHUNK:-50}
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       SEARXNG_URL: ${SEARXNG_URL:-}
     volumes:
       - ../skills_library:/app/skills_library
     command: python worker.py
+    init: true
+    mem_limit: ${COLLECTOR_MEMORY_LIMIT:-1024m}
+    cpus: "${COLLECTOR_CPU_LIMIT:-0.75}"
+    pids_limit: 256
 
   cloudflared:
-    image: cloudflare/cloudflared:latest
+    image: cloudflare/cloudflared@sha256:188bb03589a32affed3cf4d0590565ffe67b78866e6b5582574afab2b705bafe
     restart: always
     depends_on:
       api:
@@ -131,9 +157,12 @@ services:
       mcp:
         condition: service_healthy
     command: tunnel --no-autoupdate run --token ${CLOUDFLARED_TOKEN}
+    mem_limit: 256m
+    cpus: "0.25"
+    pids_limit: 128
 
   litestream:
-    image: litestream/litestream:latest
+    image: litestream/litestream@sha256:83f04e91edc7980095d03de58f1cca3697e1138a60e466eb11e4dcd4d5effbfa
     restart: always
     user: "0:0"
     depends_on:
@@ -148,6 +177,9 @@ services:
       - ../data:/data
       - ./litestream.yml:/etc/litestream.yml:ro
     command: replicate -config /etc/litestream.yml
+    mem_limit: 256m
+    cpus: "0.50"
+    pids_limit: 128
 
   library-backup:
     image: alpine:3.20
@@ -170,6 +202,9 @@ services:
       - ../data/backups:/backups
       - ./backup-library.sh:/scripts/backup-library.sh:ro
       - ./purge-route-db-backups.sh:/scripts/purge-route-db-backups.sh:ro
+    mem_limit: 512m
+    cpus: "0.25"
+    pids_limit: 128
 
   db-inspector:
     image: datasetteproject/datasette:0.65.2

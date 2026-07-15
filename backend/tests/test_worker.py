@@ -14,8 +14,9 @@ class WorkerTests(unittest.IsolatedAsyncioTestCase):
             patch.object(worker, "run_scrape", new=AsyncMock(return_value=False)),
             patch.object(worker, "embed_missing_skills", new=AsyncMock()) as embed_missing,
         ):
-            await worker.run_once()
+            ok = await worker.run_once()
 
+        self.assertFalse(ok)
         embed_missing.assert_not_awaited()
 
     async def test_worker_embeds_after_successful_scrape(self) -> None:
@@ -24,8 +25,9 @@ class WorkerTests(unittest.IsolatedAsyncioTestCase):
             patch.object(worker, "run_scrape", new=AsyncMock(return_value=True)),
             patch.object(worker, "embed_missing_skills", new=AsyncMock(return_value=3)) as embed_missing,
         ):
-            await worker.run_once()
+            ok = await worker.run_once()
 
+        self.assertTrue(ok)
         embed_missing.assert_awaited_once()
 
 

@@ -314,7 +314,7 @@ print(json.dumps(summary, sort_keys=True))
     if ([int]$summary.total -lt 1 -or [int]$summary.active -lt 1 -or [int]$summary.index_entries -lt 1 -or [int]$summary.markdown_files -lt 1) {
         Fail "seed runtime" "$detail; runtime DB/library is empty or not mounted. Seed or restore with python deploy\seed_runtime.py"
     } elseif ([int]$summary.embedded -lt 1) {
-        Fail "seed runtime" "$detail; DB has skills but no embeddings. Run python reindex.py or start the worker"
+        Fail "seed runtime" "$detail; DB has skills but no embeddings. Reindex a trusted offline copy and import a reviewed skill delta"
     } else {
         Pass "seed runtime" $detail
     }

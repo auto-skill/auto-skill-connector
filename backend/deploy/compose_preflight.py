@@ -310,9 +310,12 @@ def check_files(
         repo_root / "deploy" / "backup-library.sh",
         repo_root / "deploy" / "seed_runtime.py",
         repo_root / "deploy" / "export-seed-packet.ps1",
+        repo_root / "deploy" / "collect-skills.ps1",
+        repo_root / "deploy" / "apply-skill-delta.sh",
         repo_root / "requirements.txt",
         repo_root / "scraper.py",
         repo_root / "reconcile_billing.py",
+        repo_root / "skill_delta.py",
         repo_root / "worker.py",
     ]
     for path in required_files:
@@ -367,8 +370,21 @@ def check_compose_runtime_contract(compose_file: Path, checks: list[Check]) -> N
     require("compose api no scraper loop", "api", ("AUTO_START_SCRAPER: \"0\"", "AUTO_START_EMBEDDER: \"0\""))
     require("compose mcp service", "mcp", ("command: auto-skill-mcp", "MCP_TRANSPORT: streamable-http", "AUTOSKILL_URL: http://api:8000", "127.0.0.1:8765:8765"))
     require("compose mcp public install disabled", "mcp", ("AUTO_SKILL_ENABLE_PUBLIC_INSTALL: \"0\"",))
-    require("compose worker service", "worker", ("command: python worker.py", "LOCAL_DB_URL: http://api:8000"))
+    require(
+        "compose collector is one-shot and off by default",
+        "worker",
+        (
+            "command: python worker.py", "LOCAL_DB_URL: http://api:8000",
+            'profiles: ["collector"]', 'restart: "no"', 'WORKER_ONCE: "1"',
+            "EMBED_PAGE_SIZE:", "EMBED_BATCH_SIZE:", "mem_limit:", "cpus:",
+        ),
+    )
     require("compose worker no embedded app loops", "worker", ("AUTO_START_SCRAPER: \"0\"", "AUTO_START_EMBEDDER: \"0\""))
+    require(
+        "compose production resource guards",
+        None,
+        ("mem_limit: 1536m", "pids_limit: 256", "cloudflare/cloudflared@sha256:", "litestream/litestream@sha256:"),
+    )
     require("compose tunnel and backups", None, ("cloudflared:", "litestream:", "library-backup:"))
     require("compose public admin disabled", "api", ("ADMIN_ACCESS_MODE: disabled",))
     require(
@@ -376,6 +392,7 @@ def check_compose_runtime_contract(compose_file: Path, checks: list[Check]) -> N
         "admin-local",
         (
             "ADMIN_ACCESS_MODE: ssh", "ADMIN_HOST:", "ADMIN_EMAILS:",
+            'AUTOSKILL_WARM_SEARCH_RUNTIME: "0"',
             "127.0.0.1:8002:8000", "command: uvicorn scraper:app",
             "networks:", "admin-isolation", "../skills_library:/app/skills_library:ro",
         ),

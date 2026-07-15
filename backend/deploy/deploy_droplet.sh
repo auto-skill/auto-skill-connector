@@ -80,32 +80,32 @@ fi
 # failed smoke check can restore it. `|| true` covers the very first deploy,
 # when no :latest image exists yet to tag.
 echo "==> Tagging current images as :previous for rollback"
-"${SSH[@]}" "for img in deploy-api deploy-admin-local deploy-mcp deploy-worker; do docker tag \$img:latest \$img:previous 2>/dev/null || true; done"
+"${SSH[@]}" "for img in deploy-api deploy-admin-local deploy-mcp; do docker tag \$img:latest \$img:previous 2>/dev/null || true; done"
 
 PRIVACY_SCRUBBED=0
 PRIVACY_MARKER="$REMOTE_DIR/backend/data/.route-privacy-scrub-v1.complete"
 rollback() {
   if [ "$PRIVACY_SCRUBBED" -eq 1 ] || "${SSH[@]}" "test -f '$PRIVACY_MARKER'"; then
     echo "==> Privacy scrub is complete; refusing to restore pre-privacy images" >&2
-    "${SSH[@]}" "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml up -d --no-build api admin-local mcp worker litestream" || true
+    "${SSH[@]}" "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml up -d --no-build api admin-local mcp litestream" || true
     return
   fi
   echo "==> Rolling back to the previous images" >&2
-  "${SSH[@]}" "cd ${REMOTE_DIR} && for img in deploy-api deploy-admin-local deploy-mcp deploy-worker; do docker tag \$img:previous \$img:latest 2>/dev/null || true; done && docker compose -f backend/deploy/docker-compose.yml rm -sf api admin-local mcp worker && docker compose -f backend/deploy/docker-compose.yml up -d --no-build api admin-local mcp worker"
+  "${SSH[@]}" "cd ${REMOTE_DIR} && for img in deploy-api deploy-admin-local deploy-mcp; do docker tag \$img:previous \$img:latest 2>/dev/null || true; done && docker compose -f backend/deploy/docker-compose.yml rm -sf api admin-local mcp && docker compose -f backend/deploy/docker-compose.yml up -d --no-build api admin-local mcp"
 }
 
 echo "==> Building replacement images before touching live services"
-if ! "${SSH[@]}" "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml build api admin-local mcp worker"; then
+if ! "${SSH[@]}" "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml build api admin-local mcp"; then
   echo "FAILED: image build failed" >&2
   rollback
   exit 1
 fi
 
-# A worker can be cancelled mid-scrape by Docker recreation. Remove it first,
-# mark its single SQLite lease stale through the still-running local API, then
-# start a fresh worker only after the replacement API has passed readiness.
-echo "==> Draining worker scrape lease"
-if ! "${SSH[@]}" "cd ${REMOTE_DIR} && removed=0; for attempt in \$(seq 1 15); do docker compose -f backend/deploy/docker-compose.yml rm -sf worker >/dev/null 2>&1 || true; if test -z \"\$(docker compose -f backend/deploy/docker-compose.yml ps -q worker)\"; then removed=1; break; fi; sleep 2; done; test \"\$removed\" -eq 1 && curl -fsS -X PATCH 'http://127.0.0.1:8000/rest/v1/scrape_runs?status=eq.running' -H 'Content-Type: application/json' --data '{\"status\":\"stale\",\"error\":\"Marked stale during deploy before worker restart.\"}' -o /dev/null"; then
+# Continuous discovery no longer belongs on the production origin. Remove any
+# legacy worker and mark its SQLite lease stale before rebuilding the serving
+# stack. Collection is an explicit one-shot profile on a trusted off-host box.
+echo "==> Retiring legacy production worker and scrape lease"
+if ! "${SSH[@]}" "cd ${REMOTE_DIR} && removed=0; for attempt in \$(seq 1 15); do docker compose -f backend/deploy/docker-compose.yml rm -sf worker >/dev/null 2>&1 || true; if test -z \"\$(docker compose -f backend/deploy/docker-compose.yml ps -q worker)\"; then removed=1; break; fi; sleep 2; done; test \"\$removed\" -eq 1 && docker compose -f backend/deploy/docker-compose.yml run --rm --no-deps api python cleanup_scrape_runs.py --apply --retire-all"; then
   echo "FAILED: could not drain the worker lease" >&2
   rollback
   exit 1
@@ -130,7 +130,7 @@ if ! "${SSH[@]}" "test -f '${PRIVACY_MARKER}'"; then
   fi
   PRIVACY_SCRUBBED=1
   echo "==> Removing pre-scrub Litestream local tracking state and rollback tags"
-  if ! "${SSH[@]}" "rm -rf '${REMOTE_DIR}/backend/data/local_skills.db-litestream' '${REMOTE_DIR}/backend/data/.local_skills.db-litestream' && for img in deploy-api deploy-admin-local deploy-mcp deploy-worker; do docker image rm \$img:previous 2>/dev/null || true; done"; then
+  if ! "${SSH[@]}" "rm -rf '${REMOTE_DIR}/backend/data/local_skills.db-litestream' '${REMOTE_DIR}/backend/data/.local_skills.db-litestream' && for img in deploy-api deploy-admin-local deploy-mcp; do docker image rm \$img:previous 2>/dev/null || true; done"; then
     echo "FAILED: could not clear pre-scrub Litestream/rollback state" >&2
     rollback
     exit 1
@@ -206,13 +206,6 @@ if ! "${SSH[@]}" "cd ${REMOTE_DIR} && started=0; for attempt in \$(seq 1 8); do 
   exit 1
 fi
 
-echo "==> Starting worker after API/MCP readiness"
-if ! "${SSH[@]}" "cd ${REMOTE_DIR} && started=0; for attempt in \$(seq 1 8); do if docker compose -f backend/deploy/docker-compose.yml up -d --no-build worker; then started=1; break; fi; sleep 2; done; test \"\$started\" -eq 1"; then
-  echo "FAILED: worker recreate failed" >&2
-  rollback
-  exit 1
-fi
-
 if [ "$PRIVACY_SCRUBBED" -eq 1 ]; then
   echo "==> Starting a fresh sanitized Litestream generation"
   "${SSH[@]}" "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml up -d --force-recreate litestream"
@@ -242,6 +235,38 @@ fi
 if [ "$LIBRARY_BACKUP_HASH_BEFORE" != "$LIBRARY_BACKUP_HASH_AFTER" ]; then
   echo "==> backup-library.sh changed -- restarting the delayed backup sidecar"
   "${SSH[@]}" "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml up -d --force-recreate library-backup"
+fi
+
+# `docker compose up` is idempotent when service configuration is unchanged.
+# Reconcile these support services on every deploy so digest pins and resource
+# limits in docker-compose.yml actually reach the host, without forcing the
+# expensive library backup container to restart during ordinary code deploys.
+echo "==> Reconciling pinned tunnel and backup services"
+if ! "${SSH[@]}" "cd ${REMOTE_DIR} && docker compose -f backend/deploy/docker-compose.yml up -d --no-build cloudflared litestream library-backup"; then
+  echo "FAILED: tunnel/backup service reconciliation failed" >&2
+  rollback
+  exit 1
+fi
+
+# A freshly recreated connector can be locally running before Cloudflare has
+# propagated its new connections. HTTP 530 during that short registration
+# window is expected; wait here so the real smoke checks still fail on a
+# sustained outage rather than racing tunnel startup.
+echo "==> Waiting for public tunnel registration"
+tunnel_ready=0
+for attempt in $(seq 1 40); do
+  status=$(curl -s -o /dev/null -w "%{http_code}" \
+    "https://skills.autoskill.dev/healthz" --max-time 15)
+  if [ "$status" = "200" ]; then
+    tunnel_ready=1
+    break
+  fi
+  sleep 3
+done
+if [ "$tunnel_ready" -ne 1 ]; then
+  echo "FAILED: public tunnel did not register within 120 seconds" >&2
+  rollback
+  exit 1
 fi
 
 echo "==> Smoke-checking the public API"

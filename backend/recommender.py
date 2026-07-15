@@ -68,6 +68,7 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
 ENABLE_OLLAMA_CHAT = os.getenv("ENABLE_OLLAMA_CHAT", "").lower() in {"1", "true", "yes"}
 AUTO_START_EMBEDDER = os.getenv("AUTO_START_EMBEDDER", "1").lower() not in {"0", "false", "no"}
 CONTEXT_GUARD_ENABLED = os.getenv("AUTOSKILL_CONTEXT_GUARD", "1").lower() not in {"0", "false", "no"}
+WARM_SEARCH_RUNTIME = os.getenv("AUTOSKILL_WARM_SEARCH_RUNTIME", "1").lower() not in {"0", "false", "no"}
 
 # RRF scores cluster near 1/(rrf_k + ix), so near-ties sit ~1.0x apart; a top hit
 # that both retrievers agree on lands well above 1.6x the runner-up.
@@ -81,11 +82,15 @@ ROUTE_RESPONSE_TOKEN_WARN = int(os.getenv("ROUTE_RESPONSE_TOKEN_WARN", "3500"))
 UPGRADE_URL = os.getenv("BACKEND_BASE_URL", "https://skills.autoskill.dev").rstrip("/") + "/account"
 CONTENT_HASH_RE = re.compile(r"^[a-f0-9]{64}$")
 EMBED_INTERVAL_SECONDS = int(os.getenv("EMBED_INTERVAL_SECONDS", "300"))
-EMBED_PAGE_SIZE = 500
-EMBED_BATCH = 128
+# ONNX memory grows sharply with batch size at the 512-token window.  A batch
+# of 128 exhausted the 4 GiB production droplet and put the worker into an OOM
+# restart loop.  Collection is now off-host and one-shot, but keep conservative
+# bounded defaults so an accidental or low-memory collector run fails safely.
+EMBED_PAGE_SIZE = min(500, max(1, int(os.getenv("EMBED_PAGE_SIZE", "64"))))
+EMBED_BATCH = min(32, max(1, int(os.getenv("EMBED_BATCH_SIZE", "8"))))
 # Each upserted row triggers an HNSW index update, so keep statements small
 # enough to stay well under any statement_timeout.
-EMBED_UPSERT_CHUNK = 50
+EMBED_UPSERT_CHUNK = min(100, max(1, int(os.getenv("EMBED_UPSERT_CHUNK", "50"))))
 
 router = APIRouter()
 
@@ -177,10 +182,11 @@ async def _embed_backlog_loop():
 async def _start_embed_loop():
     if AUTO_START_EMBEDDER:
         asyncio.create_task(_embed_backlog_loop())
-    asyncio.create_task(_warm_embedding_model())
-    if _uses_local_store():
-        asyncio.create_task(_warm_local_vector_index())
-        asyncio.create_task(_warm_local_lexical_index())
+    if WARM_SEARCH_RUNTIME:
+        asyncio.create_task(_warm_embedding_model())
+        if _uses_local_store():
+            asyncio.create_task(_warm_local_vector_index())
+            asyncio.create_task(_warm_local_lexical_index())
 
 
 async def _warm_local_vector_index() -> None:

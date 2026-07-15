@@ -31,11 +31,13 @@ python scrub_route_privacy.py --db-path data\local_skills.db --apply --timeout-s
    New backup manifests include SHA-256 hashes; verify the backup before
    relying on it:
    `python deploy\verify_backup.py data\backups\<timestamp>`.
-2. Run `python backfill_quality.py`.
+2. Run `python backfill_quality.py` on a stopped copy or trusted collector,
+   never as an unbounded production background task.
 3. Run `python -m unittest discover`.
 4. Start the API.
-5. Run `python reindex.py` to refresh active embeddings. This writes through
-   the localhost API at `127.0.0.1:8000`, so the API must be running.
+5. Confirm the production database already has active embeddings. New
+   discovery and embedding now happen through the off-host collector workflow
+   below, not on the serving droplet.
 6. Verify:
    - `GET /healthz` returns `{"ok": true}`.
    - `GET https://mcp.yourdomain.com/healthz` returns `{"ok": true}` after
@@ -210,8 +212,9 @@ the host intentionally pins connector code during an incident, pass
 If `launch_status.py` reports `[NOT_READY]` with an empty skill DB or route
 probes returning no candidates, the public origin is reachable but the runtime
 state is missing. Seed or restore `local_skills.db` and `skills_library/`, run
-`python backfill_quality.py`, start the worker or run `python reindex.py`, then
-rerun `python launch_check.py`.
+`python backfill_quality.py` and `python reindex.py` on a trusted offline copy,
+then seed a verified recovery artifact or apply a reviewed skill delta before
+rerunning `python launch_check.py`.
 
 If the same host alternates between public `502 Bad Gateway` and empty
 `/readyz` responses, treat it as one incident: the API origin is unstable and
@@ -335,8 +338,9 @@ stack runs both public services:
 
 - `api` on loopback `127.0.0.1:8000`, exposed only through Cloudflare.
 - `mcp` on loopback `127.0.0.1:8765`, exposed only through Cloudflare.
-- `worker`, `litestream`, and `library-backup` for scraper/reindex and R2
-  backup continuity.
+- `litestream` and `library-backup` for R2 recovery continuity.
+- An off-by-default `worker` profile used only for one-shot collection on a
+  trusted non-production computer.
 
 ```powershell
 Copy-Item deploy\.env.example deploy\.env
@@ -477,18 +481,19 @@ Seed a VPS by copying the current DB and library into those paths before the
 first `docker compose up`.
 
 After deploying the quality-gate image to a legacy corpus, run the one-time
-backfill during a short maintenance window. It quarantines non-SKILL.md content
-and clears only vectors that no longer match eligible content. The worker
-rebuilds those vectors after restart:
+backfill against a restored copy on a trusted collector. It quarantines
+non-SKILL.md content and clears only vectors that no longer match eligible
+content. Finish the embeddings there and bring the result back only through a
+validated skill-delta package. Do not restart the legacy production worker.
 
 ```bash
 cd /opt/auto-skill-connector
 docker compose -f backend/deploy/docker-compose.yml --profile db-inspector stop db-inspector
-docker compose -f backend/deploy/docker-compose.yml stop worker mcp admin-local api litestream
+docker compose -f backend/deploy/docker-compose.yml stop mcp admin-local api litestream
 docker compose -f backend/deploy/docker-compose.yml run --rm --no-deps api python backfill_quality.py
 docker compose -f backend/deploy/docker-compose.yml up -d api admin-local mcp
 curl -fsS http://127.0.0.1:8000/readyz
-docker compose -f backend/deploy/docker-compose.yml up -d litestream worker
+docker compose -f backend/deploy/docker-compose.yml up -d litestream
 ```
 
 Do not run `VACUUM` as part of a normal deploy. Schedule it only after a
@@ -527,10 +532,10 @@ current laptop tunnel is production hosting:
    `1033`/HTTP `530` from `launch_check.py` means the public alpha is down.
 2. Launch target: one cheap VPS or small VM running `deploy/docker-compose.yml`.
    Keep SQLite on the host disk, replicate it with Litestream to R2, back up
-   `skills_library/` to R2, and run exactly one `worker` scraper process.
+   `skills_library/` to R2, and keep scraping/embedding off the serving host.
 3. Managed-host fallback: if a VPS is too much operational work, use a service
-   with a persistent disk and a background worker. Keep the same SQLite/R2
-   model and the same `launch_check.py` gate.
+   with a persistent disk. Keep the same SQLite/R2 model and the same
+   `launch_check.py` gate; do not add an always-on discovery worker.
 4. Hosted DB migration: move to Turso/libSQL, Postgres/pgvector, or another
    online vector store only after metrics prove a reason. Valid reasons are
    repeated host reliability failures after the VPS move, SQLite write
@@ -551,7 +556,9 @@ For alpha, keep runtime state boring:
 - Litestream replicates SQLite WAL/backups to Cloudflare R2.
 - `skills_library/` stays as recoverable SKILL.md files, backed up as tarballs
   and optionally exported as deduped compressed content blobs.
-- Only one supervised scraper/worker should write at a time.
+- Production has no scraper worker. A trusted computer runs one bounded
+  collector job when coverage evidence justifies it, then imports reviewed
+  skill-only deltas over SSH.
 
 Do not move the live route path to Turso/libSQL, Postgres, or a hosted vector
 database just to look production-grade. Revisit that when one of these becomes
@@ -663,31 +670,119 @@ Use `/healthz` for container health checks and `/readyz` for deployment
 promotion checks. Treat `scraper.running_stale > 0` or `running_recent > 1` as
 an alpha launch blocker even if search can still serve from the existing DB.
 
-## Scraper Supervision
+## Uptime And Resource Safeguards
 
-The compose setup runs scraping in the `worker` service only. Keep
-`AUTO_START_SCRAPER=0` on the public API so accidental API restarts do not
-start extra scrapes.
+The production stack is intentionally serving-only. `api`, `admin-local`,
+`mcp`, `cloudflared`, Litestream, and the library backup have CPU/memory/PID
+ceilings; the off-host collector has a separate 1 GiB/0.75 CPU ceiling. The
+Cloudflare and Litestream images are digest-pinned so a routine restart cannot
+silently pull a different binary. Docker and every production service retain
+restart policies, while the collector explicitly does not.
 
-If a scrape run is marked `error`, the worker skips the embedding drain for
-that cycle and waits for the next interval. Fix the scrape failure first
-instead of treating missing embeddings as the primary problem.
+The SSH-only admin process disables search-runtime warm-up. It reads the same
+SQLite operational tables but does not duplicate the public API's ONNX model,
+vector matrix, or lexical cache in memory.
 
-Before a worker starts a new run it marks `running` rows older than
-`STALE_SCRAPE_RUN_SECONDS` as `stale`, then refuses to start if a fresh
-`running` row already exists. If `/status` shows several fresh running rows,
-more than one scraper process is active; stop the extra process before
-trusting the run counts.
+After deploy, `docker compose ps` must not show `worker`. Confirm there is no
+current swap churn or new OOM kill before promotion:
 
-SQLite also enforces a single `status='running'` scrape row, so a duplicate
-worker startup should fail fast instead of creating a second active scrape.
+```bash
+cd /opt/auto-skill-connector/backend/deploy
+docker compose ps
+docker stats --no-stream
+vmstat 1 5
+journalctl -k --since "1 hour ago" --no-pager | grep -iE 'oom|killed process' || true
+```
 
-Without `GITHUB_TOKEN`, the worker does not attempt code search, topic
-expansion, or deep sweeps. It performs a bounded incremental repository crawl
-that stays below anonymous API limits. Add a token for full discovery coverage;
-do not compensate by raising the anonymous caps.
+Configure DigitalOcean Monitoring email alerts to both founders for memory
+above 75% for 5 minutes, CPU above 80% for 10 minutes, and disk above 80%.
+Use the included free DigitalOcean Uptime allowance for one HTTPS check against
+`https://skills.autoskill.dev/readyz`, with downtime and latency email alerts.
+The MCP health URL remains part of every deploy smoke test. If a second free
+external check becomes available, use `https://mcp.autoskill.dev/healthz`.
 
-After stopping the extra process, clean up stale bookkeeping rows:
+One `cloudflared` process already maintains four outbound connections across
+Cloudflare data centers. Do not add a second connector on the same droplet;
+it does not remove the host as the failure domain. A meaningful replica must
+run on a second host and point to an origin available from that host.
+
+The SSH admin tunnel is workstation-to-loopback only and is unrelated to user
+traffic. It may remain closed except during founder administration.
+
+Monthly, verify the newest Litestream generation and perform a scratch restore.
+Backups improve recovery time, not live availability. This single-droplet,
+single-SQLite design can self-restart and restore, but it cannot promise
+zero-downtime host failure or zero-downtime deploys.
+
+## Off-host Collection And Skill-Only Imports
+
+Production serves routes from the existing corpus and must not run continuous
+scraping or embedding. The Compose `worker` is behind the `collector` profile,
+is one-shot, has no restart policy, uses an embedding batch of 8, and is capped
+at 1 GiB/0.75 CPU by default. A normal `docker compose up -d` does not start it.
+
+On a trusted Windows collector computer with Docker Desktop:
+
+```powershell
+cd C:\path\to\auto-skill\backend
+# Optional but recommended. Set this only in the current shell; never commit it.
+$env:GITHUB_TOKEN = "<collector-only GitHub token>"
+.\deploy\collect-skills.ps1
+```
+
+The script starts an isolated local API, performs exactly one discovery and
+embedding pass, exports only active embedded public skills, validates the
+package, and shuts the containers down. Output is written under
+`backend\data\skill-deltas\`. The collector database may be retained for the
+next run; production computes inserts and updates by URL.
+
+The zip format has exactly three members: a manifest, compressed skill JSONL,
+and compressed library-content JSONL. SHA-256 covers both payloads. The loader
+rejects extra archive members, path names, unknown fields, invalid URLs,
+non-finite/wrong-sized embeddings, duplicate URLs, excessive sizes, and
+content/hash mismatches. It has no table name, SQL, account, token, prompt,
+route-event, entitlement, audit-history, or subscription fields.
+
+Copy the resulting zip using an authorized deployment SSH account into:
+
+```text
+/opt/auto-skill-connector/backend/data/skill-deltas/
+```
+
+Review the package hash with `Get-FileHash -Algorithm SHA256` before and after
+transfer. On the droplet, first validate and plan without changing SQLite:
+
+```bash
+cd /opt/auto-skill-connector
+docker compose -f backend/deploy/docker-compose.yml run --rm --no-deps api \
+  python skill_delta.py validate /data/skill-deltas/<package>.zip
+docker compose -f backend/deploy/docker-compose.yml run --rm --no-deps api \
+  python skill_delta.py plan /data/skill-deltas/<package>.zip \
+  --db /data/local_skills.db
+```
+
+After checking the counts, apply through the guarded helper:
+
+```bash
+bash backend/deploy/apply-skill-delta.sh \
+  <package>.zip founder@example.com "Reviewed monthly coverage update" --confirm
+```
+
+Apply requires an actor email, reason, explicit confirmation, and backup root.
+It creates an online SQLite backup, writes only an explicit `skills` column
+allowlist, updates generated library filenames, records skill versions, and
+appends `skill_delta_import` to the immutable admin audit log. It then
+recreates the readers once to publish the new in-memory indexes and verifies
+both public health endpoints. Expect a brief single-host restart window.
+
+Never copy the collector's complete SQLite database over production and never
+use `seed_runtime.py` for routine updates: the live database also contains
+accounts, usage, Stripe state, complimentary entitlements, and audit history.
+
+Run collection monthly at most, and only when metadata-only route misses or a
+known ecosystem addition show a coverage gap. More scraped rows are not a
+quality objective. Before any future collector run, stale bookkeeping can be
+reviewed and cleaned locally with:
 
 ```powershell
 python cleanup_scrape_runs.py
@@ -696,9 +791,9 @@ python cleanup_scrape_runs.py --apply
 
 ## Known Alpha Limits
 
-- The API and worker are split in compose, but the public app still includes
-  local REST write routes for the internal worker. The read-only middleware is
-  the public safety boundary; Cloudflare must route only to the API.
+- The public app still contains local REST write routes used by the isolated
+  collector architecture. The read-only middleware is the public safety
+  boundary; Cloudflare must route only approved public API/MCP paths.
 - Existing legacy rows need `backfill_quality.py` before quality metrics are
   trustworthy.
 - The brute-force NumPy vector cache remains. Quality backfill should shrink

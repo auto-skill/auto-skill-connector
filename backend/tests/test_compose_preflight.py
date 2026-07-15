@@ -45,9 +45,12 @@ class ComposePreflightTests(unittest.TestCase):
             "deploy/backup-library.sh",
             "deploy/seed_runtime.py",
             "deploy/export-seed-packet.ps1",
+            "deploy/collect-skills.ps1",
+            "deploy/apply-skill-delta.sh",
             "requirements.txt",
             "scraper.py",
             "reconcile_billing.py",
+            "skill_delta.py",
             "worker.py",
         ]:
             target = self.root / path
@@ -90,11 +93,14 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
     command: uvicorn scraper:app --host 0.0.0.0 --port 8000
+    mem_limit: 1536m
+    pids_limit: 256
   admin-local:
     environment:
       LOCAL_DB_PATH: /data/local_skills.db
       AUTO_START_SCRAPER: "0"
       AUTO_START_EMBEDDER: "0"
+      AUTOSKILL_WARM_SEARCH_RUNTIME: "0"
       ADMIN_ACCESS_MODE: ssh
       ADMIN_HOST: 127.0.0.1
       ADMIN_EMAILS: founder@example.test
@@ -106,10 +112,17 @@ services:
       - admin-isolation
     command: uvicorn scraper:app --host 0.0.0.0 --port 8000
   worker:
+    profiles: ["collector"]
+    restart: "no"
     environment:
       LOCAL_DB_URL: http://api:8000
       AUTO_START_SCRAPER: "0"
       AUTO_START_EMBEDDER: "0"
+      WORKER_ONCE: "1"
+      EMBED_PAGE_SIZE: 64
+      EMBED_BATCH_SIZE: 8
+    mem_limit: 1024m
+    cpus: "0.75"
     command: python worker.py
   mcp:
     environment:
@@ -120,8 +133,10 @@ services:
       - "127.0.0.1:8765:8765"
     command: auto-skill-mcp
   cloudflared:
+    image: cloudflare/cloudflared@sha256:example
     command: tunnel run
   litestream:
+    image: litestream/litestream@sha256:example
     command: replicate
   library-backup:
     command: backup

@@ -17,7 +17,7 @@ from recommender import SUPABASE_URL, embed_missing_skills
 from scraper import SCRAPE_INTERVAL_SECONDS, run_scrape, start_new_scrape_run
 
 
-async def run_once() -> None:
+async def run_once() -> bool:
     run_id = await start_new_scrape_run()
     print(f"{datetime.now(timezone.utc).isoformat()} worker scrape {run_id} started", flush=True)
     scrape_ok = await run_scrape(run_id)
@@ -26,7 +26,7 @@ async def run_once() -> None:
             f"{datetime.now(timezone.utc).isoformat()} worker scrape {run_id} failed; skipping embed drain",
             flush=True,
         )
-        return
+        return False
     async with httpx.AsyncClient() as client:
         embedded = await embed_missing_skills(client)
         feedback_updated = 0
@@ -41,16 +41,20 @@ async def run_once() -> None:
         f"embedded={embedded}; feedback_updated={feedback_updated}",
         flush=True,
     )
+    return True
 
 
 async def main() -> None:
     once = os.getenv("WORKER_ONCE", "").lower() in {"1", "true", "yes"}
     while True:
+        ok = False
         try:
-            await run_once()
+            ok = await run_once()
         except Exception as exc:
             print(f"{datetime.now(timezone.utc).isoformat()} worker error: {exc}", flush=True)
         if once:
+            if not ok:
+                raise SystemExit(1)
             return
         await asyncio.sleep(SCRAPE_INTERVAL_SECONDS)
 
