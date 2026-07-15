@@ -30,7 +30,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import httpx
 
-from recommender import SUPABASE_URL
+from recommender import LOCAL_DB_URL
 
 DEFAULT_TASKS_PATH = Path(__file__).parent / "tasks.jsonl"
 DEFAULT_MODEL = "claude-haiku-4-5-20251001"
@@ -74,7 +74,7 @@ def _grade(text: str, task: dict[str, Any]) -> bool:
 async def _route(client: httpx.AsyncClient, query: str) -> dict[str, Any]:
     try:
         r = await client.post(
-            f"{SUPABASE_URL}/route",
+            f"{LOCAL_DB_URL}/route",
             json={"task": query, "client": "bench", "client_version": "local"},
             timeout=45,
         )
@@ -110,7 +110,7 @@ async def run(args: argparse.Namespace) -> dict[str, Any]:
 
     summary: dict[str, Any] = {
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "base_url": SUPABASE_URL,
+        "base_url": LOCAL_DB_URL,
         "model": args.model,
         "dry_run": args.dry_run,
         "task_bench": {"cases": [], "baseline": {}, "with_skill": {}, "by_category": {}},

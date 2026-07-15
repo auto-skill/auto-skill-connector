@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 
 import httpx
 
-from recommender import SUPABASE_URL, embed_missing_skills
+from recommender import LOCAL_DB_URL, embed_missing_skills
 from scraper import SCRAPE_INTERVAL_SECONDS, run_scrape, start_new_scrape_run
 
 
@@ -31,7 +31,7 @@ async def run_once() -> bool:
         embedded = await embed_missing_skills(client)
         feedback_updated = 0
         try:
-            r = await client.post(f"{SUPABASE_URL}/rest/v1/rpc/recompute_feedback_scores", json={}, timeout=30)
+            r = await client.post(f"{LOCAL_DB_URL}/rest/v1/rpc/recompute_feedback_scores", json={}, timeout=30)
             r.raise_for_status()
             feedback_updated = r.json().get("updated", 0)
         except Exception as exc:

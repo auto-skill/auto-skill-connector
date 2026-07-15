@@ -28,7 +28,7 @@ from pathlib import Path
 import httpx
 
 from embeddings import embed_texts
-from recommender import HEADERS, SUPABASE_URL
+from recommender import HEADERS, LOCAL_DB_URL
 
 # (query, accept-substrings). Substrings are matched case-insensitively against
 # each result's name + description + url.
@@ -326,7 +326,7 @@ async def run_engine(client: httpx.AsyncClient, engine: str, query: str, vec: li
         body, rpc = {"query_embedding": str(vec), "match_count": TOP_K}, "vector_search_skills"
     else:
         body, rpc = {"query_text": query, "query_embedding": str(vec), "match_count": TOP_K}, "hybrid_search_skills"
-    r = await client.post(f"{SUPABASE_URL}/rest/v1/rpc/{rpc}", json=body, headers=HEADERS, timeout=30)
+    r = await client.post(f"{LOCAL_DB_URL}/rest/v1/rpc/{rpc}", json=body, headers=HEADERS, timeout=30)
     if r.status_code != 200:
         print(f"  [{engine}] error {r.status_code}: {r.text[:120]}")
         return []
@@ -348,7 +348,7 @@ async def main() -> int:
 
     summary = {
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "base_url": SUPABASE_URL,
+        "base_url": LOCAL_DB_URL,
         "budgets": {
             "route_latency_ms": ROUTE_LATENCY_BUDGET_MS,
             "route_skill_find_ms": ROUTE_SKILL_FIND_BUDGET_MS,
@@ -405,7 +405,7 @@ async def main() -> int:
         negative_cases = []
         for query, _ in CASES:
             r = await client.post(
-                f"{SUPABASE_URL}/find-semantic",
+                f"{LOCAL_DB_URL}/find-semantic",
                 json={"q": query, "limit": 8, "gate": True},
                 timeout=30,
             )
@@ -426,7 +426,7 @@ async def main() -> int:
             # harmless (never auto-injected, just named); the real failure
             # mode is "full" -- silent auto-injection of junk.
             r = await client.post(
-                f"{SUPABASE_URL}/find-semantic",
+                f"{LOCAL_DB_URL}/find-semantic",
                 json={"q": query, "limit": 8, "gate": True},
                 timeout=30,
             )
@@ -495,7 +495,7 @@ async def main() -> int:
     async with httpx.AsyncClient() as client:
         for case in route_cases:
             r = await client.post(
-                f"{SUPABASE_URL}/route",
+                f"{LOCAL_DB_URL}/route",
                 json={"task": case["query"], "client": "eval_search", "client_version": "local"},
                 timeout=45,
             )

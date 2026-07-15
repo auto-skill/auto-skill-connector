@@ -37,7 +37,7 @@ class ScraperRunStatusTests(unittest.IsolatedAsyncioTestCase):
         response.raise_for_status = Mock()
         with (
             patch.object(scraper.CrawlState, "load", side_effect=RuntimeError("boom")),
-            patch.object(scraper, "supabase_patch", new=AsyncMock(return_value=response)) as patch_run,
+            patch.object(scraper, "db_patch", new=AsyncMock(return_value=response)) as patch_run,
         ):
             ok = await scraper.run_scrape("run-1")
 

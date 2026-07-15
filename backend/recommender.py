@@ -58,7 +58,7 @@ from quality import (
 # Storage moved local 2026-07-05 -- recommender.py always runs embedded inside
 # scraper.py's process (same app/port), which now serves local_api.py's
 # Supabase-shaped REST+RPC surface backed by local_skills.db.
-SUPABASE_URL = os.getenv("LOCAL_DB_URL", f"http://127.0.0.1:{os.getenv('LOCAL_DB_PORT', '8000')}").rstrip("/")
+LOCAL_DB_URL = os.getenv("LOCAL_DB_URL", f"http://127.0.0.1:{os.getenv('LOCAL_DB_PORT', '8000')}").rstrip("/")
 HEADERS = {
     "Content-Type": "application/json",
     "Prefer": "resolution=merge-duplicates",
@@ -161,7 +161,7 @@ async def embed_missing_skills(client: httpx.AsyncClient) -> int:
     total = 0
     while True:
         r = await client.get(
-            f"{SUPABASE_URL}/rest/v1/skills",
+            f"{LOCAL_DB_URL}/rest/v1/skills",
             params={
                 "select": "id,url,name,source,description,tags",
                 "embedding": "is.null",
@@ -205,7 +205,7 @@ async def _upsert_chunk(client: httpx.AsyncClient, chunk: list) -> None:
         if attempt:
             await asyncio.sleep(2 ** attempt)
         pr = await client.post(
-            f"{SUPABASE_URL}/rest/v1/skills?on_conflict=url",
+            f"{LOCAL_DB_URL}/rest/v1/skills?on_conflict=url",
             json=chunk,
             headers=HEADERS,
             timeout=60,
@@ -291,7 +291,7 @@ async def embed_query(text: str) -> list[float]:
 
 
 def _uses_local_store() -> bool:
-    return SUPABASE_URL.startswith(("http://127.0.0.1", "http://localhost", "http://[::1]"))
+    return LOCAL_DB_URL.startswith(("http://127.0.0.1", "http://localhost", "http://[::1]"))
 
 
 # Minimum top-hit cosine similarity for a query to count as having a real
@@ -510,7 +510,7 @@ async def retrieve_skills(client: httpx.AsyncClient, query_text: str, limit: int
         rpc = "search_skills"
         body = {"query": query_text, "max_results": fetch_limit}
 
-    r = await client.post(f"{SUPABASE_URL}/rest/v1/rpc/{rpc}", json=body, headers=HEADERS, timeout=20)
+    r = await client.post(f"{LOCAL_DB_URL}/rest/v1/rpc/{rpc}", json=body, headers=HEADERS, timeout=20)
     if r.status_code != 200:
         return []
     results = list(r.json())
@@ -523,7 +523,7 @@ async def fetch_skills_by_urls(client: httpx.AsyncClient, urls: list[str]) -> li
         return []
     quoted = ",".join('"' + u.replace('"', "") + '"' for u in urls[:10])
     r = await client.get(
-        f"{SUPABASE_URL}/rest/v1/skills",
+        f"{LOCAL_DB_URL}/rest/v1/skills",
         params={
             "select": (
                 "id,name,description,source,url,tags,risk_score,risk_flags,raw,"

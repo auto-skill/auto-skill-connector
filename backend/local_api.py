@@ -2,7 +2,7 @@
 PostgREST REST + RPC surface that scraper.py / recommender.py already speak
 (GET/POST/PATCH/DELETE on /rest/v1/{skills,scrape_runs}, plus the three
 /rest/v1/rpc/* search functions). Mounted into scraper.py's own FastAPI app
-so scraper.py can just point SUPABASE_URL at its own loopback address.
+so scraper.py can just point LOCAL_DB_URL at its own loopback address.
 """
 import asyncio
 import math

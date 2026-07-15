@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 import httpx
 
 from embeddings import LibraryContent, build_embed_text, embed_text_hash, embed_texts
-from scraper import HEADERS, SUPABASE_URL, supabase_post
+from scraper import HEADERS, LOCAL_DB_URL, db_post
 
 PAGE_SIZE = 500
 EMBED_BATCH = 128
@@ -22,7 +22,7 @@ UPSERT_CHUNK = 50
 
 async def fetch_unembedded(client: httpx.AsyncClient) -> list[dict]:
     r = await client.get(
-        f"{SUPABASE_URL}/rest/v1/skills",
+        f"{LOCAL_DB_URL}/rest/v1/skills",
         params={
             "select": "id,url,name,source,description,tags",
             "embedding": "is.null",
@@ -70,7 +70,7 @@ async def main():
                 chunk = payload[i:i + UPSERT_CHUNK]
                 for attempt in range(4):
                     try:
-                        r = await supabase_post(client, "skills", chunk, on_conflict="url")
+                        r = await db_post(client, "skills", chunk, on_conflict="url")
                         if r.status_code in (200, 201):
                             break
                         detail = f"{r.status_code}: {r.text[:200]}"

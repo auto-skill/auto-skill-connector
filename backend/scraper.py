@@ -22,10 +22,10 @@ import admin_security
 # Storage moved local 2026-07-05 (Supabase free-tier space ran out) -- new
 # skills now go into local_skills.db via local_api.py's router, mounted below
 # on this same app/port. That router speaks the same tiny REST+RPC surface
-# Supabase did, so pointing SUPABASE_URL at our own loopback address is the
+# Supabase did, so pointing LOCAL_DB_URL at our own loopback address is the
 # only change the rest of this file needed. Old Supabase data is untouched;
 # the public connector still reads from it separately.
-SUPABASE_URL = os.getenv("LOCAL_DB_URL", f"http://127.0.0.1:{os.getenv('LOCAL_DB_PORT', '8000')}").rstrip("/")
+LOCAL_DB_URL = os.getenv("LOCAL_DB_URL", f"http://127.0.0.1:{os.getenv('LOCAL_DB_PORT', '8000')}").rstrip("/")
 HEADERS = {"Content-Type": "application/json", "Prefer": "resolution=merge-duplicates,return=representation"}
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
 # Point this at a self-hosted SearXNG instance (see README) to enable general
@@ -274,7 +274,7 @@ async def rate_limit_guard(request, call_next):
     return await call_next(request)
 
 
-# Local SQLite-backed store, replacing Supabase for new writes (see SUPABASE_URL
+# Local SQLite-backed store, replacing Supabase for new writes (see LOCAL_DB_URL
 # above) -- mounted first so it's ready before the recommender's startup hook
 # tries to reach it.
 from local_api import router as local_db_router  # noqa: E402
@@ -642,25 +642,25 @@ async def github_get(client: httpx.AsyncClient, url: str, params: dict, headers:
     return None
 
 
-async def supabase_post(client: httpx.AsyncClient, table: str, data: dict | list, on_conflict: str = ""):
-    url = f"{SUPABASE_URL}/rest/v1/{table}"
+async def db_post(client: httpx.AsyncClient, table: str, data: dict | list, on_conflict: str = ""):
+    url = f"{LOCAL_DB_URL}/rest/v1/{table}"
     if on_conflict:
         url += f"?on_conflict={on_conflict}"
     r = await client.post(url, json=data, headers=HEADERS)
     return r
 
-async def supabase_patch(client: httpx.AsyncClient, table: str, match: dict, data: dict):
+async def db_patch(client: httpx.AsyncClient, table: str, match: dict, data: dict):
     params = "&".join(f"{k}=eq.{v}" for k, v in match.items())
-    r = await client.patch(f"{SUPABASE_URL}/rest/v1/{table}?{params}", json=data, headers=HEADERS)
+    r = await client.patch(f"{LOCAL_DB_URL}/rest/v1/{table}?{params}", json=data, headers=HEADERS)
     return r
 
-async def supabase_get(client: httpx.AsyncClient, table: str, params: str = ""):
-    r = await client.get(f"{SUPABASE_URL}/rest/v1/{table}?{params}", headers=HEADERS)
+async def db_get(client: httpx.AsyncClient, table: str, params: str = ""):
+    r = await client.get(f"{LOCAL_DB_URL}/rest/v1/{table}?{params}", headers=HEADERS)
     return r.json()
 
-async def supabase_delete(client: httpx.AsyncClient, table: str, match: dict):
+async def db_delete(client: httpx.AsyncClient, table: str, match: dict):
     params = "&".join(f"{k}=eq.{v}" for k, v in match.items())
-    return await client.delete(f"{SUPABASE_URL}/rest/v1/{table}?{params}", headers=HEADERS)
+    return await client.delete(f"{LOCAL_DB_URL}/rest/v1/{table}?{params}", headers=HEADERS)
 
 
 GITHUB_REPO_QUERIES = [
@@ -1814,7 +1814,7 @@ async def get_scanned_urls(client: httpx.AsyncClient) -> set:
     while True:
         try:
             r = await client.get(
-                f"{SUPABASE_URL}/rest/v1/skills",
+                f"{LOCAL_DB_URL}/rest/v1/skills",
                 params={"select": "url", "scanned_at": "not.is.null", "order": "id.asc"},
                 headers={**HEADERS, "Range": f"{offset}-{offset + page_size - 1}"},
                 timeout=15,
@@ -1836,7 +1836,7 @@ async def count_skills(client: httpx.AsyncClient) -> int:
     is the ground truth for how many genuinely new skills a run added — unlike
     diffing URL sets, it can't be silently skewed by a failed pagination request."""
     r = await client.get(
-        f"{SUPABASE_URL}/rest/v1/skills",
+        f"{LOCAL_DB_URL}/rest/v1/skills",
         params={"select": "id"},
         headers={**HEADERS, "Prefer": "count=exact", "Range": "0-0"},
         timeout=15,
@@ -1935,11 +1935,11 @@ async def run_scrape(run_id: str) -> bool:
             chunk_size = 50
             for rows in rows_by_shape.values():
                 for i in range(0, len(rows), chunk_size):
-                    write = await supabase_post(client, "skills", rows[i:i+chunk_size], on_conflict="url")
+                    write = await db_post(client, "skills", rows[i:i+chunk_size], on_conflict="url")
                     write.raise_for_status()
             count_after = await count_skills(client)
 
-            finished = await supabase_patch(client, "scrape_runs", {"id": run_id}, {
+            finished = await db_patch(client, "scrape_runs", {"id": run_id}, {
                 "finished_at": datetime.now(timezone.utc).isoformat(),
                 "status": "done",
                 "skills_found": len(skills),
@@ -1949,7 +1949,7 @@ async def run_scrape(run_id: str) -> bool:
             return True
         except Exception as e:
             try:
-                failed = await supabase_patch(client, "scrape_runs", {"id": run_id}, {
+                failed = await db_patch(client, "scrape_runs", {"id": run_id}, {
                     "finished_at": datetime.now(timezone.utc).isoformat(),
                     "status": "error",
                     "skills_found": 0,
@@ -1966,7 +1966,7 @@ async def start_new_scrape_run() -> str:
         now = datetime.now(timezone.utc)
         cutoff = (now - timedelta(seconds=STALE_SCRAPE_RUN_SECONDS)).isoformat()
         stale = await client.patch(
-            f"{SUPABASE_URL}/rest/v1/scrape_runs",
+            f"{LOCAL_DB_URL}/rest/v1/scrape_runs",
             params={"status": "eq.running", "started_at": f"lt.{cutoff}"},
             json={
                 "finished_at": now.isoformat(),
@@ -1976,7 +1976,7 @@ async def start_new_scrape_run() -> str:
             headers=HEADERS,
         )
         stale.raise_for_status()
-        active = await supabase_get(
+        active = await db_get(
             client,
             "scrape_runs",
             f"status=eq.running&started_at=gt.{cutoff}&order=started_at.desc&limit=1",
@@ -1986,7 +1986,7 @@ async def start_new_scrape_run() -> str:
             raise ScrapeAlreadyRunning(
                 f"Scrape already running: {run.get('id')} started_at={run.get('started_at')}"
             )
-        r = await supabase_post(client, "scrape_runs", {"status": "running"})
+        r = await db_post(client, "scrape_runs", {"status": "running"})
         if r.status_code == 409:
             raise ScrapeAlreadyRunning("Scrape already running: database lease is held")
         r.raise_for_status()
@@ -2045,7 +2045,7 @@ async def run_rescan():
             page_size = 200
             while True:
                 r = await client.get(
-                    f"{SUPABASE_URL}/rest/v1/skills",
+                    f"{LOCAL_DB_URL}/rest/v1/skills",
                     params={"select": "id,url,name,description,source,tags,raw,content_hash"},
                     headers={**HEADERS, "Range": f"{offset}-{offset + page_size - 1}"},
                     timeout=15,
@@ -2075,7 +2075,7 @@ async def run_rescan():
                     for field in ("embedding", "embedding_text_hash", "embedded_at"):
                         if field in row:
                             data[field] = row[field]
-                    updated = await supabase_patch(client, "skills", {"id": row["id"]}, data)
+                    updated = await db_patch(client, "skills", {"id": row["id"]}, data)
                     updated.raise_for_status()
 
                 await asyncio.gather(*(patch_row(row) for row in rows))
@@ -2104,7 +2104,7 @@ async def run_normalize_db():
         while True:
             try:
                 r = await client.get(
-                    f"{SUPABASE_URL}/rest/v1/skills",
+                    f"{LOCAL_DB_URL}/rest/v1/skills",
                     params={"select": "id,url", "order": "id.asc"},
                     headers={**HEADERS, "Range": f"{offset}-{offset + page_size - 1}"},
                     timeout=30,
@@ -2128,10 +2128,10 @@ async def run_normalize_db():
             keep_id, keep_url = members[0]
             # delete dupes first so patching the survivor can't hit the unique constraint
             for dupe_id, _ in members[1:]:
-                await supabase_delete(client, "skills", {"id": dupe_id})
+                await db_delete(client, "skills", {"id": dupe_id})
                 normalize_progress["duplicates_deleted"] += 1
             if keep_url != norm:
-                await supabase_patch(client, "skills", {"id": keep_id}, {"url": norm})
+                await db_patch(client, "skills", {"id": keep_id}, {"url": norm})
                 normalize_progress["urls_rewritten"] += 1
 
     # Rewrite local library index keys the same way (first writer wins per key).
@@ -2165,7 +2165,7 @@ async def seed_backlog():
         while True:
             try:
                 r = await client.get(
-                    f"{SUPABASE_URL}/rest/v1/skills",
+                    f"{LOCAL_DB_URL}/rest/v1/skills",
                     params={"select": "url", "order": "id.asc"},
                     headers={**HEADERS, "Range": f"{offset}-{offset + page_size - 1}"},
                     timeout=30,
@@ -2216,11 +2216,11 @@ async def start_rescan():
 @app.get("/status")
 async def status():
     async with httpx.AsyncClient() as client:
-        runs = await supabase_get(client, "scrape_runs", "order=started_at.desc&limit=5")
-        count_r = await client.get(f"{SUPABASE_URL}/rest/v1/skills?select=id", headers={**HEADERS, "Prefer": "count=exact", "Range": "0-0"})
+        runs = await db_get(client, "scrape_runs", "order=started_at.desc&limit=5")
+        count_r = await client.get(f"{LOCAL_DB_URL}/rest/v1/skills?select=id", headers={**HEADERS, "Prefer": "count=exact", "Range": "0-0"})
         total = count_r.headers.get("content-range", "0/0").split("/")[-1]
         flagged_r = await client.get(
-            f"{SUPABASE_URL}/rest/v1/skills?select=id&risk_score=gt.0",
+            f"{LOCAL_DB_URL}/rest/v1/skills?select=id&risk_score=gt.0",
             headers={**HEADERS, "Prefer": "count=exact", "Range": "0-0"},
         )
         flagged = flagged_r.headers.get("content-range", "0/0").split("/")[-1]
@@ -2243,7 +2243,7 @@ async def find_skill(q: str, limit: int = 8):
     backed by the search_skills Postgres function."""
     async with httpx.AsyncClient() as client:
         r = await client.post(
-            f"{SUPABASE_URL}/rest/v1/rpc/search_skills",
+            f"{LOCAL_DB_URL}/rest/v1/rpc/search_skills",
             json={"query": q, "max_results": limit},
             headers=HEADERS,
             timeout=15,
@@ -2264,7 +2264,7 @@ async def chat_find_skill(q: str):
     """
     async with httpx.AsyncClient() as client:
         r = await client.post(
-            f"{SUPABASE_URL}/rest/v1/rpc/search_skills",
+            f"{LOCAL_DB_URL}/rest/v1/rpc/search_skills",
             json={"query": q, "max_results": 10},
             headers=HEADERS,
             timeout=15,
@@ -2345,7 +2345,7 @@ async def get_skills(limit: int = 100, offset: int = 0, source: str = "", min_ri
             params += f"&source=eq.{source}"
         if min_risk > 0:
             params += f"&risk_score=gte.{min_risk}"
-        return await supabase_get(client, "skills", params)
+        return await db_get(client, "skills", params)
 
 
 @app.get("/")
