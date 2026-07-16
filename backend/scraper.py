@@ -945,6 +945,16 @@ async def scrape_github(client: httpx.AsyncClient, skills: list, state: "CrawlSt
                 pass
 
 
+def _capped_tags(value, limit: int = 100) -> list:
+    """Registries like npm/glama return arbitrary-length keyword/tag lists --
+    cap them here so they never trip skill_delta.py's export-time 100-entry
+    limit on ordinary skills (an npm package with 135 keywords did exactly
+    this)."""
+    if not isinstance(value, list):
+        return []
+    return value[:limit]
+
+
 async def scrape_npm(client: httpx.AsyncClient, skills: list):
     queries = [
         "claude skill", "claude-code skill", "mcp server claude", "anthropic claude skill",
@@ -973,7 +983,7 @@ async def scrape_npm(client: httpx.AsyncClient, skills: list):
                     "description": pkg.get("description") or "",
                     "source": "npm",
                     "url": url,
-                    "tags": pkg.get("keywords", []),
+                    "tags": _capped_tags(pkg.get("keywords")),
                     "raw": {
                         "version": pkg.get("version"),
                         "publisher": pkg.get("publisher", {}).get("username"),
@@ -1292,7 +1302,7 @@ async def scrape_mcp_registry(client: httpx.AsyncClient, skills: list):
                     "description": server.get("description") or "",
                     "source": "glama_registry",
                     "url": url,
-                    "tags": server.get("tags", []),
+                    "tags": _capped_tags(server.get("tags")),
                     "raw": server,
                 })
             page_info = data.get("pageInfo", {})
@@ -1543,6 +1553,15 @@ def _emit_web_result(skills: list, seen: set, q: str, url: str, title: str, snip
     if not url or url in seen:
         return
     if any(domain in url for domain in WEB_SEARCH_EXCLUDE_DOMAINS):
+        return
+    # Some SearXNG engines (observed with its Startpage backend) occasionally
+    # return a malformed "url" field -- either missing the host entirely
+    # (https:///clev?...) or two results' hrefs concatenated together. Reject
+    # both here instead of letting them into the DB as unusable skill rows.
+    parsed = urlsplit(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return
+    if url.count("://") > 1:
         return
     seen.add(url)
     skills.append({

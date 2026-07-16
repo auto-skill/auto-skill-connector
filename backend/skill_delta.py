@@ -44,8 +44,12 @@ ALLOWED_MEMBERS = frozenset({MANIFEST_MEMBER, SKILLS_MEMBER, LIBRARY_MEMBER})
 EMBEDDING_DIM = 384
 EMBEDDING_BYTES = EMBEDDING_DIM * 4
 MAX_RECORDS = 250_000
-MAX_COMPRESSED_MEMBER_BYTES = 512 * 1024 * 1024
-MAX_UNCOMPRESSED_MEMBER_BYTES = 1024 * 1024 * 1024
+# Headroom over the current corpus (~354MB compressed / ~1.04GiB uncompressed
+# library content as of 2026-07) rather than a tight fit -- this keeps growing
+# weekly, and both the local collector and the droplet's apply step need to
+# actually hold a package this size.
+MAX_COMPRESSED_MEMBER_BYTES = 1024 * 1024 * 1024
+MAX_UNCOMPRESSED_MEMBER_BYTES = 2 * 1024 * 1024 * 1024
 MAX_CONTENT_CHARS = 100_000
 
 JSON_FIELDS = frozenset({"tags", "risk_flags", "quality_reasons", "platforms"})
@@ -101,12 +105,25 @@ def _json_line(value: dict) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8") + b"\n"
 
 
-def _gzip_lines(lines: list[bytes]) -> bytes:
-    output = io.BytesIO()
-    with gzip.GzipFile(fileobj=output, mode="wb", mtime=0) as gz:
-        for line in lines:
-            gz.write(line)
-    return output.getvalue()
+class _GzipLineWriter:
+    """Writes JSON lines straight into a gzip buffer one at a time, so the
+    caller only ever holds one line's worth of uncompressed data at once
+    instead of collecting every line into a list first -- with a corpus of
+    hundreds of thousands of skills, that list was the memory cost that
+    mattered, not the final compressed bytes."""
+
+    def __init__(self) -> None:
+        self._buffer = io.BytesIO()
+        self._gz = gzip.GzipFile(fileobj=self._buffer, mode="wb", mtime=0)
+        self.count = 0
+
+    def write(self, value: dict) -> None:
+        self._gz.write(_json_line(value))
+        self.count += 1
+
+    def finish(self) -> bytes:
+        self._gz.close()
+        return self._buffer.getvalue()
 
 
 def _gunzip_limited(data: bytes, member: str) -> bytes:
@@ -340,7 +357,10 @@ def load_package(path: Path) -> LoadedPackage:
     return LoadedPackage(manifest=manifest, skills=skills, library=library, package_sha256=package_sha)
 
 
-def _library_contents(library_dir: Path) -> dict[str, str]:
+def _library_filenames(library_dir: Path) -> dict[str, str]:
+    """Map skill url -> validated on-disk filename, without reading any file
+    content. Export only needs to read the (typically much smaller) subset of
+    files that actually get exported; see _read_library_file."""
     index_path = library_dir / "index.json"
     if not index_path.exists():
         return {}
@@ -351,7 +371,7 @@ def _library_contents(library_dir: Path) -> dict[str, str]:
     if not isinstance(index, dict):
         raise SkillDeltaError("library index must be an object")
     files_root = (library_dir / "files").resolve()
-    contents: dict[str, str] = {}
+    filenames: dict[str, str] = {}
     for url, metadata in index.items():
         if not isinstance(metadata, dict) or not isinstance(metadata.get("file"), str):
             continue
@@ -361,14 +381,26 @@ def _library_contents(library_dir: Path) -> dict[str, str]:
         except ValueError as exc:
             raise SkillDeltaError("library index contains a path outside files/") from exc
         if candidate.is_file():
-            contents[str(url)] = candidate.read_text(encoding="utf-8", errors="replace")[:MAX_CONTENT_CHARS]
-    return contents
+            filenames[str(url)] = metadata["file"]
+    return filenames
+
+
+def _read_library_file(files_root: Path, filename: str) -> str:
+    return (files_root / filename).read_text(encoding="utf-8", errors="replace")[:MAX_CONTENT_CHARS]
 
 
 def export_package(db_path: Path, library_dir: Path, output: Path) -> dict:
+    # Streams rows and library file content one skill at a time instead of
+    # collecting the whole active corpus into memory first -- with a
+    # few-hundred-thousand-skill library this was the difference between
+    # fitting in the collector's memory limit and OOMing partway through.
     db_path = db_path.resolve()
     if not db_path.is_file():
         raise SkillDeltaError(f"collector database does not exist: {db_path}")
+    filenames = _library_filenames(library_dir.resolve())
+    files_root = library_dir.resolve() / "files"
+    skills_writer = _GzipLineWriter()
+    library_writer = _GzipLineWriter()
     conn = sqlite3.connect(f"file:{db_path.as_posix()}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
     try:
@@ -377,45 +409,53 @@ def export_package(db_path: Path, library_dir: Path, output: Path) -> dict:
         missing = required - columns
         if missing:
             raise SkillDeltaError(f"collector database is missing skill columns: {', '.join(sorted(missing))}")
-        rows = conn.execute(
+        cursor = conn.execute(
             f"SELECT {','.join(SKILL_FIELDS)},embedding FROM skills "
             "WHERE quality_status='active' AND embedding IS NOT NULL AND url IS NOT NULL ORDER BY url"
-        ).fetchall()
+        )
+        skipped_invalid = 0
+        for row in cursor:
+            record = dict(row)
+            url = record.get("url")
+            filename = filenames.get(url)
+            if filename is None:
+                continue
+            try:
+                for field in JSON_FIELDS:
+                    record[field] = _decode_json_field(record.get(field, "[]"), field)
+                blob = bytes(record.pop("embedding"))
+                record["embedding_b64"] = base64.b64encode(blob).decode("ascii")
+                _validate_skill(record)  # raises on malformed data; result intentionally unused, as before
+                content = _read_library_file(files_root, filename)
+            except (SkillDeltaError, OSError):
+                # The collector's corpus is scraped from noisy sources (e.g.
+                # web search results with occasionally malformed URLs); one bad
+                # row should not block exporting every other skill for a week.
+                skipped_invalid += 1
+                continue
+            skill_record = {field: record.get(field) for field in SKILL_FIELDS}
+            skill_record["embedding_b64"] = record["embedding_b64"]
+            skills_writer.write(skill_record)
+            library_writer.write({
+                "url": url,
+                "content": content,
+                "content_sha256": _sha256(content.encode("utf-8")),
+            })
     finally:
         conn.close()
-    library = _library_contents(library_dir.resolve())
-    skill_lines: list[bytes] = []
-    library_lines: list[bytes] = []
-    exported_urls: set[str] = set()
-    for row in rows:
-        record = dict(row)
-        if record.get("url") not in library:
-            continue
-        for field in JSON_FIELDS:
-            record[field] = _decode_json_field(record.get(field, "[]"), field)
-        blob = bytes(record.pop("embedding"))
-        record["embedding_b64"] = base64.b64encode(blob).decode("ascii")
-        clean = _validate_skill(record)
-        clean.pop("embedding", None)
-        record = {field: record.get(field) for field in SKILL_FIELDS}
-        record["embedding_b64"] = base64.b64encode(blob).decode("ascii")
-        skill_lines.append(_json_line(record))
-        exported_urls.add(record["url"])
-    for url in sorted(exported_urls & set(library)):
-        content = library[url]
-        library_lines.append(_json_line({
-            "url": url,
-            "content": content,
-            "content_sha256": _sha256(content.encode("utf-8")),
-        }))
-    skills_gz = _gzip_lines(skill_lines)
-    library_gz = _gzip_lines(library_lines)
+    if skipped_invalid:
+        # Not part of the manifest -- load_package enforces an exact key set
+        # on it (a real allowlist boundary), so this stays a side-channel
+        # message rather than a package field.
+        print(f"skipped {skipped_invalid} invalid skill row(s) during export", file=sys.stderr)
+    skills_gz = skills_writer.finish()
+    library_gz = library_writer.finish()
     manifest = {
         "format": FORMAT,
         "version": FORMAT_VERSION,
         "created_at": _utc_now(),
-        "skill_count": len(skill_lines),
-        "library_count": len(library_lines),
+        "skill_count": skills_writer.count,
+        "library_count": library_writer.count,
         "files": {
             SKILLS_MEMBER: {"sha256": _sha256(skills_gz), "bytes": len(skills_gz)},
             LIBRARY_MEMBER: {"sha256": _sha256(library_gz), "bytes": len(library_gz)},

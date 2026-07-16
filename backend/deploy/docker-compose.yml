@@ -36,7 +36,11 @@ services:
       - "127.0.0.1:8000:8000"
     command: uvicorn scraper:app --host 0.0.0.0 --port 8000
     init: true
-    mem_limit: 1536m
+    # Production stays at the 1536m default. The local collector overrides
+    # this to give skill_delta.py export room to hold the whole active
+    # library in memory (it is not streamed) -- see run-collector-continuous.ps1
+    # and collect-skills.ps1.
+    mem_limit: ${API_MEMORY_LIMIT:-1536m}
     cpus: "1.50"
     pids_limit: 256
     healthcheck:
@@ -123,6 +127,11 @@ services:
       dockerfile: deploy/Dockerfile
     # Explicit local/off-host collector only. It is never part of the default
     # production stack and cannot enter an automatic OOM restart loop.
+    #
+    # Runs only inside this container, never as a bare host `python.exe` --
+    # this name is what you look for in `docker ps`/`docker stop`, not Task
+    # Manager, so a host-level Python cleanup can never touch it by accident.
+    container_name: autoskill-local-collector-worker
     profiles: ["collector"]
     restart: "no"
     depends_on:
@@ -134,7 +143,10 @@ services:
       AUTO_START_EMBEDDER: "0"
       SCRAPE_INTERVAL_SECONDS: ${SCRAPE_INTERVAL_SECONDS:-3600}
       STALE_SCRAPE_RUN_SECONDS: ${STALE_SCRAPE_RUN_SECONDS:-7200}
-      WORKER_ONCE: "1"
+      # 1 (default) = one discovery/embed pass and exit, used by
+      # collect-skills.ps1. Set to 0 only via run-collector-continuous.ps1,
+      # which loops on SCRAPE_INTERVAL_SECONDS until stopped.
+      WORKER_ONCE: ${WORKER_ONCE:-1}
       EMBED_PAGE_SIZE: ${EMBED_PAGE_SIZE:-64}
       EMBED_BATCH_SIZE: ${EMBED_BATCH_SIZE:-8}
       EMBED_UPSERT_CHUNK: ${EMBED_UPSERT_CHUNK:-50}

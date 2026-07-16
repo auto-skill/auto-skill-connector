@@ -29,6 +29,12 @@ try {
     docker compose -p $Project -f $ComposeFile build api worker
     if ($LASTEXITCODE -ne 0) { throw "collector image build failed" }
 
+    if (-not $env:API_MEMORY_LIMIT) {
+        # skill_delta.py export loads the whole active library into memory
+        # rather than streaming it, so the collector's api needs more headroom
+        # than production's 1536m default as the local corpus grows.
+        $env:API_MEMORY_LIMIT = "4096m"
+    }
     docker compose -p $Project -f $ComposeFile up -d api
     if ($LASTEXITCODE -ne 0) { throw "collector API failed to start" }
 

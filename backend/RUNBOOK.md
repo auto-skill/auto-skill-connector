@@ -736,6 +736,38 @@ package, and shuts the containers down. Output is written under
 `backend\data\skill-deltas\`. The collector database may be retained for the
 next run; production computes inserts and updates by URL.
 
+To scrape/embed continuously instead of one pass at a time (still only on the
+trusted local computer, never on the droplet), use `run-collector-continuous.ps1`
+in place of `collect-skills.ps1`:
+
+```powershell
+cd C:\path\to\auto-skill\backend
+$env:GITHUB_TOKEN = "<collector-only GitHub token>"
+.\deploy\run-collector-continuous.ps1
+```
+
+This runs the same `worker` image but keeps it looping on
+`SCRAPE_INTERVAL_SECONDS` (default 3600s) as a background container named
+exactly `autoskill-local-collector-worker`. That name is deliberate: the
+process never runs as a bare host `python.exe`, only inside that named
+container, so it can always be found and stopped unambiguously with
+`docker ps --filter name=autoskill-local-collector-worker` /
+`docker logs -f autoskill-local-collector-worker` /
+`.\deploy\run-collector-continuous.ps1 -Stop` (equivalently
+`docker stop autoskill-local-collector-worker`). Do not use Task Manager or
+`Stop-Process` against `python.exe` to manage it -- on a machine running other
+Python processes there is no way to tell them apart that way, which is exactly
+how unrelated Python processes have been killed by mistake before.
+
+While it runs continuously, cut a delta package whenever you want to ship
+progress to the droplet with `export-skill-delta.ps1`, which only runs the
+export/validate steps against the already-running collector API and does not
+stop the worker:
+
+```powershell
+.\deploy\export-skill-delta.ps1
+```
+
 The zip format has exactly three members: a manifest, compressed skill JSONL,
 and compressed library-content JSONL. SHA-256 covers both payloads. The loader
 rejects extra archive members, path names, unknown fields, invalid URLs,

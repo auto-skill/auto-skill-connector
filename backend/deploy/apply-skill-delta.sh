@@ -24,6 +24,11 @@ DEPLOY_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 BACKEND_DIR=$(cd "$DEPLOY_DIR/.." && pwd)
 HOST_PACKAGE="$BACKEND_DIR/data/skill-deltas/$PACKAGE_NAME"
 CONTAINER_PACKAGE="/data/skill-deltas/$PACKAGE_NAME"
+# validate/plan/apply hold the whole decompressed package in memory at once
+# (unlike the collector's export, this side is not streamed); the weekly
+# corpus keeps growing, so give api room here rather than production's leaner
+# serving default.
+export API_MEMORY_LIMIT="${API_MEMORY_LIMIT:-2560m}"
 COMPOSE=(docker compose -f "$DEPLOY_DIR/docker-compose.yml")
 
 if [ ! -f "$HOST_PACKAGE" ]; then
