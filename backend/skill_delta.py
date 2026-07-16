@@ -427,6 +427,11 @@ def export_package(db_path: Path, library_dir: Path, output: Path) -> dict:
                 record["embedding_b64"] = base64.b64encode(blob).decode("ascii")
                 _validate_skill(record)  # raises on malformed data; result intentionally unused, as before
                 content = _read_library_file(files_root, filename)
+                # Matches _validate_library's own check on this same field, so
+                # a scraped file with e.g. an embedded NUL byte is skipped here
+                # instead of passing the per-row loop and only failing during
+                # load_package's whole-package self-verification at the end.
+                _validate_text(content, "library content", MAX_CONTENT_CHARS, required=True)
             except (SkillDeltaError, OSError):
                 # The collector's corpus is scraped from noisy sources (e.g.
                 # web search results with occasionally malformed URLs); one bad
