@@ -24,12 +24,16 @@ DEPLOY_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 BACKEND_DIR=$(cd "$DEPLOY_DIR/.." && pwd)
 HOST_PACKAGE="$BACKEND_DIR/data/skill-deltas/$PACKAGE_NAME"
 CONTAINER_PACKAGE="/data/skill-deltas/$PACKAGE_NAME"
+COMPOSE=(docker compose -f "$DEPLOY_DIR/docker-compose.yml")
 # validate/plan/apply hold the whole decompressed package in memory at once
 # (unlike the collector's export, this side is not streamed); the weekly
-# corpus keeps growing, so give api room here rather than production's leaner
-# serving default.
+# corpus keeps growing, so these one-off `run` invocations get more headroom
+# via the override file. Production's own compose file keeps its literal
+# mem_limit: 1536m, which compose_preflight.py enforces -- the persistently
+# serving api container recreated below deliberately does NOT use this
+# override.
 export API_MEMORY_LIMIT="${API_MEMORY_LIMIT:-2560m}"
-COMPOSE=(docker compose -f "$DEPLOY_DIR/docker-compose.yml")
+COMPOSE_BIG=(docker compose -f "$DEPLOY_DIR/docker-compose.yml" -f "$DEPLOY_DIR/docker-compose.override.memory.yml")
 
 if [ ! -f "$HOST_PACKAGE" ]; then
   echo "package not found: $HOST_PACKAGE" >&2
@@ -37,14 +41,14 @@ if [ ! -f "$HOST_PACKAGE" ]; then
 fi
 
 echo "==> Validating constrained package"
-"${COMPOSE[@]}" run --rm --no-deps api python skill_delta.py validate "$CONTAINER_PACKAGE"
+"${COMPOSE_BIG[@]}" run --rm --no-deps api python skill_delta.py validate "$CONTAINER_PACKAGE"
 
 echo "==> Planned changes"
-"${COMPOSE[@]}" run --rm --no-deps api python skill_delta.py plan \
+"${COMPOSE_BIG[@]}" run --rm --no-deps api python skill_delta.py plan \
   "$CONTAINER_PACKAGE" --db /data/local_skills.db
 
 echo "==> Applying with an online SQLite backup and append-only audit record"
-"${COMPOSE[@]}" run --rm --no-deps api python skill_delta.py apply \
+"${COMPOSE_BIG[@]}" run --rm --no-deps api python skill_delta.py apply \
   "$CONTAINER_PACKAGE" \
   --db /data/local_skills.db \
   --library-dir /app/skills_library \

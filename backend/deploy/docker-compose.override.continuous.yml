@@ -1,0 +1,9 @@
+# Flips the collector worker from its one-shot default (WORKER_ONCE: "1" in
+# the base compose file, which compose_preflight.py enforces literally as a
+# production safety invariant) into a looping process. Applied only by
+# run-collector-continuous.ps1, on the local machine, never against the
+# droplet's own compose file.
+services:
+  worker:
+    environment:
+      WORKER_ONCE: "0"

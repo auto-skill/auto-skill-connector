@@ -1,0 +1,11 @@
+# Bumps api's memory ceiling above production's hardcoded 1536m default
+# (docker-compose.yml) for callers that need to hold a full skill-delta
+# package in memory at once: the local collector's export and the droplet's
+# validate/plan/apply invocations in apply-skill-delta.sh. Never applied to
+# the persistently-serving production api container -- deploy_droplet.sh and
+# apply-skill-delta.sh's final recreate step use only the base compose file,
+# so compose_preflight.py's literal "mem_limit: 1536m" check keeps guarding
+# the real invariant it was written for.
+services:
+  api:
+    mem_limit: ${API_MEMORY_LIMIT:?set API_MEMORY_LIMIT before using this override}

@@ -9,6 +9,7 @@ $BackendDir = Split-Path -Parent $DeployDir
 $DataDir = Join-Path $BackendDir "data"
 $DeltaDir = Join-Path $DataDir "skill-deltas"
 $ComposeFile = Join-Path $DeployDir "docker-compose.yml"
+$MemoryOverride = Join-Path $DeployDir "docker-compose.override.memory.yml"
 $Project = "autoskill-collector"
 
 if (-not $PackageName) {
@@ -24,18 +25,20 @@ if (-not $env:GITHUB_TOKEN) {
     Write-Warning "GITHUB_TOKEN is unset; discovery will use the intentionally small anonymous crawl budget."
 }
 
+if (-not $env:API_MEMORY_LIMIT) {
+    # skill_delta.py export loads the whole active library into memory rather
+    # than streaming it, so the collector's api needs more headroom than
+    # production's 1536m default as the local corpus grows. Applied only via
+    # docker-compose.override.memory.yml -- production's own compose file
+    # keeps its literal 1536m, which compose_preflight.py enforces.
+    $env:API_MEMORY_LIMIT = "4096m"
+}
 try {
     Write-Host "Building the isolated one-shot collector..."
-    docker compose -p $Project -f $ComposeFile build api worker
+    docker compose -p $Project -f $ComposeFile -f $MemoryOverride build api worker
     if ($LASTEXITCODE -ne 0) { throw "collector image build failed" }
 
-    if (-not $env:API_MEMORY_LIMIT) {
-        # skill_delta.py export loads the whole active library into memory
-        # rather than streaming it, so the collector's api needs more headroom
-        # than production's 1536m default as the local corpus grows.
-        $env:API_MEMORY_LIMIT = "4096m"
-    }
-    docker compose -p $Project -f $ComposeFile up -d api
+    docker compose -p $Project -f $ComposeFile -f $MemoryOverride up -d api
     if ($LASTEXITCODE -ne 0) { throw "collector API failed to start" }
 
     $ready = $false
@@ -65,6 +68,6 @@ try {
 }
 finally {
     if (-not $KeepApiRunning) {
-        docker compose -p $Project -f $ComposeFile --profile collector down 2>$null | Out-Null
+        docker compose -p $Project -f $ComposeFile -f $MemoryOverride --profile collector down 2>$null | Out-Null
     }
 }

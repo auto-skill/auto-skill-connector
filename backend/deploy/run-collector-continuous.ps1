@@ -6,13 +6,15 @@ $ErrorActionPreference = "Stop"
 $DeployDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $BackendDir = Split-Path -Parent $DeployDir
 $ComposeFile = Join-Path $DeployDir "docker-compose.yml"
+$MemoryOverride = Join-Path $DeployDir "docker-compose.override.memory.yml"
+$ContinuousOverride = Join-Path $DeployDir "docker-compose.override.continuous.yml"
 $Project = "autoskill-collector"
 $WorkerContainer = "autoskill-local-collector-worker"
 
 if ($Stop) {
     Write-Host "Stopping $WorkerContainer ..."
     docker stop $WorkerContainer 2>$null | Out-Null
-    docker compose -p $Project -f $ComposeFile --profile collector rm -f worker 2>$null | Out-Null
+    docker compose -p $Project -f $ComposeFile -f $ContinuousOverride --profile collector rm -f worker 2>$null | Out-Null
     Write-Host "Stopped. The collector API/database are left running; use collect-skills.ps1 or export-skill-delta.ps1 -Stop separately if you want those down too."
     return
 }
@@ -24,25 +26,22 @@ if (-not $env:GITHUB_TOKEN) {
 }
 
 Write-Host "Building the isolated collector image..."
-docker compose -p $Project -f $ComposeFile build api worker
+docker compose -p $Project -f $ComposeFile -f $MemoryOverride build api worker
 if ($LASTEXITCODE -ne 0) { throw "collector image build failed" }
 
 if (-not $env:API_MEMORY_LIMIT) {
     # skill_delta.py export loads the whole active library into memory rather
     # than streaming it, so the collector's api needs more headroom than
-    # production's 1536m default as the local corpus grows.
+    # production's 1536m default as the local corpus grows. Applied only via
+    # docker-compose.override.memory.yml -- production's own compose file
+    # keeps its literal 1536m, which compose_preflight.py enforces.
     $env:API_MEMORY_LIMIT = "4096m"
 }
-docker compose -p $Project -f $ComposeFile up -d api
+docker compose -p $Project -f $ComposeFile -f $MemoryOverride up -d api
 if ($LASTEXITCODE -ne 0) { throw "collector API failed to start" }
 
-$env:WORKER_ONCE = "0"
-try {
-    docker compose -p $Project -f $ComposeFile --profile collector up -d worker
-    if ($LASTEXITCODE -ne 0) { throw "collector worker failed to start" }
-} finally {
-    Remove-Item Env:\WORKER_ONCE
-}
+docker compose -p $Project -f $ComposeFile -f $ContinuousOverride --profile collector up -d worker
+if ($LASTEXITCODE -ne 0) { throw "collector worker failed to start" }
 
 Write-Host ""
 Write-Host "Running continuously as Docker container: $WorkerContainer"
