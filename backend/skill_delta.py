@@ -73,6 +73,7 @@ SKILL_FIELDS = (
     "meaningfulness_score",
     "platforms",
     "category",
+    "capability_summary",
     "embedding_text_hash",
     "embedded_at",
 )
@@ -202,6 +203,7 @@ def _validate_skill(record: dict) -> dict:
     if address is not None and not address.is_global:
         raise SkillDeltaError("url may not target a non-public IP address")
     clean["description"] = _validate_text(clean.get("description"), "description", 20_000)
+    clean["capability_summary"] = _validate_text(clean.get("capability_summary"), "capability_summary", 2_000)
     for field in ("discovered_at", "scanned_at", "embedded_at"):
         clean[field] = _validate_text(clean.get(field), field, 100)
     for field in ("content_hash", "embedding_text_hash"):

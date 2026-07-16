@@ -54,7 +54,8 @@ CREATE TABLE IF NOT EXISTS skills (
     embedding BLOB,
     embedding_text_hash TEXT,
     embedded_at TEXT,
-    feedback_score REAL
+    feedback_score REAL,
+    capability_summary TEXT
 );
 
 CREATE VIRTUAL TABLE IF NOT EXISTS skills_fts USING fts5(
@@ -397,6 +398,7 @@ SKILL_COLUMN_DEFAULTS = {
     "platforms": "TEXT DEFAULT '[]'",
     "category": "TEXT",
     "feedback_score": "REAL",
+    "capability_summary": "TEXT",
 }
 
 ROUTE_EVENT_COLUMN_DEFAULTS = {

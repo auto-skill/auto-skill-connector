@@ -115,13 +115,20 @@ def clean_markdown(text: str) -> str:
 
 def build_embed_text(skill: dict, content: str = "") -> str:
     """The canonical text a skill is embedded from. Changing this invalidates
-    all stored embeddings (embedding_text_hash catches that per row)."""
+    all stored embeddings (embedding_text_hash catches that per row).
+
+    capability_summary is an LLM-generated read of what the skill actually
+    does (task, triggers, capabilities) and is deliberately placed ahead of
+    the raw content -- it's a distilled signal of intent, where raw content
+    is often front-loaded with badges/install instructions instead."""
     parts = [skill.get("name") or ""]
     if skill.get("description"):
         parts.append(skill["description"])
     tags = skill.get("tags") or []
     if tags:
         parts.append(" ".join(str(t) for t in tags))
+    if skill.get("capability_summary"):
+        parts.append(skill["capability_summary"])
     if content:
         parts.append(clean_markdown(content)[:MAX_CONTENT_CHARS])
     return _WS_RE.sub(" ", ". ".join(p for p in parts if p).strip())[:MAX_EMBED_CHARS]

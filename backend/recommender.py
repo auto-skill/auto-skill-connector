@@ -163,7 +163,7 @@ async def embed_missing_skills(client: httpx.AsyncClient) -> int:
         r = await client.get(
             f"{LOCAL_DB_URL}/rest/v1/skills",
             params={
-                "select": "id,url,name,source,description,tags",
+                "select": "id,url,name,source,description,tags,capability_summary",
                 "embedding": "is.null",
                 "url": "not.is.null",
                 "quality_status": "eq.active",

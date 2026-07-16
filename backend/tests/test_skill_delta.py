@@ -34,7 +34,8 @@ CREATE TABLE skills (
     quality_reasons TEXT DEFAULT '[]', quality_score INTEGER DEFAULT 0,
     prominence_score REAL DEFAULT 0, provenance_score REAL DEFAULT 0.25,
     meaningfulness_score REAL DEFAULT 0, platforms TEXT DEFAULT '[]', category TEXT,
-    embedding BLOB, embedding_text_hash TEXT, embedded_at TEXT, feedback_score REAL
+    embedding BLOB, embedding_text_hash TEXT, embedded_at TEXT, feedback_score REAL,
+    capability_summary TEXT
 );
 CREATE TABLE users (id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, plan TEXT);
 CREATE TABLE cli_tokens (id TEXT PRIMARY KEY, token_hash TEXT UNIQUE NOT NULL, user_id TEXT);
