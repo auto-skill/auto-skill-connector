@@ -549,3 +549,140 @@ def test_install_from_local_path_rejects_invalid_skill(
     assert result == 1
     assert "failed validation" in capsys.readouterr().err
     assert not home.exists()
+
+
+def _isolate_mining(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AUTOSKILL_MINED_SKILLS_PATH", str(tmp_path / "mined_skills"))
+
+
+def test_mine_list_sessions_reports_none_found(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    result = cli.main(["mine", "list-sessions"])
+    out = capsys.readouterr().out
+    assert result == 0
+    assert "no local sessions found" in out
+
+
+def test_mine_save_then_list_then_remove(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _isolate_mining(tmp_path, monkeypatch)
+    draft = tmp_path / "draft.md"
+    draft.write_text(VALID_LOCAL_SKILL, encoding="utf-8")
+
+    result = cli.main(["mine", "save", str(draft), "--source-session", "sess-1"])
+    out = capsys.readouterr().out
+    assert result == 0
+    assert "saved: acme-review-standards" in out
+    assert "private --" in out
+
+    result = cli.main(["mine", "list"])
+    out = capsys.readouterr().out
+    assert result == 0
+    assert "acme-review-standards (draft)" in out
+
+    result = cli.main(["mine", "remove", "acme-review-standards"])
+    out = capsys.readouterr().out
+    assert result == 0
+    assert "removed: acme-review-standards" in out
+
+
+def test_mine_save_rejects_invalid_draft(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _isolate_mining(tmp_path, monkeypatch)
+    draft = tmp_path / "draft.md"
+    draft.write_text("---\nname: bad\n---\nshort", encoding="utf-8")
+
+    result = cli.main(["mine", "save", str(draft)])
+    err = capsys.readouterr().err
+    assert result == 1
+    assert "failed validation" in err
+
+
+def test_mine_publish_requires_yes_when_noninteractive(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _isolate_mining(tmp_path, monkeypatch)
+    draft = tmp_path / "draft.md"
+    draft.write_text(VALID_LOCAL_SKILL, encoding="utf-8")
+    cli.main(["mine", "save", str(draft)])
+    capsys.readouterr()
+
+    result = cli.main(["mine", "publish", "acme-review-standards"])
+    err = capsys.readouterr().err
+    assert result == 1
+    assert "refusing non-interactive publish without --yes" in err
+
+
+def test_mine_publish_delegates_when_confirmed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _isolate_mining(tmp_path, monkeypatch)
+    draft = tmp_path / "draft.md"
+    draft.write_text(VALID_LOCAL_SKILL, encoding="utf-8")
+    cli.main(["mine", "save", str(draft)])
+    capsys.readouterr()
+
+    async def fake_publish(slug: str) -> dict:
+        assert slug == "acme-review-standards"
+        return {"slug": slug, "published_skill_id": "priv_123"}
+
+    monkeypatch.setattr(cli, "publish_mined_skill", fake_publish)
+
+    result = cli.main(["mine", "publish", "acme-review-standards", "--yes"])
+    out = capsys.readouterr().out
+    assert result == 0
+    assert "published: acme-review-standards -> private skill priv_123" in out
+
+
+def test_mine_publish_surfaces_not_logged_in(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _isolate_mining(tmp_path, monkeypatch)
+    draft = tmp_path / "draft.md"
+    draft.write_text(VALID_LOCAL_SKILL, encoding="utf-8")
+    cli.main(["mine", "save", str(draft)])
+    capsys.readouterr()
+
+    async def fake_publish(slug: str) -> dict:
+        raise cli.NotLoggedInError("Run `auto-skill login` first.")
+
+    monkeypatch.setattr(cli, "publish_mined_skill", fake_publish)
+
+    result = cli.main(["mine", "publish", "acme-review-standards", "--yes"])
+    err = capsys.readouterr().err
+    assert result == 1
+    assert "login" in err
+
+
+def test_weights_show_and_reset(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("AUTOSKILL_WEIGHTS_PATH", str(tmp_path / "weights.json"))
+    monkeypatch.setenv("AUTOSKILL_ROUTE_HISTORY_PATH", str(tmp_path / "route_history.json"))
+
+    result = cli.main(["weights", "show"])
+    out = capsys.readouterr().out
+    assert result == 0
+    assert "no learned weights yet" in out
+
+    import auto_skill_personalize as personalize
+
+    for i in range(6):
+        personalize.record_route(f"route-{i}", "some-skill", tags=[])
+        personalize.record_outcome(f"route-{i}", "used")
+
+    result = cli.main(["weights", "show"])
+    out = capsys.readouterr().out
+    assert result == 0
+    assert "skill:some-skill" in out
+    assert "learned" in out
+
+    result = cli.main(["weights", "reset"])
+    out = capsys.readouterr().out
+    assert result == 0
+    assert "weights reset" in out
+    assert not personalize.get_weights_path().exists()

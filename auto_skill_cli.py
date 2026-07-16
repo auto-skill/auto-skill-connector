@@ -45,6 +45,16 @@ from auto_skill_core import (
     validate_skill_content,
     whoami,
 )
+from auto_skill_mining import (
+    get_mined_skill,
+    get_mined_skills_dir,
+    list_local_sessions,
+    list_mined_skills,
+    publish_mined_skill,
+    remove_mined_skill,
+    save_mined_skill,
+)
+from auto_skill_personalize import reset_weights, weights_summary
 
 HOOK_SCRIPT_PATH = Path(__file__).resolve().parent / "hooks" / "skill_suggest.py"
 
@@ -880,6 +890,114 @@ async def _command_my_skills_remove(args: argparse.Namespace) -> int:
     return 0 if removed else 1
 
 
+async def _command_mine_list_sessions(args: argparse.Namespace) -> int:
+    sessions = list_local_sessions(args.client, since_days=args.since_days)
+    if args.json:
+        print(json.dumps(sessions, indent=2))
+        return 0
+    if not sessions:
+        print("no local sessions found")
+        return 0
+    for index, session in enumerate(sessions, start=1):
+        print(f"{index}. [{session['client']}] {session['session_id']}")
+        if session.get("project"):
+            print(f"   project: {session['project']}")
+        print(f"   path: {session['path']}")
+        print(f"   modified: {session['mtime_iso']}")
+    return 0
+
+
+async def _command_mine_save(args: argparse.Namespace) -> int:
+    path = Path(args.path)
+    if not path.is_file():
+        print(f"error: {path} is not a file", file=sys.stderr)
+        return 1
+    try:
+        entry = save_mined_skill(
+            path.read_text(encoding="utf-8"),
+            source_session_id=args.source_session,
+            force=args.force,
+        )
+    except AutoSkillError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    _print_warning_lines(entry.get("warnings") or [])
+    print(f"saved: {entry['slug']} ({entry['name']})")
+    print(f"  {get_mined_skills_dir() / (entry['slug'] + '.md')}")
+    print("  private -- run `auto-skill mine publish` to share it, or `auto-skill install` to use it here")
+    return 0
+
+
+async def _command_mine_list(args: argparse.Namespace) -> int:
+    entries = list_mined_skills()
+    if args.json:
+        print(json.dumps(entries, indent=2))
+        return 0
+    if not entries:
+        print("no mined skills yet -- see the session-miner skill or `auto-skill mine list-sessions`")
+        return 0
+    for index, entry in enumerate(entries, start=1):
+        status = "published" if entry.get("published") else "draft"
+        print(f"{index}. {entry['slug']} ({status})")
+        if entry.get("description"):
+            print(f"   {entry['description']}")
+    return 0
+
+
+def _confirm_publish(slug: str) -> bool:
+    if not sys.stdin.isatty():
+        print("error: refusing non-interactive publish without --yes", file=sys.stderr)
+        return False
+    answer = input(f"Publish mined skill {slug!r} to your private catalog? [y/N] ").strip().lower()
+    return answer in {"y", "yes"}
+
+
+async def _command_mine_publish(args: argparse.Namespace) -> int:
+    entry = get_mined_skill(args.slug)
+    if entry is None:
+        print(f"error: no mined skill named {args.slug!r}", file=sys.stderr)
+        return 1
+    if not args.yes and not _confirm_publish(args.slug):
+        print("cancelled")
+        return 1
+    try:
+        published = await publish_mined_skill(args.slug)
+    except NotLoggedInError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    except AutoSkillError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print(f"published: {published['slug']} -> private skill {published['published_skill_id']}")
+    return 0
+
+
+async def _command_mine_remove(args: argparse.Namespace) -> int:
+    removed = remove_mined_skill(args.slug)
+    print(f"removed: {args.slug}" if removed else f"not found: {args.slug}")
+    return 0 if removed else 1
+
+
+async def _command_weights_show(args: argparse.Namespace) -> int:
+    summary = weights_summary()
+    if args.json:
+        print(json.dumps(summary, indent=2))
+        return 0
+    if not summary["arms"]:
+        print("no learned weights yet -- personalization builds up from `auto-skill feedback`")
+        return 0
+    for arm in summary["arms"]:
+        state = "learned" if arm["learned"] else "warming up"
+        print(f"{arm['key']}: weight={arm['estimated_weight']} observations={arm['observations']} ({state})")
+    return 0
+
+
+async def _command_weights_reset(args: argparse.Namespace) -> int:
+    reset_weights()
+    print("weights reset")
+    return 0
+
+
 async def _command_doctor(args: argparse.Namespace) -> int:
     ok = True
     settings_path = Path(args.settings_path) if args.settings_path else _default_settings_path()
@@ -946,6 +1064,14 @@ async def _command_doctor(args: argparse.Namespace) -> int:
 
     profile = await whoami()
     print(f"account: logged in as {profile['email']}" if profile else "account: not logged in (run `auto-skill login`)")
+
+    mined = list_mined_skills()
+    drafts = sum(1 for entry in mined if not entry.get("published"))
+    print(f"mined skills: {len(mined)} ({drafts} unpublished draft{'s' if drafts != 1 else ''})")
+
+    weights = weights_summary()
+    learned = sum(1 for arm in weights["arms"] if arm["learned"])
+    print(f"personalization weights: {len(weights['arms'])} tracked, {learned} learned ({weights['path']})")
 
     return 0 if ok else 1
 
@@ -1061,6 +1187,44 @@ def build_parser() -> argparse.ArgumentParser:
     my_skills_remove = my_skills_sub.add_parser("remove", help="Remove a private skill by id.")
     my_skills_remove.add_argument("skill_id", help="Private skill id to remove.")
     my_skills_remove.set_defaults(func=_command_my_skills_remove)
+
+    mine = subparsers.add_parser("mine", help="Mine local AI session transcripts into private candidate skills.")
+    mine_sub = mine.add_subparsers(dest="mine_command", required=True)
+
+    mine_list_sessions = mine_sub.add_parser("list-sessions", help="List local session transcripts (metadata only).")
+    mine_list_sessions.add_argument("--client", choices=["claude", "codex", "all"], default="all", help="Which client's sessions to list.")
+    mine_list_sessions.add_argument("--since-days", type=float, default=None, help="Only sessions modified in the last N days.")
+    mine_list_sessions.add_argument("--json", action="store_true", help="Print session metadata as JSON.")
+    mine_list_sessions.set_defaults(func=_command_mine_list_sessions)
+
+    mine_save = mine_sub.add_parser("save", help="Validate and privately store a drafted SKILL.md mined from a session.")
+    mine_save.add_argument("path", help="Path to the drafted SKILL.md.")
+    mine_save.add_argument("--source-session", default="", help="Session id this draft was mined from.")
+    mine_save.add_argument("--force", action="store_true", help="Save even if it looks like a duplicate of an already-mined skill.")
+    mine_save.set_defaults(func=_command_mine_save)
+
+    mine_list = mine_sub.add_parser("list", help="List locally mined skills.")
+    mine_list.add_argument("--json", action="store_true", help="Print mined-skill metadata as JSON.")
+    mine_list.set_defaults(func=_command_mine_list)
+
+    mine_publish = mine_sub.add_parser("publish", help="Publish a locally mined skill to your private catalog (requires login).")
+    mine_publish.add_argument("slug", help="Mined skill slug (see `auto-skill mine list`).")
+    mine_publish.add_argument("--yes", action="store_true", help="Approve publish without an interactive prompt.")
+    mine_publish.set_defaults(func=_command_mine_publish)
+
+    mine_remove = mine_sub.add_parser("remove", help="Remove a locally mined skill.")
+    mine_remove.add_argument("slug", help="Mined skill slug to remove.")
+    mine_remove.set_defaults(func=_command_mine_remove)
+
+    weights = subparsers.add_parser("weights", help="Inspect or reset local personalization weights.")
+    weights_sub = weights.add_subparsers(dest="weights_command", required=True)
+
+    weights_show = weights_sub.add_parser("show", help="Show learned per-skill/tag weights on this machine.")
+    weights_show.add_argument("--json", action="store_true", help="Print weights as JSON.")
+    weights_show.set_defaults(func=_command_weights_show)
+
+    weights_reset = weights_sub.add_parser("reset", help="Clear all learned local weights.")
+    weights_reset.set_defaults(func=_command_weights_reset)
 
     return parser
 

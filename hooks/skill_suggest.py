@@ -263,12 +263,76 @@ def _fetch_backend_content(content_url: str) -> str:
     return ""
 
 
+def _personalization_enabled() -> bool:
+    return os.getenv("AUTOSKILL_PERSONALIZATION", "1").strip().lower() in _TRUTHY_VALUES
+
+
+def _weights_path() -> Path:
+    override = os.getenv("AUTOSKILL_WEIGHTS_PATH")
+    return Path(override) if override else Path.home() / ".autoskill" / "weights.json"
+
+
+def _update_local_weights(skill: dict, success: bool) -> None:
+    """Duplicate of auto_skill_personalize.record_outcome's arm-update step
+    -- this hook can't import that module (see _auth_headers: it ships and
+    runs standalone). Unlike record_route_feedback, this hook already has
+    the skill and outcome together at the call site, so it skips that
+    module's route_id -> skill lookup and writes the same weights.json
+    directly. Best-effort, local-only, never raises."""
+    if not _personalization_enabled():
+        return
+    skill_id = str((skill or {}).get("name") or (skill or {}).get("url") or "").strip().lower()
+    if not skill_id:
+        return
+    category = (skill or {}).get("category")
+    keys = [f"skill:{skill_id}"] + ([f"tag:{str(category).strip().lower()}"] if category else [])
+    path = _weights_path()
+    try:
+        weights = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(weights, dict):
+            weights = {}
+    except Exception:
+        weights = {}
+    arms = weights.setdefault("arms", {})
+    for key in keys:
+        arm = arms.get(key)
+        if not isinstance(arm, dict):
+            arm = {"alpha": 1.0, "beta": 1.0}
+            arms[key] = arm
+        arm.setdefault("alpha", 1.0)
+        arm.setdefault("beta", 1.0)
+        arm["alpha" if success else "beta"] += 1.0
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temp = path.with_suffix(path.suffix + ".tmp")
+        temp.write_text(json.dumps(weights, indent=2) + "\n", encoding="utf-8")
+        try:
+            os.chmod(temp, stat.S_IRUSR | stat.S_IWUSR)
+        except OSError:
+            pass
+        temp.replace(path)
+    except OSError:
+        # A read-only profile must never block routing.
+        pass
+
+
 def _report_outcome(route: dict | None, outcome: str) -> None:
     """Attach this hook's local application decision (was a match actually
     shown/applied, downgraded, or rejected) to the route_events row /route
     already created for this call -- reuses the existing route-feedback
     contract instead of writing a second, duplicate row. Best-effort,
-    never allowed to affect routing itself."""
+    never allowed to affect routing itself.
+
+    Also updates this machine's local personalization weights: "injected"
+    (full content actually applied) counts as success, "failed" (content
+    unavailable) counts as failure. "shown" (a hint was surfaced but there
+    is no signal the user acted on it) is intentionally left neutral."""
+    skill = (route or {}).get("skill") or {}
+    if outcome == "injected":
+        _update_local_weights(skill, success=True)
+    elif outcome == "failed":
+        _update_local_weights(skill, success=False)
+
     route_id = (route or {}).get("route_id")
     if not route_id or not AUTOSKILL_URL:
         return

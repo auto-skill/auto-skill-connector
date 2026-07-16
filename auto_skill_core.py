@@ -12,6 +12,7 @@ import httpx
 
 from auto_skill_auth import auth_headers
 from auto_skill_identity import get_anonymous_installation_id
+from auto_skill_personalize import apply_personalization, record_outcome, record_route
 
 DEFAULT_AUTOSKILL_URL = "https://skills.autoskill.dev"
 CLIENT_NAME = "auto-skill-connector"
@@ -562,7 +563,11 @@ def _candidate_pool(result: dict[str, Any], task: str) -> list[dict[str, Any]]:
         candidates.append(dict(result["skill"]))
     candidates.extend(dict(c) for c in (result.get("candidates") or []))
     candidates.extend(dict(c) for c in (result.get("options") or []))
-    return _rank_candidates_for_task(_safe_candidates(candidates), task)
+    ranked = _rank_candidates_for_task(_safe_candidates(candidates), task)
+    # Local-only reordering from this machine's learned weights; never
+    # changes which candidates are present or their safety fields, only
+    # their order (see auto_skill_personalize.apply_personalization).
+    return apply_personalization(ranked)
 
 
 def _autopick(candidates: list[dict[str, Any]], task: str = "") -> dict[str, Any]:
@@ -1197,6 +1202,30 @@ async def recommend_skill_payload(
     }
 
 
+def _local_personalization_pass(route: dict[str, Any]) -> dict[str, Any]:
+    """Local-only bookkeeping and reordering (see auto_skill_personalize).
+
+    Records this route's selected skill against its route_id so a later
+    record_route_feedback(route_id, outcome) call -- which carries no skill
+    id of its own -- can be mapped back to the skill it was about. Only
+    reorders hint-tier candidate lists: a full-tier route has already made
+    its verified, hash-checked selection server-side, and personalization
+    must never influence which content becomes trusted instructions, only
+    how equally-safe hint suggestions are ordered.
+    """
+    route_id = route.get("route_id")
+    selected = route.get("selected_skill") if isinstance(route.get("selected_skill"), dict) else None
+    if route_id and selected:
+        category = selected.get("category")
+        skill_id = str(selected.get("name") or selected.get("url") or "")
+        record_route(str(route_id), skill_id, [str(category)] if category else [])
+
+    candidates = route.get("candidates")
+    if route.get("route_tier") == "hint" and isinstance(candidates, list) and len(candidates) > 1:
+        route["candidates"] = apply_personalization(candidates)
+    return route
+
+
 async def route_task_payload(
     task: str, client: httpx.AsyncClient | None = None, auth_header: dict[str, str] | None = None
 ) -> dict[str, Any]:
@@ -1207,7 +1236,7 @@ async def route_task_payload(
 
     route = await _route_selfhosted(client, task, auth_header=auth_header)
     if route is not None:
-        return _with_route_summary(route)
+        return _with_route_summary(_local_personalization_pass(route))
     return _with_route_summary({
         "routed": False,
         "route_type": "none",
@@ -1238,6 +1267,10 @@ async def record_route_feedback(
     outcome = (outcome or "").strip().lower()
     if not route_id or outcome not in {"used", "skipped", "installed", "failed", "dismissed"}:
         return False
+    # Local-only bandit update, in addition to (not instead of) the POST
+    # below. No-op if this route_id was never recorded locally. Never
+    # allowed to affect whether server-side feedback is sent.
+    record_outcome(route_id, outcome)
     if client is None:
         async with httpx.AsyncClient() as owned:
             return await record_route_feedback(

@@ -113,6 +113,32 @@ def test_route_filter_parity(prompt: str) -> None:
     assert core.should_route_prompt(prompt)["should_route"] == hook._should_route(prompt)[0]
 
 
+def test_local_weight_format_parity(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """hook._update_local_weights duplicates auto_skill_personalize's arm
+    update (the hook can't import that module -- see _auth_headers). Both
+    must write the same {"arms": {"skill:<id>": {"alpha", "beta"}}} shape to
+    the same weights.json, or `auto-skill weights show` would silently miss
+    hook-driven learning."""
+    import auto_skill_personalize as personalize
+
+    weights_path = tmp_path / "weights.json"
+    monkeypatch.setenv("AUTOSKILL_WEIGHTS_PATH", str(weights_path))
+    monkeypatch.delenv("AUTOSKILL_PERSONALIZATION", raising=False)
+
+    hook._update_local_weights({"name": "parity-skill", "category": "rust"}, success=True)
+
+    summary = personalize.weights_summary()
+    keys = {arm["key"] for arm in summary["arms"]}
+    assert "skill:parity-skill" in keys
+    assert "tag:rust" in keys
+
+    for _ in range(5):
+        personalize.record_route("route-x", "parity-skill", tags=["rust"])
+        personalize.record_outcome("route-x", "used")
+
+    assert personalize.estimated_weight("parity-skill") > 0.5
+
+
 @pytest.mark.parametrize("prompt", ["ok", "/help", "what is the current state?"])
 def test_hook_main_skips_without_any_network_call(
     prompt: str,
