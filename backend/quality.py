@@ -760,14 +760,11 @@ def dedupe_by_content_hash(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return _dedupe_near_duplicates(by_metadata)
 
 
-def tier_for_prompt(prompt: str, candidates: list[dict[str, Any]], recommend_gap: float = 1.6) -> str:
-    """Conservative full/hint/none decision after reranking."""
+def tier_for_ranked_candidates(candidates: list[dict[str, Any]]) -> str:
+    """Decide a delivery tier for candidates already ranked for this prompt."""
     if not candidates:
         return "none"
-    ranked = rerank_candidates(prompt, candidates)
-    if not ranked:
-        return "none"
-    top = ranked[0]
+    top = candidates[0]
     if top.get("platform_mismatch"):
         return "hint"
     if (top.get("quality_status") or "active") != FULL_ROUTE_STATUS:
@@ -792,9 +789,9 @@ def tier_for_prompt(prompt: str, candidates: list[dict[str, Any]], recommend_gap
 
     if top.get("lexical_overlap", 0) < 2:
         return "hint"
-    if len(ranked) == 1:
+    if len(candidates) == 1:
         return "full"
-    runner = ranked[1]
+    runner = candidates[1]
     runner_similarity = runner.get("similarity")
     if runner_similarity is not None:
         try:
@@ -811,3 +808,9 @@ def tier_for_prompt(prompt: str, candidates: list[dict[str, Any]], recommend_gap
     # should not downgrade a strong task match. Route scores are deliberately
     # compressed; requiring a 1.6x gap made excellent specialists hint-only.
     return "full"
+
+
+def tier_for_prompt(prompt: str, candidates: list[dict[str, Any]], recommend_gap: float = 1.6) -> str:
+    """Conservative full/hint/none decision after reranking."""
+    del recommend_gap  # Kept for the public call signature used by older clients.
+    return tier_for_ranked_candidates(rerank_candidates(prompt, candidates))

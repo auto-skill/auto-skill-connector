@@ -311,6 +311,21 @@ python eval_search.py --json-out eval-results\$(Get-Date -Format yyyyMMdd-HHmmss
 python eval_compare.py --fail-on-regression eval-results\before.json eval-results\after.json
 ```
 
+For repeated production-route timing, run the privacy-safe profile from a
+trusted development machine with a dedicated test account, then compare the
+same public cases after the deployment:
+
+```powershell
+python route_profile.py --json-out eval-results\route-before.json
+python route_profile_compare.py --fail-on-regression `
+  eval-results\route-before.json eval-results\route-after.json
+```
+
+The route profile records case IDs, route behavior, and numeric timings only;
+it intentionally excludes task text, SKILL.md content, response warnings, and
+credentials. Set `AUTOSKILL_EVAL_TOKEN` only in the current process when the
+machine does not have the dedicated account's normal local CLI credential.
+
 Route benchmark cases come from `evals\routes.jsonl`. Add cases there for
 observed false positives, obvious direct-hit tasks, and conversation/meta
 prompts that should stay at `none`.

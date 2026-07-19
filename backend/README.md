@@ -189,6 +189,22 @@ Route benchmark cases live in `evals/routes.jsonl`. Add false positives,
 direct hits, ambiguous matches, and conversation/meta negatives so behavior
 changes appear in snapshots without editing Python.
 
+For a production-safe latency baseline, capture a repeated route profile and
+compare it after a deployment. The profile retains only public case IDs, route
+tier, selected skill name, and numeric metrics; it does not write prompts,
+skill content, warnings, or credentials.
+
+```powershell
+python route_profile.py --json-out eval-results/route-before.json
+python route_profile_compare.py --fail-on-regression `
+  eval-results/route-before.json eval-results/route-after.json
+```
+
+`route_profile.py` uses the local CLI credential by default, or an
+`AUTOSKILL_EVAL_TOKEN` supplied only for the process. Use a dedicated test
+account for repeated production measurements so the benchmark does not consume
+customer quota or mix with customer analytics.
+
 ## OAuth Redirect Configuration
 
 Dashboard OAuth redirects are allowlisted. Set

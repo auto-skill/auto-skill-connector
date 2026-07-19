@@ -7,6 +7,7 @@ from quality import (
     infer_platforms,
     is_non_task_prompt,
     rerank_candidates,
+    tier_for_ranked_candidates,
     tier_for_prompt,
 )
 
@@ -200,6 +201,23 @@ class RoutingTierTests(unittest.TestCase):
         }
 
         self.assertEqual(tier_for_prompt(prompt, [candidate]), "full")
+
+    def test_ranked_tier_matches_prompt_tier(self):
+        prompt = "build a landing page on Landingi for an AI automation agency"
+        candidate = {
+            "name": "sales-landingi",
+            "description": "Landingi platform help for landing pages, leads, CRM sync, API keys, and publishing.",
+            "tags": ["landingi", "landing-page"],
+            "platforms": ["landingi"],
+            "quality_status": "active",
+            "quality_score": 90,
+            "rank": 1.0,
+            "similarity": 0.95,
+        }
+
+        ranked = rerank_candidates(prompt, [candidate])
+
+        self.assertEqual(tier_for_ranked_candidates(ranked), tier_for_prompt(prompt, [candidate]))
 
     def test_platform_traps_cap_all_known_platforms_to_hint(self):
         generic_prompt = "build a customer dashboard and publish it"
