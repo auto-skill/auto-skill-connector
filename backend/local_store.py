@@ -18,7 +18,7 @@ import struct
 import threading
 import time
 import uuid
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -1372,6 +1372,7 @@ _lex_cache: dict = {
     "generation": -1,
     "db_path": "",
     "postings": {},
+    "ids_desc": [],
 }
 
 
@@ -1400,7 +1401,10 @@ def warm_lexical_index() -> dict:
               AND COALESCE(quality_status, 'pending') IN ('active', 'metadata_only')
             """
         ).fetchall()
+        ids_desc: list[str] = []
         for row in rows:
+            skill_id = str(row["id"])
+            ids_desc.append(skill_id)
             text = " ".join(
                 [
                     str(row["name"] or ""),
@@ -1409,7 +1413,7 @@ def warm_lexical_index() -> dict:
                 ]
             )
             for token in set(_lexical_tokens(text)):
-                postings[token].append(row["id"])
+                postings[token].append(skill_id)
         generation = int(_emb_cache.get("generation") or 0)
         with _lex_cache_lock:
             _lex_cache.update(
@@ -1417,6 +1421,7 @@ def warm_lexical_index() -> dict:
                     "generation": generation,
                     "db_path": str(DB_PATH),
                     "postings": dict(postings),
+                    "ids_desc": sorted(ids_desc, reverse=True),
                 }
             )
         return {"tokens": len(postings), "skills": len(rows)}
@@ -1432,6 +1437,69 @@ def _cached_lexical_postings() -> dict[str, list[str]] | None:
         return postings
 
 
+def _cached_lexical_ids_desc() -> list[str] | None:
+    with _lex_cache_lock:
+        ids_desc = _lex_cache.get("ids_desc")
+        if not ids_desc or _lex_cache.get("db_path") != str(DB_PATH):
+            return None
+        return ids_desc if isinstance(ids_desc, list) else None
+
+
+def _top_scored_skill_ids(
+    scores: dict[str, float],
+    max_results: int,
+    ids_desc: list[str] | None = None,
+) -> list[str]:
+    """Return the legacy score-then-ID order without tuple-key heap churn.
+
+    Lexical scores are sums of 1.0 per query token, so a route usually has a
+    few score buckets even when a generic word matches most of the catalog.
+    Selecting IDs within each bucket directly retains the historical
+    ``heapq.nlargest(..., key=(score, id))`` ordering while avoiding one Python
+    tuple-key call per matching skill. For a dense bucket, scanning the cached
+    descending ID order stops as soon as the small route limit is satisfied;
+    sparse buckets retain the bounded heap path.
+    """
+    if max_results < 1:
+        return []
+    score_counts = Counter(scores.values())
+    sparse_scores = {
+        score
+        for score, count in score_counts.items()
+        if ids_desc is None or count <= max(1024, max_results * 16)
+    }
+    sparse_buckets: dict[float, list[str]] = {score: [] for score in sparse_scores}
+    if sparse_buckets:
+        for skill_id, score in scores.items():
+            bucket = sparse_buckets.get(score)
+            if bucket is not None:
+                bucket.append(skill_id)
+
+    top_ids: list[str] = []
+    for score in sorted(score_counts, reverse=True):
+        remaining = max_results - len(top_ids)
+        if remaining < 1:
+            break
+        if ids_desc is not None and score not in sparse_buckets:
+            selected = [skill_id for skill_id in ids_desc if scores.get(skill_id) == score][:remaining]
+            if len(selected) == remaining:
+                top_ids.extend(selected)
+                continue
+            # A cache from a different corpus must not silently drop a match.
+            selected_set = set(selected)
+            bucket = [
+                skill_id
+                for skill_id, candidate_score in scores.items()
+                if candidate_score == score and skill_id not in selected_set
+            ]
+            remaining -= len(selected)
+            top_ids.extend(selected)
+        else:
+            bucket = sparse_buckets[score]
+        top_ids.extend(heapq.nlargest(remaining, bucket))
+    return top_ids
+
+
 def _search_skills_lexical_memory(query: str, max_results: int) -> list[dict]:
     postings = _cached_lexical_postings()
     if postings is None:
@@ -1439,24 +1507,16 @@ def _search_skills_lexical_memory(query: str, max_results: int) -> list[dict]:
     tokens = _lexical_tokens(query)[:12]
     if not tokens:
         return []
-    scores: dict[str, float] = defaultdict(float)
+    scores: Counter[str] = Counter()
     for token in tokens:
-        for skill_id in postings.get(token, ()):
-            scores[skill_id] += 1.0
+        scores.update(postings.get(token, ()))
     if not scores:
         return []
     # Keep the in-memory path bounded: near-duplicate comparison is quadratic
     # in candidate count, and the router only needs a small recall set before
     # deterministic reranking trims it to the requested limit.
     top_count = max(1, max_results)
-    top_ids = [
-        skill_id
-        for skill_id, _score in heapq.nlargest(
-            top_count,
-            scores.items(),
-            key=lambda item: (item[1], item[0]),
-        )
-    ]
+    top_ids = _top_scored_skill_ids(scores, top_count, _cached_lexical_ids_desc())
     placeholders = ",".join("?" for _ in top_ids)
     conn = get_conn()
     try:
@@ -1467,7 +1527,7 @@ def _search_skills_lexical_memory(query: str, max_results: int) -> list[dict]:
         for row in rows:
             item = _row_to_dict(row, "skills", None)
             item["stars"] = _stars(dict(row).get("raw", "{}"))
-            item["rank"] = scores.get(item["id"], 0.0)
+            item["rank"] = float(scores.get(item["id"], 0))
             by_id[item["id"]] = item
         ordered = [by_id[skill_id] for skill_id in top_ids if skill_id in by_id]
         return quality.dedupe_by_content_hash(ordered)[:max_results]

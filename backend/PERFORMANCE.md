@@ -44,7 +44,7 @@ and policy construction.
 
 ## Pending Change Set: SQLite Request-Path Cleanup
 
-The current branch makes two behavior-preserving storage changes:
+The current branch makes three behavior-preserving retrieval/storage changes:
 
 1. WAL mode is enabled during database initialization, rather than on every
    new SQLite connection. WAL is persistent database state, so route
@@ -52,6 +52,9 @@ The current branch makes two behavior-preserving storage changes:
 2. Lexical and vector candidate fetches select the metadata used by ranking and
    omit the packed embedding BLOB, which is already held in the vector matrix
    cache and was immediately discarded from result rows.
+3. The warmed lexical index uses bulk score counting and preserves the legacy
+   score-then-ID order without heap-processing every candidate in a dense
+   generic-query score bucket.
 
 Local microbenchmarks are directional only:
 
@@ -64,10 +67,29 @@ These do not establish a production latency claim. Production comparison is
 required after deployment, with the route-profile behavior gate and host CPU,
 memory, and disk-I/O observations from DigitalOcean.
 
+## Controlled Local Retrieval Comparison (2026-07-19)
+
+The old commit (`79b57fb`) and current branch were each run twice against the
+same warmed temporary SQLite corpus: 50,000 active embedded skills, a
+deliberately dense spreadsheet query, 100 hybrid-search samples per run, and
+no embedding-model time. The selected result stayed `skill-49999` on every
+sample in both versions.
+
+| Metric | Old run range | Current run range | Change |
+| --- | ---: | ---: | ---: |
+| Hybrid retrieval p50 | 250.784-254.912 ms | 144.457-183.157 ms | 27-43% lower |
+| Hybrid retrieval p95 | 295.282-303.549 ms | 177.485-262.916 ms | 11-42% lower |
+
+This is a repeatable stress case for generic terms that match much of the
+catalog. It validates the intended retrieval improvement and result parity,
+but it is not an end-to-end production route measurement. Query embedding,
+account filtering, policy lookup, content validation, and live host contention
+remain outside this local comparison.
+
 ## Current Gates
 
-- Backend unit/API suite: 269 passing tests.
-- Backend pytest suite: 286 passing tests, 48 subtests.
+- Backend unit/API suite: 270 passing tests.
+- Backend pytest suite: 287 passing tests, 48 subtests.
 - Connector suite: 146 passing tests.
 - Route case validation, Python compilation, and offline launch preflight pass.
 - Docker Compose runtime validation remains pending on a Docker-capable runner;

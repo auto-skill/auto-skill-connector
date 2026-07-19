@@ -464,6 +464,28 @@ class RecomputeFeedbackScoresTests(unittest.TestCase):
         self.assertEqual(len(results), 1)
         self.assertIn(results[0]["id"], {"spreadsheet-a", "spreadsheet-b"})
 
+    def test_top_scored_skill_ids_matches_legacy_score_then_id_order(self) -> None:
+        scores = {
+            "skill-a": 2.0,
+            "skill-z": 2.0,
+            "skill-b": 3.0,
+            "skill-y": 3.0,
+            "skill-q": 1.0,
+        }
+
+        self.assertEqual(
+            local_store._top_scored_skill_ids(scores, 3),
+            ["skill-y", "skill-b", "skill-z"],
+        )
+        self.assertEqual(
+            local_store._top_scored_skill_ids(scores, 10),
+            ["skill-y", "skill-b", "skill-z", "skill-a", "skill-q"],
+        )
+        self.assertEqual(
+            local_store._top_scored_skill_ids(scores, 3, ["skill-z", "skill-y", "skill-q", "skill-b", "skill-a"]),
+            ["skill-y", "skill-b", "skill-z"],
+        )
+
     def test_init_db_persists_wal_mode_without_reasserting_it_per_connection(self) -> None:
         conn = local_store.get_conn()
         try:
