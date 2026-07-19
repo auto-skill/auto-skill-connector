@@ -401,6 +401,39 @@ SKILL_COLUMN_DEFAULTS = {
     "capability_summary": "TEXT",
 }
 
+# Router retrieval needs metadata for quality/ranking and raw publisher
+# metadata, but never the packed embedding BLOB. Keep this projection shared
+# across lexical and vector result fetches so those BLOBs stay in the matrix
+# cache instead of being copied into every candidate row.
+SKILL_RETRIEVAL_COLUMNS = (
+    "id",
+    "name",
+    "description",
+    "source",
+    "url",
+    "tags",
+    "raw",
+    "discovered_at",
+    "risk_score",
+    "risk_flags",
+    "scanned_at",
+    "content_hash",
+    "canonical_id",
+    "quality_status",
+    "quality_reasons",
+    "quality_score",
+    "prominence_score",
+    "provenance_score",
+    "meaningfulness_score",
+    "platforms",
+    "category",
+    "embedding_text_hash",
+    "embedded_at",
+    "feedback_score",
+    "capability_summary",
+)
+SKILL_RETRIEVAL_SQL = ", ".join(SKILL_RETRIEVAL_COLUMNS)
+
 ROUTE_EVENT_COLUMN_DEFAULTS = {
     "outcome": "TEXT",
     "outcome_at": "TEXT",
@@ -555,7 +588,6 @@ TEAM_INCLUDED_MEMBERS = int(os.getenv("AUTOSKILL_TEAM_INCLUDED_MEMBERS", "5"))
 def get_conn() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH, timeout=30)  # ride out concurrent write bursts (migration, embed loop)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
     return conn
 
 
@@ -710,6 +742,9 @@ def _migrate_legacy_manual_plans(conn: sqlite3.Connection) -> None:
 def init_db() -> None:
     conn = get_conn()
     try:
+        # journal_mode is persistent per database. Setting it at startup keeps
+        # route connections from taking the SQLite mode-change path repeatedly.
+        conn.execute("PRAGMA journal_mode=WAL")
         conn.executescript(_SCHEMA)
         existing = {row["name"] for row in conn.execute("PRAGMA table_info(skills)").fetchall()}
         for col, spec in SKILL_COLUMN_DEFAULTS.items():
@@ -1425,7 +1460,9 @@ def _search_skills_lexical_memory(query: str, max_results: int) -> list[dict]:
     placeholders = ",".join("?" for _ in top_ids)
     conn = get_conn()
     try:
-        rows = conn.execute(f"SELECT * FROM skills WHERE id IN ({placeholders})", top_ids).fetchall()
+        rows = conn.execute(
+            f"SELECT {SKILL_RETRIEVAL_SQL} FROM skills WHERE id IN ({placeholders})", top_ids
+        ).fetchall()
         by_id = {}
         for row in rows:
             item = _row_to_dict(row, "skills", None)
@@ -1458,9 +1495,10 @@ def search_skills_fts(query: str, max_results: int = 10) -> list[dict]:
         fts_q = _fts_query(query)
         if not fts_q:
             return []
+        skill_columns = ", ".join(f"s.{column}" for column in SKILL_RETRIEVAL_COLUMNS)
         rows = conn.execute(
-            """
-            SELECT s.*, bm25(skills_fts) AS bm25
+            f"""
+            SELECT {skill_columns}, bm25(skills_fts) AS bm25
             FROM skills_fts
             JOIN skills s ON s.rowid = skills_fts.rowid
             WHERE skills_fts MATCH ?
@@ -1695,7 +1733,7 @@ def vector_search_skills(
         top_ids = [ids[i] for i in top]
         placeholders = ",".join("?" for _ in top_ids)
         fetched = conn.execute(
-            f"SELECT * FROM skills WHERE id IN ({placeholders})", top_ids
+            f"SELECT {SKILL_RETRIEVAL_SQL} FROM skills WHERE id IN ({placeholders})", top_ids
         ).fetchall()
         by_id: dict[str, dict] = {}
         for r in fetched:

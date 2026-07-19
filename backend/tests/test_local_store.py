@@ -11,6 +11,7 @@ from contextlib import redirect_stdout
 from datetime import datetime, timedelta, timezone
 from io import StringIO
 from pathlib import Path
+from unittest.mock import patch
 
 import local_store
 import scrub_route_privacy
@@ -462,6 +463,66 @@ class RecomputeFeedbackScoresTests(unittest.TestCase):
 
         self.assertEqual(len(results), 1)
         self.assertIn(results[0]["id"], {"spreadsheet-a", "spreadsheet-b"})
+
+    def test_init_db_persists_wal_mode_without_reasserting_it_per_connection(self) -> None:
+        conn = local_store.get_conn()
+        try:
+            self.assertEqual(conn.execute("PRAGMA journal_mode").fetchone()[0], "wal")
+        finally:
+            conn.close()
+
+        statements: list[str] = []
+        real_connect = sqlite3.connect
+
+        def traced_connect(*args, **kwargs):
+            traced = real_connect(*args, **kwargs)
+            traced.set_trace_callback(statements.append)
+            return traced
+
+        with patch.object(local_store.sqlite3, "connect", side_effect=traced_connect):
+            conn = local_store.get_conn()
+            try:
+                conn.execute("SELECT 1").fetchone()
+            finally:
+                conn.close()
+
+        self.assertFalse(any("journal_mode" in statement.lower() for statement in statements))
+
+    def test_vector_candidate_fetch_omits_embedding_blob(self) -> None:
+        conn = local_store.get_conn()
+        try:
+            _insert_skill(conn, "vector-projection", "hash-vector-projection")
+            conn.execute(
+                "UPDATE skills SET embedding=?, raw=? WHERE id='vector-projection'",
+                (
+                    local_store.pack_embedding([1.0] + [0.0] * 383),
+                    json.dumps({"stars": 42, "publisher_verified": True}),
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        local_store.invalidate_vector_cache()
+
+        statements: list[str] = []
+        original_get_conn = local_store.get_conn
+
+        def traced_get_conn():
+            traced = original_get_conn()
+            traced.set_trace_callback(statements.append)
+            return traced
+
+        with patch.object(local_store, "get_conn", side_effect=traced_get_conn):
+            results = local_store.vector_search_skills([1.0] + [0.0] * 383, match_count=1)
+
+        candidate_queries = [statement for statement in statements if "FROM skills WHERE id IN" in statement]
+        self.assertEqual(len(candidate_queries), 1)
+        self.assertNotIn("embedding", local_store.SKILL_RETRIEVAL_COLUMNS)
+        self.assertNotIn("SELECT *", candidate_queries[0].upper())
+        self.assertEqual(results[0]["id"], "vector-projection")
+        self.assertEqual(results[0]["stars"], 42)
+        self.assertTrue(results[0]["raw"]["publisher_verified"])
+        self.assertNotIn("embedding", results[0])
 
     def test_warm_vector_index_builds_a_cache_for_active_vectors(self) -> None:
         conn = local_store.get_conn()
