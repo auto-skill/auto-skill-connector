@@ -129,8 +129,29 @@ REMOTE
 LITESTREAM_HASH_AFTER=$("${SSH[@]}" "sha256sum ${REMOTE_DIR}/backend/deploy/litestream.yml 2>/dev/null" || true)
 LIBRARY_BACKUP_HASH_AFTER=$("${SSH[@]}" "sha256sum ${REMOTE_DIR}/backend/deploy/backup-library.sh 2>/dev/null" || true)
 
-echo "==> Ensuring bind-mounted data dirs are owned by the container's non-root user (uid 10001)"
-"${SSH[@]}" "mkdir -p ${REMOTE_DIR}/backend/data ${REMOTE_DIR}/backend/skills_library && chown -R 10001:10001 ${REMOTE_DIR}/backend/data ${REMOTE_DIR}/backend/skills_library"
+echo "==> Verifying bind-mounted runtime ownership for the container user (uid 10001)"
+# Backup and Litestream history can be intentionally immutable. Recursively
+# chowning the whole mounts makes a healthy deployment fail after walking those
+# files, so assert ownership only for the paths writable by the running app.
+if ! "${SSH[@]}" "bash -s" <<'REMOTE'
+set -euo pipefail
+for path in \
+  /opt/auto-skill-connector/backend/data \
+  /opt/auto-skill-connector/backend/data/local_skills.db \
+  /opt/auto-skill-connector/backend/skills_library \
+  /opt/auto-skill-connector/backend/skills_library/index.json
+do
+  owner=$(stat -c '%u:%g' "$path")
+  if [ "$owner" != "10001:10001" ]; then
+    echo "unexpected runtime ownership: $path is $owner, expected 10001:10001" >&2
+    exit 1
+  fi
+done
+REMOTE
+then
+  echo "FAILED: runtime bind mounts are not owned by the container user" >&2
+  exit 1
+fi
 
 echo "==> Running remote production preflight before touching live services"
 if ! "${SSH[@]}" "cd ${REMOTE_DIR} && python3 backend/deploy/compose_preflight.py --env-file backend/deploy/.env --skip-seed-checks --skip-docker"; then

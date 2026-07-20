@@ -23,6 +23,8 @@ class DeployTransportTests(unittest.TestCase):
         self.assertIn("AUTOSKILL_DEPLOY_REMOTE_SUDO", script)
         self.assertIn("SSH+=(sudo -n)", script)
         self.assertIn('bash -s --', script)
+        self.assertIn("Verifying bind-mounted runtime ownership", script)
+        self.assertNotIn("chown -R 10001:10001", script)
         self.assertLess(connectivity_at, archive_at)
         self.assertLess(archive_at, extract_at)
         self.assertIn("FAILED: ${label} after ${TRANSPORT_ATTEMPTS} attempts", script)

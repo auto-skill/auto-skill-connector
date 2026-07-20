@@ -283,6 +283,9 @@ For an intentionally restricted direct SSH operator, run the same script with
 non-interactive `sudo` but never displays or copies the root-owned production
 environment file.
 
+The deploy verifies ownership of the live database and skills-library paths;
+it does not recursively change ownership of Litestream or backup history.
+
 The current app still stores content under `skills_library/`, so that directory
 needs its own backup until content migration is complete.
 
