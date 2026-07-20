@@ -56,10 +56,49 @@ SSH_OPTIONS=(
 )
 SSH=(ssh "${SSH_OPTIONS[@]}" "${DEPLOY_USER}@${DEPLOY_HOST}")
 SCP=(scp "${SSH_OPTIONS[@]}")
+
+remote_sudo_ssh() {
+  local -a connection_args=()
+  local host=""
+
+  # The deploy uses only -i and -o connection options. Preserve those options,
+  # isolate the host, and pass the original remote command as one root-shell
+  # payload so shell builtins such as `cd` continue to work.
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      -i|-o)
+        if [ "$#" -lt 2 ]; then
+          echo "missing value for SSH option $1" >&2
+          return 2
+        fi
+        connection_args+=("$1" "$2")
+        shift 2
+        ;;
+      -*)
+        connection_args+=("$1")
+        shift
+        ;;
+      *)
+        host="$1"
+        shift
+        break
+        ;;
+    esac
+  done
+  if [ -z "$host" ] || [ "$#" -eq 0 ]; then
+    echo "remote sudo wrapper requires a host and command" >&2
+    return 2
+  fi
+
+  local payload
+  printf -v payload '%q ' "$@"
+  command ssh "${connection_args[@]}" "$host" "sudo -n bash -lc $payload"
+}
+
 if [ "$REMOTE_SUDO" = "1" ]; then
   # A restricted operator can use this mode without reading the root-owned
   # production env file. `sudo -n` fails explicitly rather than prompting.
-  SSH+=(sudo -n)
+  SSH=(remote_sudo_ssh "${SSH[@]}")
 fi
 
 retry_transport() {
