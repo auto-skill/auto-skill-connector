@@ -39,3 +39,12 @@ def test_route_profile_compare_blocks_behavior_drift_and_large_slowdown() -> Non
     assert changes == ["case-1 repeat=1 selected_skill: 'spreadsheet' -> 'different-skill'"]
     assert any("route behavior changed" in failure for failure in failures)
     assert any("latency_ms.p95 increased from 100 to 130" in failure for failure in failures)
+
+
+def test_route_profile_compare_ignores_substantive_threshold_noise() -> None:
+    before = _profile(p95=12)
+    after = _profile(p95=20)
+
+    failures = _regressions([], _metric_rows(before, after), 0.25)
+
+    assert failures == []

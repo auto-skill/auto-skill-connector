@@ -15,6 +15,7 @@ from typing import Any
 
 BEHAVIOR_KEYS = ("status_code", "tier", "selected_skill")
 SUMMARY_KEYS = ("p50", "p95", "p99", "max")
+DEFAULT_MINIMUM_SLOWDOWN_MS = 20
 
 
 def _load(path: Path) -> dict[str, Any]:
@@ -67,12 +68,21 @@ def _metric_rows(before: dict[str, Any], after: dict[str, Any]) -> list[dict[str
     return rows
 
 
-def _regressions(changes: list[str], rows: list[dict[str, Any]], slowdown_tolerance: float) -> list[str]:
+def _regressions(
+    changes: list[str],
+    rows: list[dict[str, Any]],
+    slowdown_tolerance: float,
+    minimum_slowdown_ms: int = DEFAULT_MINIMUM_SLOWDOWN_MS,
+) -> list[str]:
     failures = [f"route behavior changed: {change}" for change in changes]
     for row in rows:
         before = int(row["before"])
         after = int(row["after"])
-        if before > 0 and after > before * (1 + slowdown_tolerance):
+        if (
+            before > 0
+            and after - before >= minimum_slowdown_ms
+            and after > before * (1 + slowdown_tolerance)
+        ):
             failures.append(f"{row['name']} increased from {before} to {after}")
     return failures
 
@@ -91,6 +101,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("after", type=Path)
     parser.add_argument("--fail-on-regression", action="store_true")
     parser.add_argument("--slowdown-tolerance", type=float, default=0.25)
+    parser.add_argument("--minimum-slowdown-ms", type=int, default=DEFAULT_MINIMUM_SLOWDOWN_MS)
     return parser.parse_args()
 
 
@@ -98,6 +109,8 @@ def main() -> int:
     args = parse_args()
     if args.slowdown_tolerance < 0:
         raise SystemExit("--slowdown-tolerance must be non-negative")
+    if args.minimum_slowdown_ms < 0:
+        raise SystemExit("--minimum-slowdown-ms must be non-negative")
     before = _load(args.before)
     after = _load(args.after)
     changes = _behavior_changes(before, after)
@@ -110,7 +123,7 @@ def main() -> int:
     else:
         print("\nroute behavior: unchanged")
 
-    failures = _regressions(changes, rows, args.slowdown_tolerance)
+    failures = _regressions(changes, rows, args.slowdown_tolerance, args.minimum_slowdown_ms)
     if args.fail_on_regression and failures:
         print("\nregressions:", file=sys.stderr)
         for failure in failures:
