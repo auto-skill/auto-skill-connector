@@ -22,19 +22,66 @@ else
 fi
 
 REMOTE_DIR="/opt/auto-skill-connector"
-SSH=(ssh -i "$DEPLOY_SSH_KEY_PATH" -o StrictHostKeyChecking=accept-new "${DEPLOY_USER}@${DEPLOY_HOST}")
-SCP=(scp -i "$DEPLOY_SSH_KEY_PATH" -o StrictHostKeyChecking=accept-new)
+TRANSPORT_ATTEMPTS="${AUTOSKILL_DEPLOY_TRANSPORT_ATTEMPTS:-4}"
+case "$TRANSPORT_ATTEMPTS" in
+  ''|*[!0-9]*)
+    echo "AUTOSKILL_DEPLOY_TRANSPORT_ATTEMPTS must be a positive integer" >&2
+    exit 2
+    ;;
+esac
+if [ "$TRANSPORT_ATTEMPTS" -lt 1 ]; then
+  echo "AUTOSKILL_DEPLOY_TRANSPORT_ATTEMPTS must be a positive integer" >&2
+  exit 2
+fi
+
+# Retry only the connection and upload stages. They happen before the remote
+# archive is extracted, so repeating them cannot replay a partial deploy.
+SSH_OPTIONS=(
+  -i "$DEPLOY_SSH_KEY_PATH"
+  -o StrictHostKeyChecking=accept-new
+  -o BatchMode=yes
+  -o ConnectTimeout=15
+  -o ConnectionAttempts=1
+  -o ServerAliveInterval=10
+  -o ServerAliveCountMax=3
+)
+SSH=(ssh "${SSH_OPTIONS[@]}" "${DEPLOY_USER}@${DEPLOY_HOST}")
+SCP=(scp "${SSH_OPTIONS[@]}")
+
+retry_transport() {
+  local label="$1"
+  shift
+  local attempt status=0
+
+  for attempt in $(seq 1 "$TRANSPORT_ATTEMPTS"); do
+    echo "==> ${label} (attempt ${attempt}/${TRANSPORT_ATTEMPTS})"
+    if "$@"; then
+      return 0
+    else
+      status=$?
+    fi
+    if [ "$attempt" -lt "$TRANSPORT_ATTEMPTS" ]; then
+      sleep "$((attempt * 3))"
+    fi
+  done
+
+  echo "FAILED: ${label} after ${TRANSPORT_ATTEMPTS} attempts (exit ${status})" >&2
+  return "$status"
+}
 
 WORKDIR=$(mktemp -d)
 trap 'rm -rf "$WORKDIR"' EXIT
 ARCHIVE_NAME="auto-skill-deploy-$(git rev-parse --short HEAD)-$$.tar.gz"
 REMOTE_ARCHIVE="/tmp/${ARCHIVE_NAME}"
 
+retry_transport "Checking SSH connectivity to ${DEPLOY_HOST}" "${SSH[@]}" true
+
 echo "==> Archiving $(git rev-parse HEAD)"
 git archive --format=tar.gz -o "$WORKDIR/deploy.tar.gz" HEAD
 
 echo "==> Shipping archive to ${DEPLOY_HOST}"
-"${SCP[@]}" "$WORKDIR/deploy.tar.gz" "${DEPLOY_USER}@${DEPLOY_HOST}:${REMOTE_ARCHIVE}"
+retry_transport "Shipping deployment archive" "${SCP[@]}" \
+  "$WORKDIR/deploy.tar.gz" "${DEPLOY_USER}@${DEPLOY_HOST}:${REMOTE_ARCHIVE}"
 
 echo "==> Extracting and syncing into ${REMOTE_DIR}"
 # cloudflared has nothing in-repo to redeploy (it's the official image, auth'd

@@ -33,4 +33,20 @@ jobs:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_SSH_KEY_PATH: /home/runner/.ssh/deploy_key
-        run: bash backend/deploy/deploy_droplet.sh
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p "$RUNNER_TEMP/autoskill-deploy"
+          bash backend/deploy/deploy_droplet.sh 2>&1 | tee "$RUNNER_TEMP/autoskill-deploy/deploy.log"
+
+      # GitHub's live log API can be temporarily unavailable during an Actions
+      # incident. Preserve the complete deploy transcript for later retrieval.
+      - name: Upload deployment diagnostics
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: deploy-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/autoskill-deploy/deploy.log
+          if-no-files-found: error
+          retention-days: 30

@@ -271,6 +271,13 @@ Before starting the stack:
 python deploy\compose_preflight.py
 ```
 
+The manual GitHub deploy workflow preserves its full transcript as a
+30-day `deploy-diagnostics-<run>-<attempt>` artifact, including failed
+deployments. It retries only the pre-mutation SSH connectivity check and
+archive upload with bounded backoff. Once remote extraction begins it remains
+fail-fast and uses the normal rollback path rather than replaying a partial
+production operation.
+
 The current app still stores content under `skills_library/`, so that directory
 needs its own backup until content migration is complete.
 
