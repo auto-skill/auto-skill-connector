@@ -297,6 +297,14 @@ if [ "$admin_public_status" != "401" ] && [ "$admin_public_status" != "403" ] &&
 fi
 echo "checked: public /admin -> $admin_public_status (denied)"
 
+mcp_health_status=$(curl -s -o /dev/null -w "%{http_code}" \
+  "https://mcp.autoskill.dev/healthz" --max-time 15)
+if [ "$mcp_health_status" != "200" ]; then
+  echo "FAILED: public MCP health returned $mcp_health_status" >&2
+  smoke_failed=1
+fi
+echo "checked: public MCP /healthz -> $mcp_health_status"
+
 if [ "$smoke_failed" -ne 0 ]; then
   rollback
   exit 1
