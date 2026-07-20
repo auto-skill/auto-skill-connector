@@ -98,7 +98,7 @@ remote_sudo_ssh() {
 if [ "$REMOTE_SUDO" = "1" ]; then
   # A restricted operator can use this mode without reading the root-owned
   # production env file. `sudo -n` fails explicitly rather than prompting.
-  SSH=(remote_sudo_ssh "${SSH[@]}")
+  SSH=(remote_sudo_ssh "${SSH_OPTIONS[@]}" "${DEPLOY_USER}@${DEPLOY_HOST}")
 fi
 
 retry_transport() {
