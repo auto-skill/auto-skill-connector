@@ -34,6 +34,15 @@ if [ "$TRANSPORT_ATTEMPTS" -lt 1 ]; then
   exit 2
 fi
 
+REMOTE_SUDO="${AUTOSKILL_DEPLOY_REMOTE_SUDO:-0}"
+case "$REMOTE_SUDO" in
+  0|1) ;;
+  *)
+    echo "AUTOSKILL_DEPLOY_REMOTE_SUDO must be 0 or 1" >&2
+    exit 2
+    ;;
+esac
+
 # Retry only the connection and upload stages. They happen before the remote
 # archive is extracted, so repeating them cannot replay a partial deploy.
 SSH_OPTIONS=(
@@ -47,6 +56,11 @@ SSH_OPTIONS=(
 )
 SSH=(ssh "${SSH_OPTIONS[@]}" "${DEPLOY_USER}@${DEPLOY_HOST}")
 SCP=(scp "${SSH_OPTIONS[@]}")
+if [ "$REMOTE_SUDO" = "1" ]; then
+  # A restricted operator can use this mode without reading the root-owned
+  # production env file. `sudo -n` fails explicitly rather than prompting.
+  SSH+=(sudo -n)
+fi
 
 retry_transport() {
   local label="$1"
@@ -95,8 +109,9 @@ echo "==> Extracting and syncing into ${REMOTE_DIR}"
 LITESTREAM_HASH_BEFORE=$("${SSH[@]}" "sha256sum ${REMOTE_DIR}/backend/deploy/litestream.yml 2>/dev/null" || true)
 LIBRARY_BACKUP_HASH_BEFORE=$("${SSH[@]}" "sha256sum ${REMOTE_DIR}/backend/deploy/backup-library.sh 2>/dev/null" || true)
 
-"${SSH[@]}" "REMOTE_ARCHIVE='${REMOTE_ARCHIVE}' bash -s" <<'REMOTE'
+"${SSH[@]}" "bash -s -- '${REMOTE_ARCHIVE}'" <<'REMOTE'
 set -euo pipefail
+REMOTE_ARCHIVE="$1"
 rm -rf /tmp/deploy-extract
 mkdir -p /tmp/deploy-extract
 tar -xzf "$REMOTE_ARCHIVE" -C /tmp/deploy-extract

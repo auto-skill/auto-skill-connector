@@ -6,7 +6,7 @@ ENV PYTHONUNBUFFERED=1
 WORKDIR /app
 
 COPY pyproject.toml README.md /app/
-COPY auto_skill_auth.py auto_skill_cli.py auto_skill_core.py auto_skill_identity.py mcp_oauth_provider.py mcp_server.py /app/
+COPY auto_skill_auth.py auto_skill_cli.py auto_skill_core.py auto_skill_identity.py auto_skill_personalize.py mcp_oauth_provider.py mcp_server.py /app/
 COPY hooks /app/hooks
 
 RUN pip install --no-cache-dir -e /app

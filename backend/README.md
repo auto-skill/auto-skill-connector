@@ -278,6 +278,11 @@ archive upload with bounded backoff. Once remote extraction begins it remains
 fail-fast and uses the normal rollback path rather than replaying a partial
 production operation.
 
+For an intentionally restricted direct SSH operator, run the same script with
+`AUTOSKILL_DEPLOY_REMOTE_SUDO=1`. It executes remote deployment commands via
+non-interactive `sudo` but never displays or copies the root-owned production
+environment file.
+
 The current app still stores content under `skills_library/`, so that directory
 needs its own backup until content migration is complete.
 

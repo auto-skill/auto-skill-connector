@@ -77,6 +77,12 @@ class ComposePreflightTests(unittest.TestCase):
                     ),
                     encoding="utf-8",
                 )
+            elif path == "deploy/Dockerfile.connector":
+                target.write_text(
+                    "COPY auto_skill_auth.py auto_skill_core.py auto_skill_identity.py "
+                    "auto_skill_personalize.py mcp_oauth_provider.py mcp_server.py /app/\n",
+                    encoding="utf-8",
+                )
             else:
                 target.write_text("placeholder\n", encoding="utf-8")
         (self.root / "skills_library" / "files").mkdir()
@@ -552,6 +558,32 @@ services:
         self.assertIn("[FAIL] dockerignore", output)
         self.assertIn("data", output)
         self.assertIn("content_blobs", output)
+
+    def test_rejects_connector_image_missing_transitive_module(self) -> None:
+        (self.root / "deploy" / "Dockerfile.connector").write_text(
+            "COPY auto_skill_auth.py auto_skill_core.py auto_skill_identity.py "
+            "mcp_oauth_provider.py mcp_server.py /app/\n",
+            encoding="utf-8",
+        )
+        self.write_env(
+            "\n".join(
+                [
+                    "GITHUB_TOKEN=ghp_test",
+                    "CLOUDFLARED_TOKEN=cloudflare-token",
+                    "R2_ENDPOINT=https://abc.r2.cloudflarestorage.com",
+                    "R2_BUCKET=autoskill-backups",
+                    "R2_ACCESS_KEY_ID=access",
+                    "R2_SECRET_ACCESS_KEY=secret",
+                    "",
+                ]
+            )
+        )
+
+        exit_code, output = self.run_preflight("--skip-seed-checks")
+
+        self.assertEqual(exit_code, 1, output)
+        self.assertIn("[FAIL] connector image sources", output)
+        self.assertIn("auto_skill_personalize.py", output)
 
 
 if __name__ == "__main__":
