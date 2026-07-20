@@ -22,19 +22,119 @@ else
 fi
 
 REMOTE_DIR="/opt/auto-skill-connector"
-SSH=(ssh -i "$DEPLOY_SSH_KEY_PATH" -o StrictHostKeyChecking=accept-new "${DEPLOY_USER}@${DEPLOY_HOST}")
-SCP=(scp -i "$DEPLOY_SSH_KEY_PATH" -o StrictHostKeyChecking=accept-new)
+TRANSPORT_ATTEMPTS="${AUTOSKILL_DEPLOY_TRANSPORT_ATTEMPTS:-4}"
+case "$TRANSPORT_ATTEMPTS" in
+  ''|*[!0-9]*)
+    echo "AUTOSKILL_DEPLOY_TRANSPORT_ATTEMPTS must be a positive integer" >&2
+    exit 2
+    ;;
+esac
+if [ "$TRANSPORT_ATTEMPTS" -lt 1 ]; then
+  echo "AUTOSKILL_DEPLOY_TRANSPORT_ATTEMPTS must be a positive integer" >&2
+  exit 2
+fi
+
+REMOTE_SUDO="${AUTOSKILL_DEPLOY_REMOTE_SUDO:-0}"
+case "$REMOTE_SUDO" in
+  0|1) ;;
+  *)
+    echo "AUTOSKILL_DEPLOY_REMOTE_SUDO must be 0 or 1" >&2
+    exit 2
+    ;;
+esac
+
+# Retry only the connection and upload stages. They happen before the remote
+# archive is extracted, so repeating them cannot replay a partial deploy.
+SSH_OPTIONS=(
+  -i "$DEPLOY_SSH_KEY_PATH"
+  -o StrictHostKeyChecking=accept-new
+  -o BatchMode=yes
+  -o ConnectTimeout=15
+  -o ConnectionAttempts=1
+  -o ServerAliveInterval=10
+  -o ServerAliveCountMax=3
+)
+SSH=(ssh "${SSH_OPTIONS[@]}" "${DEPLOY_USER}@${DEPLOY_HOST}")
+SCP=(scp "${SSH_OPTIONS[@]}")
+
+remote_sudo_ssh() {
+  local -a connection_args=()
+  local host=""
+
+  # The deploy uses only -i and -o connection options. Preserve those options,
+  # isolate the host, and pass the original remote command as one root-shell
+  # payload so shell builtins such as `cd` continue to work.
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      -i|-o)
+        if [ "$#" -lt 2 ]; then
+          echo "missing value for SSH option $1" >&2
+          return 2
+        fi
+        connection_args+=("$1" "$2")
+        shift 2
+        ;;
+      -*)
+        connection_args+=("$1")
+        shift
+        ;;
+      *)
+        host="$1"
+        shift
+        break
+        ;;
+    esac
+  done
+  if [ -z "$host" ] || [ "$#" -eq 0 ]; then
+    echo "remote sudo wrapper requires a host and command" >&2
+    return 2
+  fi
+
+  local payload
+  printf -v payload '%q ' "$@"
+  command ssh "${connection_args[@]}" "$host" "sudo -n bash -lc $payload"
+}
+
+if [ "$REMOTE_SUDO" = "1" ]; then
+  # A restricted operator can use this mode without reading the root-owned
+  # production env file. `sudo -n` fails explicitly rather than prompting.
+  SSH=(remote_sudo_ssh "${SSH_OPTIONS[@]}" "${DEPLOY_USER}@${DEPLOY_HOST}")
+fi
+
+retry_transport() {
+  local label="$1"
+  shift
+  local attempt status=0
+
+  for attempt in $(seq 1 "$TRANSPORT_ATTEMPTS"); do
+    echo "==> ${label} (attempt ${attempt}/${TRANSPORT_ATTEMPTS})"
+    if "$@"; then
+      return 0
+    else
+      status=$?
+    fi
+    if [ "$attempt" -lt "$TRANSPORT_ATTEMPTS" ]; then
+      sleep "$((attempt * 3))"
+    fi
+  done
+
+  echo "FAILED: ${label} after ${TRANSPORT_ATTEMPTS} attempts (exit ${status})" >&2
+  return "$status"
+}
 
 WORKDIR=$(mktemp -d)
 trap 'rm -rf "$WORKDIR"' EXIT
 ARCHIVE_NAME="auto-skill-deploy-$(git rev-parse --short HEAD)-$$.tar.gz"
 REMOTE_ARCHIVE="/tmp/${ARCHIVE_NAME}"
 
+retry_transport "Checking SSH connectivity to ${DEPLOY_HOST}" "${SSH[@]}" true
+
 echo "==> Archiving $(git rev-parse HEAD)"
 git archive --format=tar.gz -o "$WORKDIR/deploy.tar.gz" HEAD
 
 echo "==> Shipping archive to ${DEPLOY_HOST}"
-"${SCP[@]}" "$WORKDIR/deploy.tar.gz" "${DEPLOY_USER}@${DEPLOY_HOST}:${REMOTE_ARCHIVE}"
+retry_transport "Shipping deployment archive" "${SCP[@]}" \
+  "$WORKDIR/deploy.tar.gz" "${DEPLOY_USER}@${DEPLOY_HOST}:${REMOTE_ARCHIVE}"
 
 echo "==> Extracting and syncing into ${REMOTE_DIR}"
 # cloudflared has nothing in-repo to redeploy (it's the official image, auth'd
@@ -48,8 +148,9 @@ echo "==> Extracting and syncing into ${REMOTE_DIR}"
 LITESTREAM_HASH_BEFORE=$("${SSH[@]}" "sha256sum ${REMOTE_DIR}/backend/deploy/litestream.yml 2>/dev/null" || true)
 LIBRARY_BACKUP_HASH_BEFORE=$("${SSH[@]}" "sha256sum ${REMOTE_DIR}/backend/deploy/backup-library.sh 2>/dev/null" || true)
 
-"${SSH[@]}" "REMOTE_ARCHIVE='${REMOTE_ARCHIVE}' bash -s" <<'REMOTE'
+"${SSH[@]}" "bash -s -- '${REMOTE_ARCHIVE}'" <<'REMOTE'
 set -euo pipefail
+REMOTE_ARCHIVE="$1"
 rm -rf /tmp/deploy-extract
 mkdir -p /tmp/deploy-extract
 tar -xzf "$REMOTE_ARCHIVE" -C /tmp/deploy-extract
@@ -67,8 +168,29 @@ REMOTE
 LITESTREAM_HASH_AFTER=$("${SSH[@]}" "sha256sum ${REMOTE_DIR}/backend/deploy/litestream.yml 2>/dev/null" || true)
 LIBRARY_BACKUP_HASH_AFTER=$("${SSH[@]}" "sha256sum ${REMOTE_DIR}/backend/deploy/backup-library.sh 2>/dev/null" || true)
 
-echo "==> Ensuring bind-mounted data dirs are owned by the container's non-root user (uid 10001)"
-"${SSH[@]}" "mkdir -p ${REMOTE_DIR}/backend/data ${REMOTE_DIR}/backend/skills_library && chown -R 10001:10001 ${REMOTE_DIR}/backend/data ${REMOTE_DIR}/backend/skills_library"
+echo "==> Verifying bind-mounted runtime ownership for the container user (uid 10001)"
+# Backup and Litestream history can be intentionally immutable. Recursively
+# chowning the whole mounts makes a healthy deployment fail after walking those
+# files, so assert ownership only for the paths writable by the running app.
+if ! "${SSH[@]}" "bash -s" <<'REMOTE'
+set -euo pipefail
+for path in \
+  /opt/auto-skill-connector/backend/data \
+  /opt/auto-skill-connector/backend/data/local_skills.db \
+  /opt/auto-skill-connector/backend/skills_library \
+  /opt/auto-skill-connector/backend/skills_library/index.json
+do
+  owner=$(stat -c '%u:%g' "$path")
+  if [ "$owner" != "10001:10001" ]; then
+    echo "unexpected runtime ownership: $path is $owner, expected 10001:10001" >&2
+    exit 1
+  fi
+done
+REMOTE
+then
+  echo "FAILED: runtime bind mounts are not owned by the container user" >&2
+  exit 1
+fi
 
 echo "==> Running remote production preflight before touching live services"
 if ! "${SSH[@]}" "cd ${REMOTE_DIR} && python3 backend/deploy/compose_preflight.py --env-file backend/deploy/.env --skip-seed-checks --skip-docker"; then

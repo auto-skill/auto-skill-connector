@@ -52,6 +52,7 @@ from quality import (
     is_non_task_prompt,
     rerank_candidates,
     skill_capability_flags,
+    tier_for_ranked_candidates,
     tier_for_prompt,
 )
 
@@ -320,7 +321,12 @@ def _passes_similarity_floor(results: list[dict]) -> bool:
         return False
 
 
-def injection_tier(query_text: str, results: list[dict]) -> str:
+def _results_are_ranked(results: list[dict]) -> bool:
+    """Accept legacy/raw callers while avoiding a second rank pass internally."""
+    return bool(results) and all(isinstance(result, dict) and "route_score" in result for result in results)
+
+
+def injection_tier(query_text: str, results: list[dict], *, ranked: bool = False) -> str:
     """Decide how much of the top result to hand to a caller.
 
     The similarity floor rejects junk/meta prompts. Full vs. hint is then a
@@ -330,6 +336,8 @@ def injection_tier(query_text: str, results: list[dict]) -> str:
     """
     if not results or not _passes_similarity_floor(results):
         return "none"
+    if ranked:
+        return tier_for_ranked_candidates(results)
     return tier_for_prompt(query_text, results, RECOMMEND_GAP)
 
 
@@ -472,7 +480,8 @@ async def find_default_policy_candidate(
     if task_analysis.get("family") != "coding" or not CODING_POLICY_QUERY:
         return None
     candidates = await retrieve_skills(client, CODING_POLICY_QUERY, 8)
-    candidates = rerank_candidates(CODING_POLICY_QUERY, candidates)
+    if not _results_are_ranked(candidates):
+        candidates = rerank_candidates(CODING_POLICY_QUERY, candidates)
     return next(
         (candidate for candidate in candidates if _policy_candidate_allowed(candidate, "coding", routing_filters)),
         None,
@@ -1184,6 +1193,8 @@ async def find_deliverable_primary_candidate(
     query: str,
     candidates: list[dict],
     max_candidates: int = 5,
+    *,
+    ranked: bool = False,
 ) -> tuple[dict | None, str]:
     """Choose the highest-ranked relevant candidate that can actually ship.
 
@@ -1194,7 +1205,7 @@ async def find_deliverable_primary_candidate(
     plausible = [
         candidate
         for candidate in candidates
-        if injection_tier(query, [candidate]) == "full"
+        if injection_tier(query, [candidate], ranked=ranked) == "full"
     ][:max_candidates]
     if not plausible:
         return None, ""
@@ -1261,36 +1272,56 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
         frameworks=body.frameworks,
         project_tags=body.project_tags,
     )
+    filters_start = time.monotonic()
     routing_filters = await asyncio.to_thread(store.routing_filters_for_user, user["id"])
+    routing_filters_ms = int((time.monotonic() - filters_start) * 1000)
     retrieval_start = time.monotonic()
     async with httpx.AsyncClient() as client:
+        primary_retrieval_start = time.monotonic()
         results = await retrieve_skills(client, query, limit)
+        primary_retrieval_ms = int((time.monotonic() - primary_retrieval_start) * 1000)
+        policy_lookup_start = time.monotonic()
         try:
             policy_candidate = await find_default_policy_candidate(client, task_analysis, routing_filters)
         except Exception:
             # A missing curated policy must never take the primary route down.
             policy_candidate = None
+        policy_lookup_ms = int((time.monotonic() - policy_lookup_start) * 1000)
     retrieval_ms = int((time.monotonic() - retrieval_start) * 1000)
     rerank_start = time.monotonic()
-    results = rerank_candidates(query, results)
+    # retrieve_skills normally produces this prompt's deterministic ordering.
+    # Preserve compatibility with raw/legacy callers before skipping the repeat.
+    results_are_ranked = _results_are_ranked(results)
+    candidate_rerank_start = time.monotonic()
+    if not results_are_ranked:
+        results = rerank_candidates(query, results)
+    candidate_rerank_ms = int((time.monotonic() - candidate_rerank_start) * 1000)
+    candidate_filter_start = time.monotonic()
     results = [
         result
         for result in results
         if _passes_routing_filters(result, routing_filters)
         and candidate_matches_task_contract(query, result)
     ]
+    candidate_filter_ms = int((time.monotonic() - candidate_filter_start) * 1000)
     primary_results = results
+    deliverable_validation_start = time.monotonic()
     deliverable_primary, preverified_primary_text = await find_deliverable_primary_candidate(
-        query, primary_results
+        query, primary_results, ranked=results_are_ranked
     )
+    deliverable_validation_ms = int((time.monotonic() - deliverable_validation_start) * 1000)
+    tier_decision_start = time.monotonic()
     if deliverable_primary:
         primary_results = [deliverable_primary]
         primary_tier = "full"
     else:
-        primary_tier = injection_tier(query, primary_results)
+        primary_tier = injection_tier(query, primary_results, ranked=results_are_ranked)
+    tier_decision_ms = int((time.monotonic() - tier_decision_start) * 1000)
+    policy_build_start = time.monotonic()
     policy_item = await _build_verified_policy_item(
         user["id"], policy_candidate, query, body.max_capsule_chars
     )
+    policy_build_ms = int((time.monotonic() - policy_build_start) * 1000)
     tier = primary_tier
     rerank_ms = int((time.monotonic() - rerank_start) * 1000)
     skill_find_ms = int((time.monotonic() - retrieval_start) * 1000)
@@ -1515,6 +1546,14 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
         "skill_find_ms": skill_find_ms,
         "retrieval_ms": retrieval_ms,
         "rerank_ms": rerank_ms,
+        "routing_filters_ms": routing_filters_ms,
+        "primary_retrieval_ms": primary_retrieval_ms,
+        "policy_lookup_ms": policy_lookup_ms,
+        "candidate_rerank_ms": candidate_rerank_ms,
+        "candidate_filter_ms": candidate_filter_ms,
+        "deliverable_validation_ms": deliverable_validation_ms,
+        "tier_decision_ms": tier_decision_ms,
+        "policy_build_ms": policy_build_ms,
         "content_ms": content_ms,
         "result_count": len(results),
         "input_tokens": input_tokens,
@@ -1614,7 +1653,7 @@ async def _find_semantic(q: str, limit: int = 8, gate: bool = True, authorizatio
 
     async with httpx.AsyncClient() as client:
         results = await retrieve_skills(client, q, limit)
-    tier = injection_tier(q, results)
+    tier = injection_tier(q, results, ranked=_results_are_ranked(results))
 
     # A private match is the caller's own trusted content (never another
     # user's) -- it's prepended regardless of the public similarity gate

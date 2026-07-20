@@ -324,6 +324,34 @@ def check_files(
         else:
             add(checks, "FAIL", f"file {path.name}", f"missing {path}")
 
+    connector_dockerfile = repo_root / "deploy" / "Dockerfile.connector"
+    if connector_dockerfile.exists():
+        connector_text = connector_dockerfile.read_text(encoding="utf-8", errors="replace")
+        required_connector_sources = (
+            "auto_skill_auth.py",
+            "auto_skill_core.py",
+            "auto_skill_identity.py",
+            "auto_skill_personalize.py",
+            "mcp_oauth_provider.py",
+            "mcp_server.py",
+        )
+        copies_auto_skill_modules = "auto_skill_*.py" in connector_text
+        missing_sources = [
+            source
+            for source in required_connector_sources
+            if source not in connector_text
+            and not (copies_auto_skill_modules and source.startswith("auto_skill_"))
+        ]
+        if missing_sources:
+            add(
+                checks,
+                "FAIL",
+                "connector image sources",
+                f"{connector_dockerfile} omits {', '.join(missing_sources)}",
+            )
+        else:
+            add(checks, "PASS", "connector image sources", "required MCP modules are copied into the image")
+
     if skip_seed_checks:
         add(checks, "WARN", "seed data", "skipped DB/library seed checks")
         return

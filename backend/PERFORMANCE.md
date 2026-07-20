@@ -1,0 +1,96 @@
+# Route Performance Log
+
+This log records reproducible measurements and deployment-gated changes. It
+contains only aggregate timings and public benchmark case identifiers; route
+prompts, responses, bearer tokens, and skill content do not belong here.
+
+## Measurement Protocol
+
+Capture an authenticated production snapshot before and after each route-path
+change, using the same case file, case count, repetitions, and account:
+
+```bash
+uv run --with-requirements backend/requirements.txt python backend/route_profile.py \
+  --json-out backend/eval-results/route-profile-before.json
+
+uv run --with-requirements backend/requirements.txt python backend/route_profile_compare.py \
+  backend/eval-results/route-profile-before.json \
+  backend/eval-results/route-profile-after.json \
+  --fail-on-regression
+```
+
+The snapshots are ignored local artifacts. The comparator blocks rollout when
+status, tier, or selected skill changes, or when a shared latency metric
+exceeds its configured slowdown tolerance.
+
+## Pre-change Production Baseline (2026-07-19)
+
+Authenticated `/route` sample: first five public route cases, three
+repetitions each. This is a small, controlled sample, not a load test.
+
+| Metric | p50 | p95 | max |
+| --- | ---: | ---: | ---: |
+| Server route latency | 374 ms | 567 ms | 597 ms |
+| Client wall time | 493 ms | 711 ms | 740 ms |
+| Retrieval | 351 ms | 541 ms | 565 ms |
+| Skill find | 361 ms | 554 ms | 579 ms |
+| Rerank and delivery checks | 9 ms | 12 ms | 13 ms |
+| Injected tokens | 1,311 | 1,353 | 1,353 |
+
+Retrieval is the dominant measured stage in this sample. The next deployment
+adds detailed route-stage metrics so subsequent snapshots can distinguish
+query embedding, primary search, policy lookup, filtering, content validation,
+and policy construction.
+
+## Pending Change Set: SQLite Request-Path Cleanup
+
+The current branch makes three behavior-preserving retrieval/storage changes:
+
+1. WAL mode is enabled during database initialization, rather than on every
+   new SQLite connection. WAL is persistent database state, so route
+   connections no longer reassert it.
+2. Lexical and vector candidate fetches select the metadata used by ranking and
+   omit the packed embedding BLOB, which is already held in the vector matrix
+   cache and was immediately discarded from result rows.
+3. The warmed lexical index uses bulk score counting and preserves the legacy
+   score-then-ID order without heap-processing every candidate in a dense
+   generic-query score bucket.
+
+Local microbenchmarks are directional only:
+
+| Microbenchmark | Previous | Changed | Result |
+| --- | ---: | ---: | --- |
+| Open SQLite connection, p50 | 0.767 ms | 0.111 ms | 85.5% lower |
+| Cached 60-candidate SQL fetch, p95 | 2.634 ms | 2.188 ms | lower |
+
+These do not establish a production latency claim. Production comparison is
+required after deployment, with the route-profile behavior gate and host CPU,
+memory, and disk-I/O observations from DigitalOcean.
+
+## Controlled Local Retrieval Comparison (2026-07-19)
+
+The old commit (`79b57fb`) and current branch were each run twice against the
+same warmed temporary SQLite corpus: 50,000 active embedded skills, a
+deliberately dense spreadsheet query, 100 hybrid-search samples per run, and
+no embedding-model time. The selected result stayed `skill-49999` on every
+sample in both versions.
+
+| Metric | Old run range | Current run range | Change |
+| --- | ---: | ---: | ---: |
+| Hybrid retrieval p50 | 250.784-254.912 ms | 144.457-183.157 ms | 27-43% lower |
+| Hybrid retrieval p95 | 295.282-303.549 ms | 177.485-262.916 ms | 11-42% lower |
+
+This is a repeatable stress case for generic terms that match much of the
+catalog. It validates the intended retrieval improvement and result parity,
+but it is not an end-to-end production route measurement. Query embedding,
+account filtering, policy lookup, content validation, and live host contention
+remain outside this local comparison.
+
+## Current Gates
+
+- Backend unit/API suite: 270 passing tests.
+- Backend pytest suite: 287 passing tests, 48 subtests.
+- Connector suite: 146 passing tests.
+- Route case validation, Python compilation, and offline launch preflight pass.
+- Docker Compose runtime validation remains pending on a Docker-capable runner;
+  Docker is not installed in this WSL environment.

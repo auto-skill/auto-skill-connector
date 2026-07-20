@@ -189,6 +189,22 @@ Route benchmark cases live in `evals/routes.jsonl`. Add false positives,
 direct hits, ambiguous matches, and conversation/meta negatives so behavior
 changes appear in snapshots without editing Python.
 
+For a production-safe latency baseline, capture a repeated route profile and
+compare it after a deployment. The profile retains only public case IDs, route
+tier, selected skill name, and numeric metrics; it does not write prompts,
+skill content, warnings, or credentials.
+
+```powershell
+python route_profile.py --json-out eval-results/route-before.json
+python route_profile_compare.py --fail-on-regression `
+  eval-results/route-before.json eval-results/route-after.json
+```
+
+`route_profile.py` uses the local CLI credential by default, or an
+`AUTOSKILL_EVAL_TOKEN` supplied only for the process. Use a dedicated test
+account for repeated production measurements so the benchmark does not consume
+customer quota or mix with customer analytics.
+
 ## OAuth Redirect Configuration
 
 Dashboard OAuth redirects are allowlisted. Set
@@ -254,6 +270,21 @@ Before starting the stack:
 ```powershell
 python deploy\compose_preflight.py
 ```
+
+The manual GitHub deploy workflow preserves its full transcript as a
+30-day `deploy-diagnostics-<run>-<attempt>` artifact, including failed
+deployments. It retries only the pre-mutation SSH connectivity check and
+archive upload with bounded backoff. Once remote extraction begins it remains
+fail-fast and uses the normal rollback path rather than replaying a partial
+production operation.
+
+For an intentionally restricted direct SSH operator, run the same script with
+`AUTOSKILL_DEPLOY_REMOTE_SUDO=1`. It executes remote deployment commands via
+non-interactive `sudo` but never displays or copies the root-owned production
+environment file.
+
+The deploy verifies ownership of the live database and skills-library paths;
+it does not recursively change ownership of Litestream or backup history.
 
 The current app still stores content under `skills_library/`, so that directory
 needs its own backup until content migration is complete.
