@@ -12,7 +12,7 @@ import math
 import re
 from typing import Any
 
-CONFIG_VERSION = "quality-routing-v3-context-guard"
+CONFIG_VERSION = "quality-routing-v6-exact-digest-full"
 MEANINGFULNESS_VERSION = "meaningfulness-v1"
 MIN_CONTENT_CHARS = 180
 MIN_BODY_WORDS = 35

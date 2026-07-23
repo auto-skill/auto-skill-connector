@@ -1593,6 +1593,7 @@ def search_skills_fts(query: str, max_results: int = 10) -> list[dict]:
 EMBEDDING_DIM = 384
 _EMB_DIM = EMBEDDING_DIM
 _EMB_BLOB_LEN = _EMB_DIM * 4
+MAX_ROUTING_DESCRIPTION_CHARS = 2000
 _EMB_CACHE_TTL_SECONDS = float(os.getenv("EMBEDDING_MATRIX_CACHE_TTL_SECONDS", "0"))
 _emb_cache: dict = {
     "at": 0.0,
@@ -1820,15 +1821,14 @@ def hybrid_search_skills(
     rrf_k: int = 20,
 ) -> list[dict]:
     fts = search_skills_fts(query_text, 60)
-    lexical_ids = [str(row.get("id")) for row in fts if row.get("id")]
-    # Once the lexical cache has produced a useful candidate set, compare the
-    # query vector only against those rows. This preserves semantic ordering
-    # without scanning the entire 60k-vector matrix on every route.
+    # Keep vector candidate generation independent from lexical retrieval.
+    # Restricting the vector scan to the lexical top 60 made the first twelve
+    # query tokens a hard recall boundary: a semantically strong specialist
+    # could never enter the union when generic task boilerplate won FTS.
     vec = (
         vector_search_skills(
             query_embedding,
             60,
-            candidate_ids=lexical_ids if len(lexical_ids) >= 10 else None,
         )
         if query_embedding
         else []
@@ -1856,13 +1856,36 @@ def hybrid_search_skills(
     fused_rows = []
     for skill_id, score in scores.items():
         row = dict(by_id[skill_id])
+        if (row.get("quality_status") or "pending") != "active":
+            continue
+        if len(str(row.get("description") or "")) > MAX_ROUTING_DESCRIPTION_CHARS:
+            continue
+        # Stable schema for newly activated rows that have not reached the
+        # background embedder yet. Downstream confidence gates already prevent
+        # a null-similarity row from becoming a silent full route.
+        row.setdefault("similarity", None)
         row["_fuse_score"] = score
         fused_rows.append(row)
     fused_rows.sort(key=lambda r: r["_fuse_score"], reverse=True)
     fused_rows = quality.dedupe_by_content_hash(fused_rows)
 
+    # Preserve the semantic recall budget before truncation.  If pending-
+    # embedding lexical rows share the fused sort, enough exact-token matches
+    # can otherwise consume every slot before the recommender has a chance to
+    # put them in its review-only hint lane.  Reserve at most the final slot
+    # for one pending row; all earlier slots must have real query similarity.
+    if query_embedding:
+        semantic_rows = [row for row in fused_rows if row.get("similarity") is not None]
+        pending_rows = [row for row in fused_rows if row.get("similarity") is None]
+        if pending_rows and match_count >= 2:
+            selected_rows = semantic_rows[: match_count - 1] + pending_rows[:1]
+        else:
+            selected_rows = semantic_rows[:match_count]
+    else:
+        selected_rows = fused_rows[:match_count]
+
     out = []
-    for row in fused_rows[:match_count]:
+    for row in selected_rows:
         score = row.pop("_fuse_score")
         risk = row.get("risk_score") or 0
         components = quality.meaningfulness_components(row)
@@ -1872,7 +1895,12 @@ def hybrid_search_skills(
         risk_penalty = 0.01 * min(risk, 2)
         row["rank"] = float(score + (0.006 * float(components["meaningfulness"])) - risk_penalty)
         out.append(row)
-    out.sort(key=lambda r: r["rank"], reverse=True)
+    out.sort(
+        key=lambda r: (
+            bool(query_embedding) and r.get("similarity") is None,
+            -float(r["rank"]),
+        )
+    )
     return out
 
 

@@ -1,0 +1,11 @@
+{
+  "tasks": [
+    {
+      "name": "terminal-bench/pypi-server",
+      "skill_id": "fd4278ef-700f-4055-b99c-fcfc694e7c4e",
+      "skill_name": "python-pypi-package-builder",
+      "source_url": "https://github.com/github/awesome-copilot/tree/HEAD/skills/python-pypi-package-builder",
+      "source_content_hash": "39c37821dc87bf05860a4214a9089b4e5d6c3ae94e8bbe2ee5e96c5e8636519c"
+    }
+  ]
+}

@@ -176,6 +176,14 @@ client cannot provide an isolated context. Routing never installs a skill or
 writes one to disk. Set `AUTOSKILL_CONTEXT_GUARD=0` only for a temporary
 compatibility rollback.
 
+Public search matches are hint-only by default. Full delivery requires the
+exact served-byte SHA-256 digest to appear in the comma-separated
+`AUTOSKILL_VALIDATED_FULL_CONTENT_DIGESTS` allowlist after independent task
+outcome validation; using the served-byte digest prevents an upstream update from
+silently inheriting an older version's evidence. The
+`AUTOSKILL_EXPERIMENTAL_UNVALIDATED_PUBLIC_FULL=1` bypass is for controlled A/B
+runs only, not production routing.
+
 ## Evals
 
 Track retrieval quality, route latency, and token churn across changes:

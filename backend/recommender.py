@@ -81,8 +81,23 @@ ROUTE_LATENCY_WARN_MS = int(os.getenv("ROUTE_LATENCY_WARN_MS", "750"))
 ROUTE_SKILL_FIND_WARN_MS = int(os.getenv("ROUTE_SKILL_FIND_WARN_MS", "500"))
 ROUTE_INJECTED_TOKEN_WARN = int(os.getenv("ROUTE_INJECTED_TOKEN_WARN", "1000"))
 ROUTE_RESPONSE_TOKEN_WARN = int(os.getenv("ROUTE_RESPONSE_TOKEN_WARN", "3500"))
-UPGRADE_URL = os.getenv("BACKEND_BASE_URL", "https://skills.autoskill.dev").rstrip("/") + "/account"
 CONTENT_HASH_RE = re.compile(r"^[a-f0-9]{64}$")
+# Public search is an inference, not an explicit user invocation.  The
+# controlled routing audit found that score-only full delivery could not clear
+# the precision required for silent prompt injection, even after post-hoc
+# threshold tuning.  Keep public matches hint-only unless a skill/version has
+# separately earned an outcome-validated allowlist entry.  The experimental
+# escape hatch is deliberately off by default and exists only for controlled
+# A/B runs.
+ALLOW_UNVALIDATED_PUBLIC_FULL = os.getenv(
+    "AUTOSKILL_EXPERIMENTAL_UNVALIDATED_PUBLIC_FULL", ""
+).lower() in {"1", "true", "yes"}
+OUTCOME_VALIDATED_FULL_CONTENT_DIGESTS = frozenset(
+    value.strip().casefold()
+    for value in os.getenv("AUTOSKILL_VALIDATED_FULL_CONTENT_DIGESTS", "").split(",")
+    if CONTENT_HASH_RE.fullmatch(value.strip().casefold())
+)
+UPGRADE_URL = os.getenv("BACKEND_BASE_URL", "https://skills.autoskill.dev").rstrip("/") + "/account"
 EMBED_INTERVAL_SECONDS = int(os.getenv("EMBED_INTERVAL_SECONDS", "300"))
 # ONNX memory grows sharply with batch size at the 512-token window.  A batch
 # of 128 exhausted the 4 GiB production droplet and put the worker into an OOM
@@ -488,6 +503,30 @@ async def find_default_policy_candidate(
     )
 
 
+def _rank_retrieval_lanes(
+    query_text: str,
+    results: list[dict],
+    limit: int,
+    *,
+    vector_available: bool,
+) -> list[dict]:
+    """Keep not-yet-embedded active skills visible without polluting routing.
+
+    A pending-embedding exact lexical match is useful as a reviewable hint, but
+    must not displace the evidence-backed semantic lane or inherit another
+    row's confidence. Reserve at most the final result slot for that lane.
+    """
+    if not vector_available:
+        return rerank_candidates(query_text, results)[:limit]
+    semantic = [row for row in results if row.get("similarity") is not None]
+    pending = [row for row in results if row.get("similarity") is None]
+    ranked_semantic = rerank_candidates(query_text, semantic)
+    if not pending or limit < 2:
+        return ranked_semantic[:limit]
+    ranked_pending = rerank_candidates(query_text, pending)
+    return ranked_semantic[: limit - 1] + ranked_pending[:1]
+
+
 async def retrieve_skills(client: httpx.AsyncClient, query_text: str, limit: int = 10) -> list[dict]:
     """Hybrid FTS+vector retrieval against the local DB. The frozen Supabase
     corpus was fully migrated into local_skills.db (migrate_state.json:
@@ -508,7 +547,12 @@ async def retrieve_skills(client: httpx.AsyncClient, query_text: str, limit: int
                 query_embedding,
                 fetch_limit,
             )
-            return rerank_candidates(query_text, results)[:limit]
+            return _rank_retrieval_lanes(
+                query_text,
+                results,
+                limit,
+                vector_available=query_embedding is not None,
+            )
         except Exception as exc:
             print(f"[recommender] local retrieval fast path failed: {exc}")
 
@@ -523,8 +567,12 @@ async def retrieve_skills(client: httpx.AsyncClient, query_text: str, limit: int
     if r.status_code != 200:
         return []
     results = list(r.json())
-    results = rerank_candidates(query_text, results)
-    return results[:limit]
+    return _rank_retrieval_lanes(
+        query_text,
+        results,
+        limit,
+        vector_available=query_embedding is not None,
+    )
 
 
 async def fetch_skills_by_urls(client: httpx.AsyncClient, urls: list[str]) -> list[dict]:
@@ -1097,6 +1145,14 @@ def _library_content_by_hash(target_hash: str) -> str:
     return LibraryContent().get_by_hash(target_hash)
 
 
+def _content_is_validated_for_full(text: str) -> bool:
+    """Require evidence for the exact served UTF-8 bytes, not a dedupe hash."""
+    return ALLOW_UNVALIDATED_PUBLIC_FULL or (
+        bool(text)
+        and content_digest(text).casefold() in OUTCOME_VALIDATED_FULL_CONTENT_DIGESTS
+    )
+
+
 def _public_plan_item(item: dict | None) -> dict | None:
     """Remove serving-only fields before returning a composed plan item."""
     if not item:
@@ -1130,6 +1186,7 @@ async def _build_verified_policy_item(
         or not public.get("content_hash")
         or content_hash(text) != public.get("content_hash")
         or skill_capability_flags(text)
+        or not _content_is_validated_for_full(text)
     ):
         return None
     capsule_budget = max(200, min(POLICY_CAPSULE_CHARS, int(max_capsule_chars or POLICY_CAPSULE_CHARS)))
@@ -1202,6 +1259,8 @@ async def find_deliverable_primary_candidate(
     prevent a slightly lower-ranked verified static specialist from becoming
     the active route.
     """
+    if not ALLOW_UNVALIDATED_PUBLIC_FULL and not OUTCOME_VALIDATED_FULL_CONTENT_DIGESTS:
+        return None, ""
     plausible = [
         candidate
         for candidate in candidates
@@ -1213,7 +1272,7 @@ async def find_deliverable_primary_candidate(
         *(asyncio.to_thread(_verified_static_candidate_content, candidate) for candidate in plausible)
     )
     for candidate, text in zip(plausible, contents):
-        if text:
+        if text and _content_is_validated_for_full(text):
             return candidate, text
     return None, ""
 
@@ -1311,21 +1370,32 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
     )
     deliverable_validation_ms = int((time.monotonic() - deliverable_validation_start) * 1000)
     tier_decision_start = time.monotonic()
+    full_evidence_gate_applied = False
     if deliverable_primary:
         primary_results = [deliverable_primary]
         primary_tier = "full"
     else:
         primary_tier = injection_tier(query, primary_results, ranked=results_are_ranked)
+        if primary_tier == "full" and primary_results and not ALLOW_UNVALIDATED_PUBLIC_FULL:
+            primary_tier = "hint"
+            full_evidence_gate_applied = True
     tier_decision_ms = int((time.monotonic() - tier_decision_start) * 1000)
     policy_build_start = time.monotonic()
-    policy_item = await _build_verified_policy_item(
-        user["id"], policy_candidate, query, body.max_capsule_chars
+    policy_item = (
+        await _build_verified_policy_item(user["id"], policy_candidate, query, body.max_capsule_chars)
+        if primary_tier == "full"
+        else None
     )
     policy_build_ms = int((time.monotonic() - policy_build_start) * 1000)
     tier = primary_tier
     rerank_ms = int((time.monotonic() - rerank_start) * 1000)
     skill_find_ms = int((time.monotonic() - retrieval_start) * 1000)
     warnings: list[str] = []
+    if full_evidence_gate_applied:
+        warnings.append(
+            "Public retrieval matches are hint-only until this skill version has "
+            "independent outcome validation for full delivery."
+        )
     content = None
     content_url = None
     skill = _public_skill(primary_results[0]) if primary_results else None
@@ -1341,15 +1411,6 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
     # falls to the org standard rather than a personal copy.
     private_match = store.list_routable_private_skills(user["id"]) if user else []
     private_match = _best_private_skill_match(query, private_match) if private_match else None
-
-    # A verified family policy is still useful when no specialist clears the
-    # full-injection bar. It becomes the compatibility top-level selection so
-    # older clients receive useful guidance instead of an unrelated hint.
-    if not private_match and tier != "full" and policy_item:
-        skill = _public_plan_item(policy_item)
-        selected_role = "policy"
-        tier = "full"
-        results = [policy_item["_row"]]
 
     if private_match:
         policy_item = None
@@ -1410,6 +1471,12 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
                 "Matched skill declares scripts, tools, network, dependencies, or dangerous commands; "
                 "downgraded to hint for explicit review."
             )
+        elif not _content_is_validated_for_full(text):
+            tier = "hint"
+            warnings.append(
+                "The exact served skill bytes lack independent outcome validation; "
+                "downgraded to hint."
+            )
         else:
             chash = skill["content_hash"]
             digest = content_digest(text)
@@ -1459,15 +1526,10 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
                 tier = "hint"
                 warnings.append("Verified content could not be delivered within the context guard; downgraded to hint.")
 
-    if not private_match and tier != "full" and policy_item and selected_role != "policy":
-        skill = _public_plan_item(policy_item)
-        selected_role = "policy"
-        tier = "full"
-        results = [policy_item["_row"]]
-        content = None
-        content_url = None
-        context_guard = _policy_context_guard(policy_item)
-        warnings.append("The specialist did not clear delivery gates; serving the verified task-family policy only.")
+    # Family policies are modifiers, never standalone task routes. If the
+    # specialist cannot remain full, discard the policy rather than promoting it.
+    if tier != "full" or selected_role in {"policy", "private"}:
+        policy_item = None
 
     if skill:
         skill["role"] = selected_role or "specialist"

@@ -1,0 +1,110 @@
+{
+  "schema_version": 1,
+  "status": "screen-rejected",
+  "hypothesis": "A Sol/max task-adapted capsule grounded in an independently E-labeled retrieved body recovers a clean no-skill competence failure.",
+  "decision": "Reject on this two-task screen. Both adapted treatments reproduced the control verifier failure and reward.",
+  "dataset_ref": "sha256:7d7bdc1cbedad549fc1140404bd4dc45e5fd0ea7c4186773687d177ad3a0699a",
+  "agent": {
+    "name": "codex",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "max",
+    "reasoning_summary": "none",
+    "web_search": "disabled",
+    "version": "0.145.0"
+  },
+  "summary": {
+    "paired_tasks": 2,
+    "control_passes": 0,
+    "adapted_passes": 0,
+    "adapted_wins": 0,
+    "adapted_losses": 0,
+    "ties": 2,
+    "dna_agent_seconds_delta": 59.686,
+    "pypi_agent_seconds_delta": -9.948,
+    "statistical_claim": "none; this was a direction-finding screen"
+  },
+  "adaptation_artifacts": [
+    {
+      "task": "terminal-bench/dna-insert",
+      "path": "C:\\Users\\Pranay Dinesh\\.codex\\visualizations\\2026\\07\\21\\019f835a-56cd-7c92-a171-3fcf2dd77cd5\\task-adaptation-dna-insert-20260721\\task-adaptation-results.json",
+      "sha256": "adcbef4ae4206364a8df3b4cc45d63d3213034576fc3bec0505926ee5aaf7eb6",
+      "capsule_sha256": "261f057d180ae3eef02765b9771c6792689044d81ed7f2b3b67cbb618d5751e1",
+      "adapted_tokens": 179,
+      "planner_tokens": 179,
+      "credible_for_ab": true
+    },
+    {
+      "task": "terminal-bench/pypi-server",
+      "path": "C:\\Users\\Pranay Dinesh\\.codex\\visualizations\\2026\\07\\21\\019f835a-56cd-7c92-a171-3fcf2dd77cd5\\task-adaptation-pypi-server-20260721\\task-adaptation-results.json",
+      "sha256": "e309b9d5360c20de68d448a33f94fda04ec9cbd4cf492a20a9c7a568d1ea268c",
+      "capsule_sha256": "558440128065d34e7a9778584f53f9fda45e4f3c1c2f698b23079c43b4247d43",
+      "adapted_tokens": 211,
+      "planner_tokens": 211,
+      "credible_for_ab": true
+    }
+  ],
+  "cells": [
+    {
+      "task": "terminal-bench/dna-insert",
+      "arm": "control",
+      "trial_id": "edbd3714-8536-4a85-948a-98f8e73b8f38",
+      "reward": 0.0,
+      "task_ref": "sha256:37fc023970e3464c1acc31f43e04a0b4b94758130d340788f261f00764d9e530",
+      "task_checksum": "8ee918b8953bf437bf764153a84080475e1c2dfa18d0209cc4b19fee12ccce3c",
+      "agent_seconds": 236.142,
+      "input_tokens": 234388,
+      "cache_tokens": 185088,
+      "output_tokens": 8959,
+      "cost_usd": 0.607814,
+      "failure": "forward/reverse oligotm mismatch was 8.19 C; required <=5 C",
+      "result_path": "C:\\tmp\\autoskill-harbor-runs\\screen4-dna-insert-control-r1\\2026-07-21__21-43-12\\dna-insert__PJ9CbJe\\result.json"
+    },
+    {
+      "task": "terminal-bench/dna-insert",
+      "arm": "adapted",
+      "trial_id": "af9e73e9-085b-400f-acb2-7aed0fda643c",
+      "reward": 0.0,
+      "task_ref": "sha256:37fc023970e3464c1acc31f43e04a0b4b94758130d340788f261f00764d9e530",
+      "task_checksum": "8ee918b8953bf437bf764153a84080475e1c2dfa18d0209cc4b19fee12ccce3c",
+      "capsule_sha256": "261f057d180ae3eef02765b9771c6792689044d81ed7f2b3b67cbb618d5751e1",
+      "agent_seconds": 295.828,
+      "input_tokens": 289518,
+      "cache_tokens": 252672,
+      "output_tokens": 10973,
+      "cost_usd": 0.639756,
+      "failure": "same 8.19 C oligotm mismatch as control",
+      "result_path": "C:\\tmp\\autoskill-harbor-runs\\screen4-dna-insert-adapted-r1\\2026-07-21__21-58-30\\dna-insert__WGePmFX\\result.json"
+    },
+    {
+      "task": "terminal-bench/pypi-server",
+      "arm": "control",
+      "trial_id": "535de8fd-afd1-4636-a20d-0772cb354284",
+      "reward": 0.0,
+      "task_ref": "sha256:1a1e0542f58e2d3362fec17a9bbb98667717d9a4a3e9a4c8413d3150a4fa0ff1",
+      "task_checksum": "9eb21236249d5b42ee64c7229bb1e5a3b3c0be7ed5ee9801bdd0d16ca575941a",
+      "agent_seconds": 191.159,
+      "input_tokens": 210755,
+      "cache_tokens": 162048,
+      "output_tokens": 7796,
+      "cost_usd": 0.558439,
+      "failure": "pip could not find vectorops==0.1.0 at localhost:8080/simple",
+      "result_path": "C:\\tmp\\autoskill-harbor-runs\\screen4-pypi-server-control-r1\\2026-07-21__21-45-08\\pypi-server__jyXKEuw\\result.json"
+    },
+    {
+      "task": "terminal-bench/pypi-server",
+      "arm": "adapted",
+      "trial_id": "df36880b-48db-49c9-a680-9dea7c587cd4",
+      "reward": 0.0,
+      "task_ref": "sha256:1a1e0542f58e2d3362fec17a9bbb98667717d9a4a3e9a4c8413d3150a4fa0ff1",
+      "task_checksum": "9eb21236249d5b42ee64c7229bb1e5a3b3c0be7ed5ee9801bdd0d16ca575941a",
+      "capsule_sha256": "558440128065d34e7a9778584f53f9fda45e4f3c1c2f698b23079c43b4247d43",
+      "agent_seconds": 181.211,
+      "input_tokens": 182198,
+      "cache_tokens": 154112,
+      "output_tokens": 7102,
+      "cost_usd": 0.430546,
+      "failure": "same missing local-index distribution as control",
+      "result_path": "C:\\tmp\\autoskill-harbor-runs\\screen4-pypi-server-adapted-r1\\2026-07-21__22-00-38\\pypi-server__qYLkPSX\\result.json"
+    }
+  ]
+}
