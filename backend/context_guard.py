@@ -14,11 +14,19 @@ from typing import Any
 from quality import has_valid_skill_frontmatter, skill_capability_flags
 
 POLICY_VERSION = "hybrid-v1"
-DEFAULT_INLINE_CHARS = 4000
+# Inline budget: prefer delivering complete static SKILL.md when it fits a
+# reasonable agent context. Capsule/isolation are honest non-full paths when
+# the body exceeds these limits — never label a truncated body as "full".
+DEFAULT_INLINE_CHARS = 12000
 DEFAULT_CAPSULE_CHARS = 2400
-MAX_INLINE_CHARS = 12000
+MAX_INLINE_CHARS = 24000
 MAX_CAPSULE_CHARS = 2400
-MAX_GUARDED_CONTENT_CHARS = 50000
+# Guard may inspect any accepted library body (quality.MAX_SKILL_CONTENT_CHARS).
+MAX_GUARDED_CONTENT_CHARS = 500_000
+CONTENT_FETCH_HINT = (
+    "This delivery is not the complete SKILL.md. Fetch the full verified file "
+    "via the route content_url (/content/{content_hash}) when you need the remainder."
+)
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 _FRONTMATTER_RE = re.compile(r"\A\ufeff?---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\Z)", re.S)
@@ -128,21 +136,29 @@ def build_context_guard(
     max_capsule_chars: int = DEFAULT_CAPSULE_CHARS,
     force_capsule: bool = False,
 ) -> dict[str, Any]:
-    """Return a privacy-safe delivery decision for one verified skill."""
+    """Return a privacy-safe delivery decision for one verified skill.
+
+    ``delivery="full"`` is reserved for complete inline bodies only.
+    Capsule/isolation responses set ``complete=False`` and include
+    ``fetch_hint`` so clients never treat a bounded excerpt as the full skill.
+    """
     result: dict[str, Any] = {
         "policy": POLICY_VERSION,
         "delivery": "hint",
         "reason": "content_unavailable",
+        "complete": False,
         "capsule": None,
         "capsule_chars": 0,
         "estimated_tokens": 0,
         "content_hash": content_hash or None,
         "content_digest": content_digest or None,
+        "fetch_hint": None,
     }
     if not content:
         return result
     if len(content) > MAX_GUARDED_CONTENT_CHARS:
         result["reason"] = "content_too_large"
+        result["fetch_hint"] = CONTENT_FETCH_HINT if content_hash else None
         return result
     if not has_valid_skill_frontmatter(content):
         result["reason"] = "invalid_skill_frontmatter"
@@ -154,11 +170,19 @@ def build_context_guard(
 
     inline_limit = max(240, min(int(max_inline_chars or DEFAULT_INLINE_CHARS), MAX_INLINE_CHARS))
     if len(content) <= inline_limit and not force_capsule:
-        result.update({"delivery": "full", "reason": "small_static"})
+        result.update(
+            {
+                "delivery": "full",
+                "reason": "small_static",
+                "complete": True,
+                "estimated_tokens": estimate_tokens(content),
+            }
+        )
         return result
 
+    fetch_hint = CONTENT_FETCH_HINT
     if supports_isolation:
-        result.update({"delivery": "isolation", "reason": "large_static"})
+        result.update({"delivery": "isolation", "reason": "large_static", "complete": False, "fetch_hint": fetch_hint})
         capsule = build_capsule(task, content, max_capsule_chars)
         result["capsule"] = capsule or None
         result["capsule_chars"] = len(capsule)
@@ -168,14 +192,17 @@ def build_context_guard(
     capsule = build_capsule(task, content, max_capsule_chars)
     if not capsule:
         result["reason"] = "capsule_unavailable"
+        result["fetch_hint"] = fetch_hint
         return result
     result.update(
         {
             "delivery": "capsule",
             "reason": "unsupported_isolation",
+            "complete": False,
             "capsule": capsule,
             "capsule_chars": len(capsule),
             "estimated_tokens": estimate_tokens(capsule),
+            "fetch_hint": fetch_hint,
         }
     )
     return result

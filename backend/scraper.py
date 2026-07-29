@@ -16,7 +16,13 @@ from fastapi.staticfiles import StaticFiles
 from datetime import datetime, timezone, date, timedelta
 import os
 from embeddings import embedding_model_status
-from quality import content_hash as quality_content_hash, evaluate_quality, pick_canonical
+from quality import (
+    MAX_SKILL_CONTENT_CHARS,
+    canonicalize_skill_content,
+    content_hash as quality_content_hash,
+    evaluate_quality,
+    pick_canonical,
+)
 import admin_security
 
 # Storage moved local 2026-07-05 (Supabase free-tier space ran out) -- new
@@ -1090,15 +1096,49 @@ def _should_skip_crawl(owner_repo: str, meta: dict, state: "CrawlState") -> bool
     return False
 
 
+MAX_SKILL_BUNDLE_FILES = 6  # cap sibling-file fetch so one repo's asset dump can't balloon a single skill
+
+
+def _skill_bundle_sibling_paths(dir_path: str, skill_md_path: str, all_paths: list) -> list:
+    """Claude Skills are often multi-file: SKILL.md is just the entry point,
+    with bundled reference docs/scripts/resources living alongside it. Find
+    those siblings in the repo's full tree listing so they get fetched too."""
+    if not dir_path:
+        return []
+    prefix = dir_path + "/"
+    siblings = []
+    for p in all_paths:
+        if p == skill_md_path or not p.startswith(prefix):
+            continue
+        rest = p[len(prefix):]
+        if rest.lower().endswith(".md") or rest.split("/", 1)[0] in ("scripts", "references", "resources"):
+            siblings.append(p)
+    return siblings[:MAX_SKILL_BUNDLE_FILES]
+
+
 async def _fetch_raw_file(client: httpx.AsyncClient, owner: str, repo: str, path: str) -> str:
     async with RAW_FETCH_SEMAPHORE:
         try:
             r = await client.get(f"https://raw.githubusercontent.com/{owner}/{repo}/HEAD/{path}", timeout=10)
             if r.status_code == 200:
-                return r.text[:20000]
+                return _accepted_fetched_text(r.text)
         except Exception:
             pass
     return ""
+
+
+def _accepted_fetched_text(text: str) -> str:
+    """Return the complete fetched body, or empty if it exceeds the hard ceiling.
+
+    Never silently truncate: a partial SKILL.md must not be hashed/stored as if
+    it were the canonical library artifact.
+    """
+    if not text:
+        return ""
+    body = canonicalize_skill_content(text)
+    if len(body) > MAX_SKILL_CONTENT_CHARS:
+        return ""
+    return body
 
 
 def fold_metadata_tags(tags: list, fields: dict) -> list:
@@ -1158,7 +1198,7 @@ def _skill_from_skill_md(owner: str, repo: str, path: str, content: str, meta: d
             # Claude accepts a skill iff SKILL.md frontmatter carries name+description.
             "valid_skill": bool(fields.get("name") and fields.get("description")),
         },
-        "_content": content,
+        "_content": canonicalize_skill_content(content),
     }
 
 
@@ -1195,9 +1235,25 @@ async def tree_crawl_repo(client: httpx.AsyncClient, gh_headers: dict, owner_rep
     skill_paths = [p for p in paths if SKILL_MD_PATH_RE.search(p)][:TREE_CRAWL_PER_REPO_CAP]
 
     contents = await asyncio.gather(*(_fetch_raw_file(client, owner, repo, p) for p in skill_paths))
+
+    async def _with_bundle(skill_path: str, skill_content: str) -> str:
+        if not skill_content:
+            return skill_content
+        dir_path = skill_path[: -len("SKILL.md")].rstrip("/")
+        sibling_paths = _skill_bundle_sibling_paths(dir_path, skill_path, paths)
+        if not sibling_paths:
+            return skill_content
+        sibling_contents = await asyncio.gather(*(_fetch_raw_file(client, owner, repo, p) for p in sibling_paths))
+        parts = [skill_content]
+        for sib_path, sib_content in zip(sibling_paths, sibling_contents):
+            if sib_content:
+                parts.append(f"\n\n## {sib_path}\n\n{sib_content}")
+        return "".join(parts)
+
+    bundled_contents = await asyncio.gather(*(_with_bundle(p, c) for p, c in zip(skill_paths, contents)))
     found = [
         _skill_from_skill_md(owner, repo, path, content, meta)
-        for path, content in zip(skill_paths, contents)
+        for path, content in zip(skill_paths, bundled_contents)
         if content
     ]
     state.repos[owner_repo] = {
@@ -1266,7 +1322,7 @@ async def scrape_mcp_registry(client: httpx.AsyncClient, skills: list):
                     "source": "smithery_registry",
                     "url": f"https://smithery.ai/server/{qualified_name}",
                     "tags": [],
-                    "raw": server,
+                    "raw": {**server, "qualified_name": qualified_name},
                 })
             pagination = data.get("pagination", {})
             total_pages = pagination.get("totalPages")
@@ -1297,13 +1353,14 @@ async def scrape_mcp_registry(client: httpx.AsyncClient, skills: list):
                 url = server.get("url") or (f"https://glama.ai/mcp/servers/{server_id}" if server_id else "")
                 if not url:
                     continue
+                repo_url = (server.get("repository") or {}).get("url") or ""
                 skills.append({
                     "name": server.get("name") or server_id,
                     "description": server.get("description") or "",
                     "source": "glama_registry",
                     "url": url,
                     "tags": _capped_tags(server.get("tags")),
-                    "raw": server,
+                    "raw": {**server, "repo_url": repo_url},
                 })
             page_info = data.get("pageInfo", {})
             if not page_info.get("hasNextPage"):
@@ -1368,9 +1425,12 @@ async def scrape_mcp_registry(client: httpx.AsyncClient, skills: list):
                 url = server.get("source_code_url") or server.get("url") or ""
                 if not url:
                     continue
+                short_description = server.get("short_description") or server.get("description") or ""
+                ai_description = server.get("EXPERIMENTAL_ai_generated_description") or ""
+                description = ai_description if len(ai_description) > len(short_description) else short_description
                 skills.append({
                     "name": server.get("name", ""),
-                    "description": server.get("short_description") or server.get("description") or "",
+                    "description": description,
                     "source": "pulsemcp_registry",
                     "url": url,
                     "tags": [],
@@ -1668,29 +1728,77 @@ def heuristic_scan(text: str):
 GITHUB_TREE_URL_RE = re.compile(r"github\.com/([^/]+)/([^/]+)/tree/([^/]+)/(.+)")
 
 
+async def _fetch_raw_candidate(client: httpx.AsyncClient, owner: str, repo: str, branch: str, path: str) -> str:
+    try:
+        r = await client.get(f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{path}", timeout=6)
+        if r.status_code == 200 and r.text:
+            return _accepted_fetched_text(r.text)
+    except Exception:
+        pass
+    return ""
+
+
 async def fetch_github_raw_content(client: httpx.AsyncClient, owner: str, repo: str, url: str = "") -> str:
     # If the URL points at a specific path (e.g. skillsmp's githubUrl =
     # .../tree/main/skills/foo), fetch SKILL.md from that exact directory
     # first — it's precise, whereas guessing top-level paths on a big repo
     # would usually miss a skill that lives in a subdirectory.
     tree_match = GITHUB_TREE_URL_RE.search(url) if url else None
-    candidates = []
+    lead_candidates = []
     if tree_match:
         t_owner, t_repo, branch, subpath = tree_match.groups()
-        candidates.append((t_owner, t_repo, branch, f"{subpath.rstrip('/')}/SKILL.md"))
-    candidates += [
+        lead_candidates.append((t_owner, t_repo, branch, f"{subpath.rstrip('/')}/SKILL.md"))
+    lead_candidates += [
         (owner, repo, "HEAD", "SKILL.md"),
         (owner, repo, "HEAD", ".claude/skills/SKILL.md"),
-        (owner, repo, "HEAD", "README.md"),
         (owner, repo, "HEAD", "package.json"),
     ]
-    for c_owner, c_repo, branch, path in candidates:
-        try:
-            r = await client.get(f"https://raw.githubusercontent.com/{c_owner}/{c_repo}/{branch}/{path}", timeout=6)
-            if r.status_code == 200 and r.text:
-                return r.text[:20000]
-        except Exception:
+    lead = ""
+    lead_path = ""
+    for c_owner, c_repo, branch, path in lead_candidates:
+        lead = await _fetch_raw_candidate(client, c_owner, c_repo, branch, path)
+        if lead:
+            lead_path = path
+            break
+
+    # Always also try the top-level README — a repo's manifest/SKILL.md is
+    # often just an entry point, and the real usage docs live in the README.
+    # Concatenate rather than stop at the first hit so neither is lost.
+    readme = "" if lead_path == "README.md" else await _fetch_raw_candidate(client, owner, repo, "HEAD", "README.md")
+
+    parts = [p for p in (lead, readme) if p]
+    return "\n\n".join(parts)
+
+
+def _format_mcp_tools(tools: list) -> str:
+    """Render an MCP server's tools[] (name/description/inputSchema) as
+    readable text -- this is the ground-truth capability spec for an MCP
+    server, higher-signal than any registry blurb."""
+    lines = []
+    for tool in tools or []:
+        if not isinstance(tool, dict):
             continue
+        name = str(tool.get("name") or "").strip()
+        if not name:
+            continue
+        description = str(tool.get("description") or "").strip()
+        params = sorted((tool.get("inputSchema") or {}).get("properties") or {})
+        line = f"- {name}: {description}"
+        if params:
+            line += f" (params: {', '.join(params)})"
+        lines.append(line)
+    return "Tools:\n" + "\n".join(lines) if lines else ""
+
+
+async def fetch_smithery_tools(client: httpx.AsyncClient, qualified_name: str) -> str:
+    """The Smithery registry's list endpoint is a one-line blurb; the
+    per-server detail endpoint carries the actual tools[] array."""
+    try:
+        r = await client.get(f"https://registry.smithery.ai/servers/{qualified_name}", timeout=10)
+        if r.status_code == 200:
+            return _format_mcp_tools(r.json().get("tools"))
+    except Exception:
+        pass
     return ""
 
 
@@ -1698,7 +1806,7 @@ async def fetch_npm_readme(client: httpx.AsyncClient, package_name: str) -> str:
     try:
         r = await client.get(f"https://registry.npmjs.org/{package_name}", timeout=6)
         if r.status_code == 200:
-            return (r.json().get("readme") or "")[:20000]
+            return _accepted_fetched_text(r.json().get("readme") or "")
     except Exception:
         pass
     return ""
@@ -1757,10 +1865,15 @@ async def flush_library_index():
 
 async def save_to_library(skill: dict, content: str):
     global _library_index, _library_dirty, _library_last_flush
+    # Persist the complete canonical body. Refuse empty/oversized rather than
+    # writing a stub that would still look "stored" in the index.
+    content = canonicalize_skill_content(content or "")
+    if not content or len(content) > MAX_SKILL_CONTENT_CHARS:
+        return
     filename = _library_filename(skill)
     async with library_lock:
         LIBRARY_FILES_DIR.mkdir(parents=True, exist_ok=True)
-        (LIBRARY_FILES_DIR / filename).write_text(content, encoding="utf-8")
+        (LIBRARY_FILES_DIR / filename).write_text(content, encoding="utf-8", newline="\n")
 
         if _library_index is None:
             try:
@@ -1788,19 +1901,32 @@ async def scan_skill(client: httpx.AsyncClient, skill: dict):
     async with RISK_SCAN_CONCURRENCY:
         # Tree-crawled skills arrive with their SKILL.md already fetched — scan
         # that exact content instead of re-guessing paths.
-        content = skill.pop("_content", "")
+        content = canonicalize_skill_content(skill.pop("_content", "") or "")
+        source = skill.get("source") or ""
+        raw = skill.get("raw") or {}
         try:
             url = skill.get("url") or ""
-            match = GITHUB_OWNER_REPO_RE.search(url)
+            repo_url = raw.get("repo_url") or "" if source == "glama_registry" else url
+            match = GITHUB_OWNER_REPO_RE.search(repo_url)
+            extra = ""
+
+            if source == "smithery_registry" and raw.get("qualified_name"):
+                extra = await fetch_smithery_tools(client, raw["qualified_name"])
+            elif source == "glama_registry" and raw.get("tools"):
+                extra = _format_mcp_tools(raw["tools"])
+
             if content:
                 pass
             elif match:
-                content = await fetch_github_raw_content(client, match.group(1), match.group(2), url)
-            elif skill.get("source") == "npm":
+                content = await fetch_github_raw_content(client, match.group(1), match.group(2), repo_url)
+            elif source == "npm":
                 content = await fetch_npm_readme(client, skill.get("name", ""))
+
+            content = "\n\n".join(p for p in (content, extra) if p)
         except Exception:
             content = ""
 
+        content = canonicalize_skill_content(content or "")
         previous_content_hash = skill.get("content_hash")
         blob = f"{skill.get('name', '')} {skill.get('description', '')} {content}"
         score, flags = heuristic_scan(blob)
@@ -1820,7 +1946,12 @@ async def scan_skill(client: httpx.AsyncClient, skill: dict):
             skill["embedding_text_hash"] = None
             skill["embedded_at"] = None
 
-        if content:
+        # Only attach complete, accepted bodies for library persistence.
+        if (
+            content
+            and len(content) <= MAX_SKILL_CONTENT_CHARS
+            and skill.get("quality_status") == "active"
+        ):
             skill["_library_content"] = content
 
 

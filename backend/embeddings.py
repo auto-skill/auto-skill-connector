@@ -23,14 +23,35 @@ MAX_TOKENS = 512
 EMBED_DIM = 384
 
 # gte-small's 512-token window is ~1,800-2,000 chars of English; text beyond
-# that is truncated by the tokenizer anyway, so don't bother sending it.
+# that is truncated by the tokenizer anyway, so the final embed string stays
+# within this ceiling. Content sampling (below) decides *which* body bytes
+# fill the remaining budget after metadata — not a blind head clip.
 MAX_EMBED_CHARS = 2000
-MAX_CONTENT_CHARS = 1500
+# Soft content budget before metadata join; actual slice is min(this, leftover).
+MAX_CONTENT_CHARS = 1800
 
 _session = None
 _tokenizer = None
 _load_lock = threading.RLock()
 _load_error = ""
+
+_FRONTMATTER_RE = re.compile(r"\A---\n.*?\n---\n", re.S)
+_BADGE_RE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
+_HTML_TAG_RE = re.compile(r"<[^>]{1,200}>")
+_LINK_RE = re.compile(r"\[([^\]]*)\]\([^)]*\)")
+_WS_RE = re.compile(r"\s+")
+_HEADING_RE = re.compile(r"^\s{0,3}(#{1,6})\s+(.+?)\s*$", re.MULTILINE)
+# Prefer operational guidance over long reference dumps when the window is tight.
+_PRIORITY_HEADINGS = (
+    "when to use",
+    "workflow",
+    "steps",
+    "instructions",
+    "constraints",
+    "output",
+    "verification",
+    "examples",
+)
 
 
 def _load():
@@ -98,19 +119,123 @@ def embed_texts(texts: list[str], batch_size: int = 32) -> list[list[float]]:
     return out
 
 
-_FRONTMATTER_RE = re.compile(r"\A---\n.*?\n---\n", re.S)
-_BADGE_RE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
-_HTML_TAG_RE = re.compile(r"<[^>]{1,200}>")
-_LINK_RE = re.compile(r"\[([^\]]*)\]\([^)]*\)")
-_WS_RE = re.compile(r"\s+")
-
-
 def clean_markdown(text: str) -> str:
     text = _FRONTMATTER_RE.sub(" ", text)
     text = _BADGE_RE.sub(" ", text)
     text = _HTML_TAG_RE.sub(" ", text)
     text = _LINK_RE.sub(r"\1", text)  # keep link text, drop URLs
     return _WS_RE.sub(" ", text).strip()
+
+
+def _body_sections(content: str) -> tuple[str, list[tuple[str, str]]]:
+    """Split SKILL.md into (preamble, [(heading, body), ...]) after frontmatter."""
+    body = _FRONTMATTER_RE.sub("", content or "", count=1).strip()
+    matches = list(_HEADING_RE.finditer(body))
+    if not matches:
+        return body, []
+    preamble = body[: matches[0].start()].strip()
+    sections: list[tuple[str, str]] = []
+    for index, match in enumerate(matches):
+        start = match.end()
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(body)
+        heading = re.sub(r"\s+", " ", match.group(2)).strip()
+        section_body = body[start:end].strip()
+        if heading or section_body:
+            sections.append((heading, section_body))
+    return preamble, sections
+
+
+def _priority_rank(heading: str) -> int:
+    lower = heading.casefold()
+    for index, key in enumerate(_PRIORITY_HEADINGS):
+        if key in lower:
+            return index
+    return len(_PRIORITY_HEADINGS) + 1
+
+
+def _append_budget(parts: list[str], chunk: str, budget: int) -> int:
+    """Append cleaned ``chunk`` while budget remains; return leftover budget."""
+    cleaned = clean_markdown(chunk)
+    if not cleaned or budget <= 0:
+        return budget
+    if len(cleaned) > budget:
+        cleaned = cleaned[:budget].rstrip()
+    if not cleaned:
+        return budget
+    parts.append(cleaned)
+    return budget - len(cleaned)
+
+
+def sample_content_for_embed(content: str, budget: int = MAX_CONTENT_CHARS) -> str:
+    """Select embed body text that reflects full-skill substance within ``budget``.
+
+    Strategy (documented product choice for the gte-small window):
+      1. Drop YAML frontmatter (name/description already live in metadata parts).
+      2. Keep a short head/preamble so opening guidance is always represented.
+      3. Prefer priority sections (when to use, workflow, steps, instructions,
+         constraints, output, verification, examples) in that order.
+      4. Keep a short tail from the final section so closing notes are not invisible.
+      5. Fill any remainder with other sections in document order.
+
+    This is intentionally not ``content[:budget]``: a head-only clip ignores
+    mid/late operational sections that often carry the real skill substance.
+    Canonical storage remains the complete SKILL.md; this only chooses what
+    enters the 512-token embedding window.
+    """
+    budget = max(0, int(budget or 0))
+    if not content or budget <= 0:
+        return ""
+    preamble, sections = _body_sections(content)
+    if not sections:
+        return clean_markdown(preamble or content)[:budget]
+
+    parts: list[str] = []
+    # Head: ~25% of budget, minimum 120 when budget allows.
+    head_budget = min(budget, max(120, budget // 4)) if budget >= 120 else budget
+    remaining = _append_budget(parts, preamble, head_budget)
+    remaining += budget - head_budget
+
+    # Tail reservation from the last section (~20%), filled after priorities.
+    tail_reserve = min(remaining, max(80, budget // 5)) if remaining >= 80 and len(sections) > 1 else 0
+    work_budget = remaining - tail_reserve
+
+    ordered = sorted(
+        enumerate(sections),
+        key=lambda item: (_priority_rank(item[1][0]), item[0]),
+    )
+    used_indexes: set[int] = set()
+    for index, (heading, body) in ordered:
+        if work_budget <= 0:
+            break
+        chunk = f"{heading}. {body}" if heading else body
+        before = work_budget
+        work_budget = _append_budget(parts, chunk, work_budget)
+        if work_budget < before:
+            used_indexes.add(index)
+
+    remaining = work_budget + tail_reserve
+    if remaining > 0 and sections:
+        last_index = len(sections) - 1
+        if last_index not in used_indexes:
+            heading, body = sections[last_index]
+            chunk = f"{heading}. {body}" if heading else body
+            # Prefer the end of a long final section so the true tail is visible.
+            cleaned_tail = clean_markdown(chunk)
+            if len(cleaned_tail) > remaining:
+                chunk = cleaned_tail[-remaining:]
+            remaining = _append_budget(parts, chunk, remaining)
+            used_indexes.add(last_index)
+
+    if remaining > 0:
+        for index, (heading, body) in enumerate(sections):
+            if index in used_indexes:
+                continue
+            if remaining <= 0:
+                break
+            chunk = f"{heading}. {body}" if heading else body
+            remaining = _append_budget(parts, chunk, remaining)
+
+    return _WS_RE.sub(" ", " ".join(parts)).strip()[:budget]
 
 
 def build_embed_text(skill: dict, content: str = "") -> str:
@@ -120,7 +245,11 @@ def build_embed_text(skill: dict, content: str = "") -> str:
     capability_summary is an LLM-generated read of what the skill actually
     does (task, triggers, capabilities) and is deliberately placed ahead of
     the raw content -- it's a distilled signal of intent, where raw content
-    is often front-loaded with badges/install instructions instead."""
+    is often front-loaded with badges/install instructions instead.
+
+    Body text uses ``sample_content_for_embed`` so indexing reflects head +
+    priority sections + tail within the model window, not a random head clip.
+    """
     parts = [skill.get("name") or ""]
     if skill.get("description"):
         parts.append(skill["description"])
@@ -129,8 +258,13 @@ def build_embed_text(skill: dict, content: str = "") -> str:
         parts.append(" ".join(str(t) for t in tags))
     if skill.get("capability_summary"):
         parts.append(skill["capability_summary"])
-    if content:
-        parts.append(clean_markdown(content)[:MAX_CONTENT_CHARS])
+    meta = _WS_RE.sub(" ", ". ".join(p for p in parts if p).strip())
+    leftover = max(0, MAX_EMBED_CHARS - len(meta) - (2 if meta else 0))
+    body_budget = min(MAX_CONTENT_CHARS, leftover)
+    if content and body_budget > 0:
+        sampled = sample_content_for_embed(content, body_budget)
+        if sampled:
+            parts.append(sampled)
     return _WS_RE.sub(" ", ". ".join(p for p in parts if p).strip())[:MAX_EMBED_CHARS]
 
 

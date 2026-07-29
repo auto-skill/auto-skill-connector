@@ -6,6 +6,7 @@
 {"id":"trap-notion-001","prompt":"organize meeting notes into a project tracker","expected_tier":"hint|none","allowed_skills":[],"forbidden_skills":["notion"],"tags":["platform-trap","notes"]}
 {"id":"trap-postgres-001","prompt":"design an online database for a skill router prototype","expected_tier":"hint|none","allowed_skills":[],"forbidden_skills":["postgres","postgresql","pgvector"],"tags":["platform-trap","database"]}
 {"id":"explicit-landingi-001","prompt":"build a landing page on Landingi for an AI automation agency","expected_tier":"full|hint","allowed_skills":["sales-landingi"],"forbidden_skills":[],"tags":["platform-explicit","landing-page"]}
+{"id":"explicit-shopify-001","prompt":"fix my Shopify checkout and liquid theme","expected_tier":"full|hint","allowed_skills":["shopify"],"forbidden_skills":[],"tags":["platform-explicit","ecommerce"]}
 {"id":"negative-ack-001","prompt":"thanks that worked great","expected_tier":"none","allowed_skills":[],"forbidden_skills":["*"],"tags":["negative","ack"]}
 {"id":"negative-ack-002","prompt":"yes please","expected_tier":"none","allowed_skills":[],"forbidden_skills":["*"],"tags":["negative","ack"]}
 {"id":"negative-short-question-001","prompt":"what is cp","expected_tier":"none","allowed_skills":[],"forbidden_skills":["*"],"tags":["negative","short-question"]}
@@ -16,3 +17,5 @@
 {"id":"direct-spreadsheet-specificity-001","prompt":"create a monthly Excel sales report with formulas, charts, and a summary dashboard","expected_tier":"full|hint","allowed_skills":["excel","spreadsheet","xlsx"],"forbidden_skills":[],"tags":["direct-hit","spreadsheet","specificity"]}
 {"id":"direct-browser-qa-001","prompt":"take screenshots of a webpage and inspect the layout","expected_tier":"full|hint","allowed_skills":["browser","screenshot","playwright","puppeteer"],"forbidden_skills":[],"tags":["direct-hit","browser-qa"]}
 {"id":"dedup-skill-creator-001","prompt":"help me create a new Claude Code skill from scratch","expected_tier":"full|hint|none","allowed_skills":[],"forbidden_skills":[],"tags":["dedup"]}
+{"id":"integration-no-platform-001","prompt":"build a customer dashboard for weekly reports","expected_tier":"hint|none","allowed_skills":[],"forbidden_skills":["salesforce","shopify","notion","stripe"],"tags":["integration-gate","platform-trap"]}
+{"id":"policy-coding-001","prompt":"refactor this React component to use hooks cleanly","expected_tier":"full|hint|none","allowed_skills":[],"forbidden_skills":[],"tags":["policy-lane","coding"]}

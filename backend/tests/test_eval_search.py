@@ -14,7 +14,15 @@ class EvalSearchRouteCaseTests(unittest.TestCase):
         platform_traps = [case for case in cases if "platform-trap" in case["tags"]]
 
         self.assertIn("trap-landingi-001", case_ids)
+        self.assertIn("integration-no-platform-001", case_ids)
+        self.assertIn("policy-coding-001", case_ids)
         self.assertGreaterEqual(len(platform_traps), 5)
+
+    def test_failure_pack_loads(self) -> None:
+        path = Path(__file__).resolve().parents[1] / "evals" / "failure_pack.jsonl"
+        cases = _load_route_cases(path)
+        self.assertGreaterEqual(len(cases), 12)
+        self.assertTrue(any("name-token-waiver" in case["tags"] for case in cases))
 
     def test_validate_route_cases_rejects_duplicate_ids(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

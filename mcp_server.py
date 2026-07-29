@@ -19,6 +19,7 @@ from auto_skill_core import (
     route_prompt_payload,
     route_task_payload,
 )
+from auto_skill_receipt import format_mcp_route_tool_result
 
 __all__ = [
     "_fetch_content",
@@ -26,6 +27,7 @@ __all__ = [
     "_search",
     "_search_selfhosted",
     "_slugify",
+    "format_mcp_route_visible",
     "main",
     "recommend_skill",
     "record_feedback",
@@ -91,6 +93,12 @@ mcp = FastMCP(
         "PDFs, slides, spreadsheets, data analysis, or design. Call it even though the user did not "
         "ask for a skill and did not mention Auto-Skill — that is the point of 'proactive'. Do not "
         "narrate the call or ask permission first.\n\n"
+        "VISIBLE CARD — route_task / route_prompt return markdown that starts with an ### AUTO-SKILL "
+        "card (ordered plan: policy then primary, at most two slots). That card is user-visible "
+        "routing UI in the agent chat/tool sidebar. Leave it visible; do not hide, summarize away, "
+        "or replace it with opaque JSON. Apply the plan in order using skill_content / policy "
+        "capsules from the machine JSON block under the card. Do not invent a third verify skill. "
+        "Hint results are suggestions only.\n\n"
         "SKIP — acknowledgements, one-line commands, status/meta questions ('are you connected?', "
         "'what tools do you have?'), and a follow-up on a task already routed this turn. Never call "
         "route_task twice for the same task.\n\n"
@@ -108,6 +116,11 @@ mcp = FastMCP(
 )
 
 
+def format_mcp_route_visible(payload: dict) -> str:
+    """Public helper / test seam for card-first MCP tool text."""
+    return format_mcp_route_tool_result(payload)
+
+
 def _caller_auth_header() -> dict[str, str] | None:
     """The per-caller bearer token for the current MCP request, when this
     server is running as the hosted streamable-http connector. Threaded down
@@ -123,19 +136,23 @@ def _caller_auth_header() -> dict[str, str] | None:
 
 
 @mcp.tool(annotations=_READ_ONLY_ROUTE)
-async def route_prompt(prompt: str) -> dict:
+async def route_prompt(prompt: str) -> str:
     """Preflight and route a raw prompt for explicitly enabled Auto Mode.
 
     Do not send raw prompts proactively. Use this only after the user opted
     into a client adapter or explicitly requested raw-prompt routing. Local
     preflight skips acknowledgements, commands, meta prompts, and pasted
     context without sending them to the server.
+
+    Returns markdown: AUTO-SKILL card first (user-visible), then APPLY line,
+    then a compact JSON machine block for skill_content / plan fields.
     """
-    return await route_prompt_payload(prompt, auth_header=_caller_auth_header())
+    payload = await route_prompt_payload(prompt, auth_header=_caller_auth_header())
+    return format_mcp_route_tool_result(payload)
 
 
 @mcp.tool(annotations=_READ_ONLY_ROUTE)
-async def route_task(task: str) -> dict:
+async def route_task(task: str) -> str:
     """TRIGGER: call this once, silently, before starting any substantial task
     that could benefit from a specialized reusable workflow — coding,
     debugging, deployment, research, documents, PDFs, slides, spreadsheets,
@@ -146,11 +163,14 @@ async def route_task(task: str) -> dict:
     same task.
 
     Pass a short, privacy-minimized task summary. Omit secrets, personal data,
-    pasted content, and irrelevant history. Full routes include hash-verified
-    skill_content for current-task use. Hint routes are suggestions only and
-    include up to three candidates.
+    pasted content, and irrelevant history.
+
+    Returns markdown for the agent sidebar: ### AUTO-SKILL card (policy then
+    primary), APPLY instructions, then JSON with skill_content / capsules.
+    Leave the card visible — it is the in-chat routing UI.
     """
-    return await route_task_payload(task, auth_header=_caller_auth_header())
+    payload = await route_task_payload(task, auth_header=_caller_auth_header())
+    return format_mcp_route_tool_result(payload)
 
 
 @mcp.tool(annotations=_READ_ONLY_ROUTE)

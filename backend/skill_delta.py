@@ -50,7 +50,9 @@ MAX_RECORDS = 250_000
 # actually hold a package this size.
 MAX_COMPRESSED_MEMBER_BYTES = 1024 * 1024 * 1024
 MAX_UNCOMPRESSED_MEMBER_BYTES = 2 * 1024 * 1024 * 1024
-MAX_CONTENT_CHARS = 100_000
+# Keep delta packages aligned with the library ingest ceiling — never silently
+# truncate SKILL.md bodies on export/import.
+MAX_CONTENT_CHARS = quality.MAX_SKILL_CONTENT_CHARS
 
 JSON_FIELDS = frozenset({"tags", "risk_flags", "quality_reasons", "platforms"})
 SKILL_FIELDS = (
@@ -388,7 +390,10 @@ def _library_filenames(library_dir: Path) -> dict[str, str]:
 
 
 def _read_library_file(files_root: Path, filename: str) -> str:
-    return (files_root / filename).read_text(encoding="utf-8", errors="replace")[:MAX_CONTENT_CHARS]
+    # Full body only — truncation here would ship incomplete artifacts while
+    # still looking like a successful export.
+    text = (files_root / filename).read_text(encoding="utf-8", errors="replace")
+    return quality.canonicalize_skill_content(text)
 
 
 def export_package(db_path: Path, library_dir: Path, output: Path) -> dict:
@@ -586,7 +591,7 @@ def _write_library(library_dir: Path, package: LoadedPackage) -> None:
             "source": record["source"],
             "url": url,
             "description": record.get("description"),
-            "content_hash": record.get("content_hash") or _sha256(content.encode("utf-8")),
+            "content_hash": record.get("content_hash") or quality.content_hash(content),
             "file": filename,
             "saved_at": _utc_now(),
         }

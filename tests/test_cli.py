@@ -143,6 +143,67 @@ def test_route_outputs_selected_skill(
     assert "spreadsheet-router" in out
 
 
+def test_route_outputs_ordered_plan_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    async def fake_route(task: str, client: object | None = None) -> dict:
+        del client
+        assert task == "build a landing page"
+        return {
+            "routed": True,
+            "route_type": "skill",
+            "route_tier": "full",
+            "search_backend": "test",
+            "warnings": [],
+            "selected_skill": {
+                "name": "frontend-design",
+                "description": "Build distinctive frontend interfaces.",
+                "url": "https://example.com/frontend-design",
+                "risk_score": 0,
+                "verification": {"content_hash_verified": True, "static_instruction_only": True},
+            },
+            "skill_plan": {
+                "task_family": "coding",
+                "policy_skills": [
+                    {
+                        "name": "ponytail",
+                        "url": "https://example.com/ponytail",
+                        "risk_score": 0,
+                        "verification": {"content_hash_verified": True, "static_instruction_only": True},
+                    }
+                ],
+                "primary_skill": {"name": "frontend-design", "url": "https://example.com/frontend-design"},
+            },
+            "route_receipt": (
+                "AUTO-SKILL\n"
+                "2 skills routed\n"
+                "01  policy  ponytail\n"
+                "02  primary frontend-design\n"
+                "✓ verified | risk_score=0 | content-hash verified | static guidance only | no skill install"
+            ),
+            "skill_content": "name: frontend-design\n",
+            "route_summary": {
+                "decision": "apply_skill_content",
+                "selected_name": "frontend-design",
+                "skill_count": 2,
+                "reason": "High-confidence route.",
+            },
+        }
+
+    monkeypatch.setattr(cli, "route_task_payload", fake_route)
+    result = cli.main(["route", "build", "a", "landing", "page"])
+    out = capsys.readouterr().out
+    assert result == 0
+    assert "AUTO-SKILL" in out
+    assert "2 skills routed" in out
+    assert "01  policy  ponytail" in out
+    assert "02  primary frontend-design" in out
+    assert "risk_score=0" in out
+    assert "no skill install" in out
+    assert out.index("AUTO-SKILL") < out.index("compatibility selection:")
+
+
 def test_route_outputs_hint_candidates(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

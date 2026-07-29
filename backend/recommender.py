@@ -46,10 +46,13 @@ import local_store as store
 from quality import (
     CONFIG_VERSION,
     NAME_STOPWORDS,
+    PLATFORM_ALIASES,
+    _contains_alias,
     content_hash,
     content_digest,
     has_valid_skill_frontmatter,
     is_non_task_prompt,
+    platform_mentions,
     rerank_candidates,
     skill_capability_flags,
     tier_for_ranked_candidates,
@@ -76,7 +79,7 @@ WARM_SEARCH_RUNTIME = os.getenv("AUTOSKILL_WARM_SEARCH_RUNTIME", "1").lower() no
 # that both retrievers agree on lands well above 1.6x the runner-up.
 RECOMMEND_GAP = 1.6
 ROUTE_TTL_SECONDS = int(os.getenv("ROUTE_TTL_SECONDS", "300"))
-MAX_INLINE_CONTENT_CHARS = int(os.getenv("MAX_INLINE_CONTENT_CHARS", "12000"))
+MAX_INLINE_CONTENT_CHARS = int(os.getenv("MAX_INLINE_CONTENT_CHARS", "24000"))
 ROUTE_LATENCY_WARN_MS = int(os.getenv("ROUTE_LATENCY_WARN_MS", "750"))
 ROUTE_SKILL_FIND_WARN_MS = int(os.getenv("ROUTE_SKILL_FIND_WARN_MS", "500"))
 ROUTE_INJECTED_TOKEN_WARN = int(os.getenv("ROUTE_INJECTED_TOKEN_WARN", "1000"))
@@ -130,14 +133,21 @@ _CODING_TERMS = frozenset(
         "nextjs", "fastapi", "django", "flask", "html", "css", "sql", "api", "endpoint",
     }
 )
+# Keep this narrow: action verbs like send/publish/deploy are common on
+# generic tasks and must not mark every integration skill as "explicit".
+# TODO(phase-3+): a 3rd supporting skill slot (verify/review) is deferred;
+# skill_plan.supporting_skills stays empty until labeled supporting-role evals exist.
 _INTEGRATION_REQUEST_TERMS = frozenset(
     {
-        "integrate", "integration", "connect", "connector", "sync", "webhook", "oauth", "api",
-        "mcp", "send", "post", "publish", "deploy", "import", "export",
+        "integrate",
+        "integration",
+        "connect",
+        "connector",
+        "sync",
+        "webhook",
+        "oauth",
+        "mcp",
     }
-)
-_GENERIC_INTEGRATION_NAME_TERMS = frozenset(
-    {"auto", "automatic", "integration", "integrations", "skill", "mcp", "server", "tool", "agent", "workflow"}
 )
 _POLICY_MARKERS = (
     "always-on",
@@ -424,18 +434,27 @@ def skill_role(candidate: dict) -> str:
 
 
 def _integration_is_explicit(query: str, candidate: dict) -> bool:
+    """True only when the user named this integration's platform/service.
+
+    Platform-tagged skills require a platform mention in the prompt. Untagged
+    integration-shaped rows need an explicit integrate/connect-style ask, or a
+    known platform alias that appears in both the skill name and the prompt.
+    Generic name overlap (e.g. ``storefront`` / ``blog``) is not enough.
+    """
+    platforms = [str(p) for p in (candidate.get("platforms") or []) if p]
+    if platforms:
+        return platform_mentions(query, platforms)
+
     prompt_tokens = _task_tokens(query)
     if prompt_tokens & _INTEGRATION_REQUEST_TERMS:
         return True
-    platforms = {
-        token
-        for platform in (candidate.get("platforms") or [])
-        for token in _task_tokens(str(platform))
-    }
-    if platforms & prompt_tokens:
-        return True
-    name_tokens = _task_tokens(str(candidate.get("name") or "")) - _GENERIC_INTEGRATION_NAME_TERMS
-    return bool(name_tokens & prompt_tokens)
+
+    name_blob = str(candidate.get("name") or "").casefold()
+    for platform, aliases in PLATFORM_ALIASES.items():
+        if any(_contains_alias(name_blob, alias) for alias in aliases):
+            if platform_mentions(query, [platform]):
+                return True
+    return False
 
 
 def candidate_matches_task_contract(query: str, candidate: dict) -> bool:
@@ -959,11 +978,13 @@ def _empty_context_guard(reason: str = "no-route") -> dict:
         "policy": CONTEXT_GUARD_POLICY,
         "delivery": "none",
         "reason": reason,
+        "complete": False,
         "capsule": None,
         "capsule_chars": 0,
         "estimated_tokens": 0,
         "content_hash": None,
         "content_digest": None,
+        "fetch_hint": None,
     }
 
 
@@ -1165,11 +1186,16 @@ def _policy_context_guard(policy_item: dict) -> dict:
         "policy": CONTEXT_GUARD_POLICY,
         "delivery": "capsule",
         "reason": "task_family_policy",
+        "complete": False,
         "capsule": policy_item["capsule"],
         "capsule_chars": policy_item["capsule_chars"],
         "estimated_tokens": policy_item["estimated_tokens"],
         "content_hash": policy_item.get("content_hash"),
         "content_digest": (policy_item.get("verification") or {}).get("content_digest"),
+        "fetch_hint": (
+            "Policy capsules are bounded by design. Fetch /content/{content_hash} "
+            "when the full policy SKILL.md is required."
+        ),
     }
 
 
@@ -1436,28 +1462,46 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
                         force_capsule=body.guard_mode == "capsule_only",
                     )
             else:
+                fits_inline = len(text) <= MAX_INLINE_CONTENT_CHARS
                 context_guard = {
                     "policy": "disabled",
-                    "delivery": "full" if len(text) <= MAX_INLINE_CONTENT_CHARS else "hint",
+                    "delivery": "full" if fits_inline else "hint",
                     "reason": "feature_disabled",
+                    "complete": fits_inline,
                     "capsule": None,
                     "capsule_chars": 0,
                     "estimated_tokens": 0,
                     "content_hash": chash,
                     "content_digest": digest,
+                    "fetch_hint": None
+                    if fits_inline
+                    else (
+                        "Context guard disabled and body exceeded inline budget; "
+                        "fetch /content/{content_hash} for the complete SKILL.md."
+                    ),
                 }
             delivery = context_guard.get("delivery")
+            # Always expose content_url for verified static skills so non-full
+            # deliveries can honestly fetch the remainder by hash.
+            content_url = f"/content/{chash}"
             if delivery == "full":
                 content = text
-                content_url = f"/content/{chash}"
             elif delivery == "isolation":
-                content_url = f"/content/{chash}"
-                warnings.append("Large verified skill reserved for an adapter-provided isolated context.")
+                warnings.append(
+                    "Large verified skill reserved for an adapter-provided isolated context. "
+                    f"Complete SKILL.md: {content_url}"
+                )
             elif delivery == "capsule":
-                warnings.append("Large verified skill reduced to a bounded context capsule.")
+                warnings.append(
+                    "Large verified skill reduced to a bounded context capsule (not full). "
+                    f"Complete SKILL.md: {content_url}"
+                )
             else:
                 tier = "hint"
-                warnings.append("Verified content could not be delivered within the context guard; downgraded to hint.")
+                warnings.append(
+                    "Verified content could not be delivered within the context guard; "
+                    f"downgraded to hint. Complete SKILL.md: {content_url}"
+                )
 
     if not private_match and tier != "full" and policy_item and selected_role != "policy":
         skill = _public_plan_item(policy_item)
@@ -1485,11 +1529,14 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
     selected_roles = ["policy"] if policy_skills else []
     if primary_plan:
         selected_roles.append(primary_plan.get("role") or "specialist")
+    # TODO(phase-3+): keep the 2-slot plan (policy + primary). A 3rd supporting
+    # slot (e.g. verify / review) is deferred — do not implement multi-specialist
+    # selection here until we have labeled supporting-role evals.
     skill_plan = {
         "task_family": task_analysis["family"],
         "policy_skills": policy_skills,
         "primary_skill": primary_plan,
-        "supporting_skills": [],
+        "supporting_skills": [],  # deferred 3rd supporting slot; stays empty
         "selected_roles": selected_roles,
         "precedence": ["user-project-team", "policy", "primary", "supporting"],
         "composition_reason": (

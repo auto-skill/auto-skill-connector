@@ -1,0 +1,30 @@
+# Phase-3 self-built failure pack: controlled probes from traps, evals, and
+# known ranking bugs. Not hand-labeled production logs — synthetic cases that
+# encode expected routing contracts. Consumed by tests/test_quality_routing.py
+# and optionally by eval_search.py --route-cases.
+#
+# Categories:
+#   platform-trap     — generic task must not full-route a platform skill
+#   platform-explicit — named platform may full/hint-route its skill
+#   generic-vs-platform — generic capability should beat mismatched platform
+#   policy-lane       — ponytail stays policy; never primary specialist
+#   integration-gate  — integration without platform signal is not primary
+#   ambiguous-hint    — near-tied specialists stay hint, not full
+#   negative          — non-tasks stay none
+
+{"id":"fp-trap-landingi-001","prompt":"build a landing page for an AI automation agency","expected_tier":"hint|none","allowed_skills":[],"forbidden_skills":["sales-landingi","landingi"],"tags":["platform-trap","landing-page","failure-pack"]}
+{"id":"fp-trap-shopify-storefront-001","prompt":"build an ecommerce storefront for a handmade goods launch","expected_tier":"hint|none","allowed_skills":[],"forbidden_skills":["shopify"],"tags":["platform-trap","ecommerce","name-token-waiver","failure-pack"]}
+{"id":"fp-trap-wordpress-blog-001","prompt":"publish a blog website with categories and an about page","expected_tier":"hint|none","allowed_skills":[],"forbidden_skills":["wordpress"],"tags":["platform-trap","publishing","integration-verb","failure-pack"]}
+{"id":"fp-trap-stripe-payment-001","prompt":"add a payment form to my product page","expected_tier":"hint|none","allowed_skills":[],"forbidden_skills":["stripe"],"tags":["platform-trap","payments","name-token-waiver","failure-pack"]}
+{"id":"fp-trap-notion-tracker-001","prompt":"organize meeting notes into a project tracker","expected_tier":"hint|none","allowed_skills":[],"forbidden_skills":["notion"],"tags":["platform-trap","notes","name-token-waiver","failure-pack"]}
+{"id":"fp-trap-salesforce-crm-001","prompt":"create a CRM dashboard for weekly sales follow up","expected_tier":"hint|none","allowed_skills":[],"forbidden_skills":["salesforce","sfdc"],"tags":["platform-trap","crm","name-token-waiver","failure-pack"]}
+{"id":"fp-explicit-landingi-001","prompt":"build a landing page on Landingi for an AI automation agency","expected_tier":"full|hint","allowed_skills":["landingi"],"forbidden_skills":[],"tags":["platform-explicit","landing-page","failure-pack"]}
+{"id":"fp-explicit-shopify-001","prompt":"fix my Shopify checkout and liquid theme","expected_tier":"full|hint","allowed_skills":["shopify"],"forbidden_skills":[],"tags":["platform-explicit","ecommerce","failure-pack"]}
+{"id":"fp-explicit-slack-001","prompt":"send slack messages from my agent","expected_tier":"full|hint","allowed_skills":["slack"],"forbidden_skills":[],"tags":["platform-explicit","direct-hit","failure-pack"]}
+{"id":"fp-generic-vs-platform-001","prompt":"build a professional landing page for an AI automation agency","expected_tier":"full|hint","allowed_skills":["landing-page","architect","frontend","design"],"forbidden_skills":["landingi"],"tags":["generic-vs-platform","failure-pack"]}
+{"id":"fp-policy-not-primary-001","prompt":"refactor this React component to use hooks cleanly","expected_tier":"full|hint|none","allowed_skills":[],"forbidden_skills":[],"tags":["policy-lane","ponytail","failure-pack"],"notes":"ponytail must stay in policy lane; pytest asserts candidate_matches_task_contract filters it from primary"}
+{"id":"fp-integration-no-signal-001","prompt":"build a customer dashboard for weekly reports","expected_tier":"hint|none","allowed_skills":[],"forbidden_skills":["salesforce","shopify","notion","stripe"],"tags":["integration-gate","failure-pack"]}
+{"id":"fp-integration-publish-verb-001","prompt":"publish a marketing site with an about page","expected_tier":"hint|none","allowed_skills":[],"forbidden_skills":["wordpress"],"tags":["integration-gate","integration-verb","failure-pack"]}
+{"id":"fp-ambiguous-close-001","prompt":"create a monthly sales report with charts and a summary table","expected_tier":"hint|none","allowed_skills":[],"forbidden_skills":[],"tags":["ambiguous-hint","failure-pack"],"notes":"two near-tied specialists must stay hint; covered by pytest with synthetic candidates"}
+{"id":"fp-negative-ack-001","prompt":"thanks that worked great","expected_tier":"none","allowed_skills":[],"forbidden_skills":["*"],"tags":["negative","failure-pack"]}
+{"id":"fp-negative-meta-001","prompt":"what about the hosting related things online db scraper etc","expected_tier":"none","allowed_skills":[],"forbidden_skills":["*"],"tags":["negative","failure-pack"]}

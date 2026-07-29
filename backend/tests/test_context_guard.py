@@ -42,6 +42,8 @@ class ContextGuardTests(unittest.TestCase):
             supports_isolation=False,
         )
         self.assertEqual(guard["delivery"], "capsule")
+        self.assertFalse(guard["complete"])
+        self.assertIn("not the complete SKILL.md", guard["fetch_hint"])
         self.assertLessEqual(guard["capsule_chars"], 2400)
         self.assertEqual(guard["content_hash"], "a" * 64)
 
@@ -54,6 +56,13 @@ class ContextGuardTests(unittest.TestCase):
         )
         self.assertEqual(guard["delivery"], "isolation")
         self.assertEqual(guard["reason"], "large_static")
+        self.assertFalse(guard["complete"])
+
+    def test_small_safe_content_is_complete_full(self):
+        guard = build_context_guard(task="make a report", content=VALID, content_hash="f" * 64)
+        self.assertEqual(guard["delivery"], "full")
+        self.assertTrue(guard["complete"])
+        self.assertIsNone(guard["fetch_hint"])
 
     def test_capsule_only_never_returns_full(self):
         guard = build_context_guard(task="make a report", content=VALID, force_capsule=True)

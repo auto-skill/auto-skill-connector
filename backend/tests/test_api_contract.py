@@ -683,6 +683,8 @@ earlier choices do not solve the task safely. Verify behavior after the change.
         self.assertEqual(body["tier"], "full")
         self.assertEqual(body["context_guard"]["delivery"], "capsule")
         self.assertIsNone(body["content"])
+        self.assertTrue(body["content_url"].startswith("/content/"))
+        self.assertFalse(body["context_guard"].get("complete", True))
         self.assertLessEqual(body["context_guard"]["capsule_chars"], 2400)
         self.assertIn("Workflow", body["context_guard"]["capsule"])
 

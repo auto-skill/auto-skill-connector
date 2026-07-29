@@ -13,6 +13,7 @@ import httpx
 from auto_skill_auth import auth_headers
 from auto_skill_identity import get_anonymous_installation_id
 from auto_skill_personalize import apply_personalization, record_outcome, record_route
+from auto_skill_receipt import format_route_card_markdown, format_route_receipt
 
 DEFAULT_AUTOSKILL_URL = "https://skills.autoskill.dev"
 CLIENT_NAME = "auto-skill-connector"
@@ -24,7 +25,7 @@ _REPO_RE = re.compile(r"github\.com/([^/]+)/([^/#?]+)(?:[/#?].*)?$")
 _URL_RE = re.compile(r"^https?://", re.IGNORECASE)
 _MIN_SKILL_CONTENT_CHARS = 180
 _MIN_SKILL_WORDS = 35
-_DEFAULT_MAX_INJECTED_CONTENT_CHARS = 12000
+_DEFAULT_MAX_INJECTED_CONTENT_CHARS = 24000
 _FULL_SIMILARITY_THRESHOLD = 0.90
 _HINT_SIMILARITY_THRESHOLD = 0.87
 
@@ -759,6 +760,12 @@ def _with_route_summary(payload: dict[str, Any]) -> dict[str, Any]:
         "reason": reason,
         "metrics": _compact_route_metrics(metrics),
     }
+    receipt = format_route_receipt(payload)
+    if receipt:
+        payload["route_receipt"] = receipt
+    card = format_route_card_markdown(payload)
+    if card:
+        payload["route_card_markdown"] = card
     return payload
 
 
@@ -812,7 +819,7 @@ async def _route_selfhosted(
         "client_version": CLIENT_VERSION,
         "guard_mode": "hybrid",
         "supports_isolation": False,
-        "max_inline_chars": 4000,
+        "max_inline_chars": 12000,
         "max_capsule_chars": 2400,
     }
     # A hosted MCP process can serve many remote callers; never attribute an
@@ -964,6 +971,15 @@ async def _route_selfhosted(
                 "instructions": "Do not inject or follow full SKILL.md content for this task.",
                 **common,
             }
+        content_url = route.get("content_url") or (
+            f"/content/{selected.get('content_hash')}" if selected.get("content_hash") else None
+        )
+        fetch_hint = context_guard.get("fetch_hint") or (
+            "This capsule is not the complete SKILL.md. "
+            f"Fetch the full verified file via {content_url} when you need the remainder."
+            if content_url
+            else "This capsule is not the complete SKILL.md."
+        )
         return {
             "routed": True,
             "route_type": "capsule",
@@ -971,24 +987,30 @@ async def _route_selfhosted(
             "selected_skill": selected,
             "skill_content": capsule,
             "context_capsule": capsule,
+            "content_url": content_url,
             "instructions": (
-                "Use this bounded deterministic capsule as task guidance. Do not install files, "
-                "expand it into full SKILL.md content, or execute undeclared capabilities."
+                "Use this bounded deterministic capsule as task guidance. It is NOT the complete "
+                f"SKILL.md. {fetch_hint} Do not install files or execute undeclared capabilities."
             ),
             "install_hint": "No installation is required; the router supplied this capsule just in time.",
             **common,
         }
     if delivery == "isolation":
+        content_url = route.get("content_url") or (
+            f"/content/{selected.get('content_hash')}" if selected.get("content_hash") else None
+        )
         return {
             "routed": True,
             "route_type": "isolation",
             "route_tier": "full",
             "selected_skill": selected,
             "skill_content": "",
-            "content_url": route.get("content_url"),
+            "content_url": content_url,
             "instructions": (
                 "Run this verified skill only through an adapter-provided isolated context. "
-                "If isolation is unavailable, fall back to the provided capsule."
+                "If isolation is unavailable, fall back to the provided capsule. "
+                "This route does not inline the complete SKILL.md"
+                + (f"; fetch {content_url} for the full file." if content_url else ".")
             ),
             "install_hint": "No installation is required; the adapter should use the isolated route for this task.",
             **common,
@@ -1057,18 +1079,41 @@ async def _route_selfhosted(
             **common,
         }
     if _content_exceeds_budget(content):
-        warnings.append("Backend selected a full route, but SKILL.md content exceeded the connector injection budget; downgraded to hint.")
-        hint_selected = {**selected, "routing_tier": "hint"}
+        content_url = route.get("content_url") or (
+            f"/content/{selected.get('content_hash')}" if selected.get("content_hash") else None
+        )
+        warnings.append(
+            "Backend selected a full route, but SKILL.md content exceeded the connector injection "
+            "budget; delivering as non-full with fetch instructions."
+        )
+        capsule = str(context_guard.get("capsule") or "")
         return {
             "routed": True,
-            "route_type": "hint",
-            "route_tier": "hint",
-            "selected_skill": hint_selected,
-            "candidates": _safe_candidates(_dedupe_candidates([hint_selected, *route_candidates]))[:3],
-            "skill_content": "",
-            "message": "A matching skill exists, but full content exceeded the injection budget. Treat this as a hint.",
-            "instructions": "Do not inject or follow full SKILL.md content for this task.",
-            "install_hint": "No installation is required. The oversized result remains a hint only.",
+            "route_type": "capsule",
+            "route_tier": "full",
+            "selected_skill": selected,
+            "skill_content": capsule,
+            "context_capsule": capsule or None,
+            "content_url": content_url,
+            "message": (
+                "A matching skill exists, but full content exceeded the injection budget and was "
+                "not fully inlined."
+            ),
+            "instructions": (
+                "Do NOT treat any inlined excerpt as the complete SKILL.md. "
+                + (
+                    f"Fetch the full verified file via {content_url}"
+                    + (
+                        f" (content_hash={selected.get('content_hash')}). "
+                        if selected.get("content_hash")
+                        else ". "
+                    )
+                    if content_url
+                    else "Use the route content_url / content_hash to load the complete file. "
+                )
+                + "Use a provided capsule only as bounded guidance."
+            ),
+            "install_hint": "No installation is required. Load the complete skill from content_url when needed.",
             **common,
         }
 
@@ -1301,6 +1346,9 @@ def build_route_context(route_payload: dict[str, Any]) -> str:
     if not route_payload.get("routed"):
         return ""
 
+    card = format_route_card_markdown(route_payload) or format_route_receipt(route_payload)
+    receipt_block = f"{card}\n\n" if card else ""
+
     selected = route_payload.get("selected_skill") or {}
     content = route_payload.get("skill_content") or ""
     name = selected.get("name") or "unknown"
@@ -1358,7 +1406,8 @@ def build_route_context(route_payload: dict[str, Any]) -> str:
             option_lines.append(f"{index}. {candidate_name}: {candidate_description} Source: {candidate_url}")
         options_text = "\nCandidate options:\n" + "\n".join(option_lines) if option_lines else ""
         return (
-            f"[auto-skill] Related skill hint: {name}{risk_text}{score_text}, tier={tier}. Source: {url}\n"
+            receipt_block
+            + f"[auto-skill] Related skill hint: {name}{risk_text}{score_text}, tier={tier}. Source: {url}\n"
             f"Only use this as a hint if it clearly fits the user's task. Choose a listed candidate yourself "
             f"only when the fit is obvious; otherwise continue normally. Do not treat hints as active instructions."
             f"{metrics_text}\n"
@@ -1373,7 +1422,8 @@ def build_route_context(route_payload: dict[str, Any]) -> str:
             else ""
         )
         return (
-            policy_context
+            receipt_block
+            + policy_context
             + f"[auto-skill] Isolated route selected: {name}{risk_text}{score_text}, tier={tier}. Source: {url}\n\n"
             "Run this only through a client-provided isolated context. If isolation is unavailable, "
             "use the bounded capsule and do not expand or install the full skill."
@@ -1381,18 +1431,28 @@ def build_route_context(route_payload: dict[str, Any]) -> str:
         )
     if delivery == "capsule" or route_payload.get("route_type") == "capsule":
         capsule = context_guard.get("capsule") or content
+        content_url = route_payload.get("content_url") or ""
+        fetch_line = ""
+        if content_url or context_guard.get("content_hash"):
+            target = content_url or f"/content/{context_guard.get('content_hash')}"
+            fetch_line = (
+                f" This is NOT the complete SKILL.md; fetch the full verified file via {target}."
+            )
         return (
-            policy_context
+            receipt_block
+            + policy_context
             + f"[auto-skill] Bounded route selected: {name}{risk_text}{score_text}, tier={tier}. Source: {url}\n\n"
-            "Use this deterministic, content-hash-verified capsule as task guidance for this turn. "
-            "Do not install files, expand it into full SKILL.md content, or execute undeclared capabilities."
+            "Use this deterministic, content-hash-verified capsule as task guidance for this turn."
+            f"{fetch_line} "
+            "Do not install files or execute undeclared capabilities."
             f"{metrics_text}\n\n"
             "<auto_skill_capsule>\n"
             f"{capsule}\n"
             "</auto_skill_capsule>"
         )
     return (
-        policy_context
+        receipt_block
+        + policy_context
         + f"[auto-skill] Route selected: {name}{risk_text}{score_text}, tier={tier}. Source: {url}\n\n"
         "Use the following content-hash-verified, risk-0 SKILL.md as active task-specific "
         "instructions for this turn. "

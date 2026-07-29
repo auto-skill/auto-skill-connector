@@ -515,7 +515,7 @@ SAFE_ROUTE_SKIP_REASONS = frozenset(
 _SAFE_ROUTE_IDENTIFIER_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/+@-]*\Z")
 _ANONYMOUS_HASH_RE = re.compile(r"^[a-f0-9]{64}$")
 
-CLI_TOKEN_TTL_SECONDS = 90 * 24 * 60 * 60  # 90 days, sliding forward on each use
+CLI_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60  # 30 days, sliding forward on each use
 ANONYMOUS_ID_RETENTION_DAYS = max(1, int(os.getenv("AUTOSKILL_ANONYMOUS_ID_RETENTION_DAYS", "90")))
 
 CLI_TOKEN_COLUMN_DEFAULTS = {
@@ -571,7 +571,7 @@ COMPLIMENTARY_PLANS = ("pro", "team")
 _PLAN_RANK = {"free": 0, "pro": 1, "team": 2}
 
 # 0 disables metering entirely (self-hosted deployments).
-FREE_ROUTES_PER_MONTH = int(os.getenv("AUTOSKILL_FREE_ROUTES_PER_MONTH", "250"))
+FREE_ROUTES_PER_MONTH = int(os.getenv("AUTOSKILL_FREE_ROUTES_PER_MONTH", "100"))
 
 # Pro is marketed as unlimited fair-use routing; this is the internal abuse
 # cap behind that promise, never shown on the pricing page. 0 disables.
