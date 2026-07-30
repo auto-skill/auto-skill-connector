@@ -42,7 +42,7 @@ from context_guard import (
 )
 from embeddings import LibraryContent, build_embed_text, embed_text_hash, embed_texts
 import local_store as store
-from query_compiler import CompiledIntent, compile_intent_query
+from query_compiler import CompiledIntent, compile_intent_query, skills_sh_query
 from quality import (
     CONFIG_VERSION,
     NAME_STOPWORDS,
@@ -614,7 +614,12 @@ async def retrieve_skills_for_intent(
     silently blended with live candidates because the two stores have
     different freshness and provenance guarantees.
     """
-    variants = list(intent.query_variants)[:2]
+    variants = (
+        [intent.original_query, skills_sh_query(intent)]
+        if SKILLS_SH_LIVE_ROUTING
+        else list(intent.query_variants)[:2]
+    )
+    variants = list(dict.fromkeys(value for value in variants if value))[:2]
 
     async def _lane(query: str) -> list[dict]:
         return await retrieve_skills(client, query, max(limit, 12))

@@ -15,7 +15,7 @@ from bench.evidence_eval import (
 )
 from embeddings import embed_text_hash
 from package_store import ImmutablePackageStore, PackageFileInput, build_package_manifest
-from query_compiler import MAX_QUERY_CHARS, MAX_QUERY_WORDS, compile_intent_query
+from query_compiler import MAX_QUERY_CHARS, MAX_QUERY_WORDS, compile_intent_query, skills_sh_query
 from retrieval_records import MAX_RETRIEVAL_CHARS, build_retrieval_record, embedding_parity
 from routing_roles import classify_candidate, partition_candidates
 
@@ -62,6 +62,15 @@ class QueryCompilerTests(unittest.TestCase):
     def test_single_letter_technology_requires_a_token_boundary(self) -> None:
         report = compile_intent_query("create an Excel report")
         self.assertNotIn("r", report.technology)
+
+    def test_skills_sh_query_keeps_canonical_terms_without_synonym_noise(self) -> None:
+        intent = compile_intent_query("Build a React Native app with Expo")
+        query = skills_sh_query(intent)
+        self.assertIn("react", query)
+        self.assertIn("expo", query)
+        self.assertIn("build", query)
+        self.assertNotIn("compile", query)
+        self.assertNotIn("implement", query)
 
 
 class PackageAndRecordTests(unittest.TestCase):

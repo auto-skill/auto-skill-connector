@@ -22,7 +22,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from query_compiler import compile_intent_query
+from query_compiler import compile_intent_query, skills_sh_query
 from skills_sh_catalog import SkillsShCatalog, SkillsShCatalogError
 
 
@@ -85,14 +85,15 @@ async def _evaluate(catalog: SkillsShCatalog, cases: list[dict[str, Any]], limit
         intent = compile_intent_query(query)
         original = await catalog.retrieve(query, limit=limit)
         compiled_rows: list[dict[str, Any]] = []
-        for variant in list(intent.query_variants)[1:2]:
-            compiled_rows.extend(await catalog.retrieve(variant, limit=limit))
+        compiled_query = skills_sh_query(intent)
+        if compiled_query and compiled_query != query:
+            compiled_rows.extend(await catalog.retrieve(compiled_query, limit=limit))
         dual = _rrf_union(original, compiled_rows, limit)
         expected = set(case["expected_ids"])
         details.append(
             {
                 "query": query,
-                "compiled_query": intent.compressed_query,
+                "compiled_query": compiled_query,
                 "original_ids": [row.get("id") for row in original[:limit]],
                 "dual_ids": [row.get("id") for row in dual[:limit]],
                 "original_hit_at_1": _hit(original, expected, 1),

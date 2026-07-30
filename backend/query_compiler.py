@@ -104,6 +104,23 @@ class CompiledIntent:
         return asdict(self)
 
 
+def skills_sh_query(intent: CompiledIntent) -> str:
+    """Build a concise skills.sh query from structured intent fields.
+
+    skills.sh already performs semantic matching; synonym-heavy operation
+    phrases can dilute the technology/artifact signal. Keep one canonical
+    operation token and a bounded tail of task nouns while retaining the
+    original query as a separate retrieval lane.
+    """
+    operations = [str(value).split()[0] for value in intent.operation if str(value).strip()]
+    parts = [*intent.technology, *operations, *intent.artifact, *intent.failure_mode]
+    if not parts:
+        parts.extend(intent.original_query.split()[:12])
+    else:
+        parts.extend(_fallback_keywords(intent.original_query)[:8])
+    return _bounded_query(parts)[:MAX_QUERY_CHARS].rstrip(" ,.;:-")
+
+
 def _normalise(text: str) -> str:
     return _SPACE_RE.sub(" ", (text or "").replace("\x00", " ")).strip()
 
