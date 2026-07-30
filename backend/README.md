@@ -213,6 +213,13 @@ When no OIDC token is available, the live gate uses the public website search
 endpoint only. Those rows are explicitly `metadata_only` hints with unknown
 audit state and no content hash; they cannot become capsules or full routes.
 
+Authenticated detail and audit requests are bounded and retried on transient
+`429`/`502`/`503`/`504` responses. Tune `SKILLS_SH_MAX_CONCURRENT_REQUESTS`,
+`SKILLS_SH_MIN_REQUEST_INTERVAL_SECONDS`, `SKILLS_SH_MAX_RETRIES`, and
+`SKILLS_SH_RETRY_BASE_SECONDS` for the provider's effective quota. A persistent
+rate limit still causes the route or benchmark to abstain; it must not be
+treated as a successful safety check.
+
 ## Evals
 
 Track retrieval quality, route latency, and token churn across changes:

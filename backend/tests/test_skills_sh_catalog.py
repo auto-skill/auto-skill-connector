@@ -112,6 +112,29 @@ def test_missing_audit_is_not_treated_as_safe() -> None:
     assert "audit-unavailable" in rows[0]["risk_flags"]
 
 
+def test_catalog_retries_transient_rate_limit() -> None:
+    calls = 0
+
+    def rate_limited_once(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        if request.url.path.endswith("/skills/search"):
+            calls += 1
+            if calls == 1:
+                return httpx.Response(429, headers={"Retry-After": "0"}, request=request)
+        return _catalog_transport(request)
+
+    catalog = SkillsShCatalog(
+        api_url="https://skills.test/api/v1",
+        oidc_token="test-token",
+        transport=httpx.MockTransport(rate_limited_once),
+        max_retries=1,
+        retry_base_seconds=0,
+    )
+    rows = asyncio.run(catalog.search("create spreadsheet report", limit=1))
+    assert calls == 2
+    assert rows[0]["id"] == "acme/skills/reporting"
+
+
 def test_public_search_fallback_is_metadata_only_hint() -> None:
     def public_transport(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/search":

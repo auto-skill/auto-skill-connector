@@ -32,6 +32,13 @@ DEFAULT_TIMEOUT_SECONDS = 8.0
 DEFAULT_SEARCH_TTL_SECONDS = 45.0
 DEFAULT_DETAIL_TTL_SECONDS = 300.0
 DEFAULT_AUDIT_TTL_SECONDS = 300.0
+DEFAULT_MAX_CONCURRENT_REQUESTS = max(1, int(os.getenv("SKILLS_SH_MAX_CONCURRENT_REQUESTS", "4")))
+DEFAULT_MAX_RETRIES = max(0, int(os.getenv("SKILLS_SH_MAX_RETRIES", "3")))
+DEFAULT_RETRY_BASE_SECONDS = max(0.0, float(os.getenv("SKILLS_SH_RETRY_BASE_SECONDS", "0.5")))
+DEFAULT_MIN_REQUEST_INTERVAL_SECONDS = max(
+    0.0, float(os.getenv("SKILLS_SH_MIN_REQUEST_INTERVAL_SECONDS", "0.1"))
+)
+MAX_RETRY_DELAY_SECONDS = 30.0
 MAX_SEARCH_LIMIT = 50
 MAX_DETAIL_CANDIDATES = 12
 MAX_CONTENT_CHARS = 300_000
@@ -121,6 +128,10 @@ class SkillsShCatalog:
         search_ttl_seconds: float = DEFAULT_SEARCH_TTL_SECONDS,
         detail_ttl_seconds: float = DEFAULT_DETAIL_TTL_SECONDS,
         audit_ttl_seconds: float = DEFAULT_AUDIT_TTL_SECONDS,
+        max_concurrent_requests: int = DEFAULT_MAX_CONCURRENT_REQUESTS,
+        max_retries: int = DEFAULT_MAX_RETRIES,
+        retry_base_seconds: float = DEFAULT_RETRY_BASE_SECONDS,
+        min_request_interval_seconds: float = DEFAULT_MIN_REQUEST_INTERVAL_SECONDS,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self.api_url = (api_url or os.getenv("SKILLS_SH_API_URL", DEFAULT_API_URL)).rstrip("/")
@@ -135,8 +146,19 @@ class SkillsShCatalog:
         self.search_ttl_seconds = max(0.0, float(search_ttl_seconds))
         self.detail_ttl_seconds = max(0.0, float(detail_ttl_seconds))
         self.audit_ttl_seconds = max(0.0, float(audit_ttl_seconds))
+        self.max_concurrent_requests = max(1, int(max_concurrent_requests))
+        self.max_retries = max(0, int(max_retries))
+        self.retry_base_seconds = max(0.0, float(retry_base_seconds))
+        self.min_request_interval_seconds = max(0.0, float(min_request_interval_seconds))
         self.transport = transport
         self._cache: dict[tuple[str, str], _CacheEntry] = {}
+        # A catalog can be used by tests across multiple asyncio.run calls;
+        # bind the semaphore lazily to the loop that owns the request.
+        self._request_semaphore: asyncio.Semaphore | None = None
+        self._request_loop: asyncio.AbstractEventLoop | None = None
+        self._pacing_lock: asyncio.Lock | None = None
+        self._pacing_loop: asyncio.AbstractEventLoop | None = None
+        self._last_request_at = 0.0
 
     @property
     def configured(self) -> bool:
@@ -168,20 +190,79 @@ class SkillsShCatalog:
             self._cache[(kind, key)] = _CacheEntry(time.monotonic() + ttl, value)
         return value
 
+    def _semaphore(self) -> asyncio.Semaphore:
+        loop = asyncio.get_running_loop()
+        if self._request_semaphore is None or self._request_loop is not loop:
+            self._request_loop = loop
+            self._request_semaphore = asyncio.Semaphore(self.max_concurrent_requests)
+        return self._request_semaphore
+
+    def _pacer(self) -> asyncio.Lock:
+        loop = asyncio.get_running_loop()
+        if self._pacing_lock is None or self._pacing_loop is not loop:
+            self._pacing_loop = loop
+            self._pacing_lock = asyncio.Lock()
+            self._last_request_at = 0.0
+        return self._pacing_lock
+
+    async def _wait_for_request_slot(self) -> None:
+        if self.min_request_interval_seconds <= 0:
+            return
+        async with self._pacer():
+            elapsed = time.monotonic() - self._last_request_at
+            delay = self.min_request_interval_seconds - elapsed
+            if delay > 0:
+                await asyncio.sleep(delay)
+            self._last_request_at = time.monotonic()
+
+    def _retry_delay(self, response: httpx.Response, attempt: int) -> float:
+        retry_after = response.headers.get("Retry-After", "").strip()
+        try:
+            delay = float(retry_after) if retry_after else self.retry_base_seconds * (2**attempt)
+        except ValueError:
+            delay = self.retry_base_seconds * (2**attempt)
+        return min(MAX_RETRY_DELAY_SECONDS, max(0.0, delay))
+
+    async def _request_with_retry(
+        self,
+        client: httpx.AsyncClient,
+        method: str,
+        url: str,
+        **kwargs: Any,
+    ) -> httpx.Response:
+        retryable_statuses = {429, 502, 503, 504}
+        for attempt in range(self.max_retries + 1):
+            try:
+                await self._wait_for_request_slot()
+                async with self._semaphore():
+                    response = await client.request(method, url, **kwargs)
+            except (httpx.HTTPError, OSError) as exc:
+                if attempt >= self.max_retries:
+                    raise SkillsShCatalogError(f"skills.sh request failed: {type(exc).__name__}") from exc
+                await asyncio.sleep(min(MAX_RETRY_DELAY_SECONDS, self.retry_base_seconds * (2**attempt)))
+                continue
+            if response.status_code not in retryable_statuses or attempt >= self.max_retries:
+                return response
+            await asyncio.sleep(self._retry_delay(response, attempt))
+        raise SkillsShCatalogError("skills.sh request retry budget exhausted")
+
     async def _get(self, path: str, *, params: dict[str, str] | None = None) -> dict[str, Any]:
         headers = {"Accept": "application/json"}
         token = self._current_oidc_token()
         if token:
             headers["Authorization"] = f"Bearer {token}"
-        try:
-            async with httpx.AsyncClient(
-                transport=self.transport,
-                timeout=self.timeout_seconds,
-                follow_redirects=True,
-            ) as client:
-                response = await client.get(f"{self.api_url}/{path.lstrip('/')}", params=params, headers=headers)
-        except (httpx.HTTPError, OSError) as exc:
-            raise SkillsShCatalogError(f"skills.sh request failed: {type(exc).__name__}") from exc
+        async with httpx.AsyncClient(
+            transport=self.transport,
+            timeout=self.timeout_seconds,
+            follow_redirects=True,
+        ) as client:
+            response = await self._request_with_retry(
+                client,
+                "GET",
+                f"{self.api_url}/{path.lstrip('/')}",
+                params=params,
+                headers=headers,
+            )
         if response.status_code == 404:
             raise SkillsShCatalogError("skills.sh resource not found")
         if response.status_code in {401, 403}:
@@ -231,13 +312,15 @@ class SkillsShCatalog:
                 timeout=self.timeout_seconds,
                 follow_redirects=True,
             ) as client:
-                response = await client.get(
+                response = await self._request_with_retry(
+                    client,
+                    "GET",
                     self.public_search_url,
                     params={"q": query, "limit": str(limit)},
                     headers={"Accept": "application/json"},
                 )
-        except (httpx.HTTPError, OSError) as exc:
-            raise SkillsShCatalogError(f"skills.sh public search failed: {type(exc).__name__}") from exc
+        except SkillsShCatalogError as exc:
+            raise SkillsShCatalogError(f"skills.sh public search failed: {exc}") from exc
         if response.status_code >= 400:
             raise SkillsShCatalogError(f"skills.sh public search returned HTTP {response.status_code}")
         try:
@@ -291,7 +374,9 @@ class SkillsShCatalog:
                 ) as client:
                     responses = await asyncio.gather(
                         *(
-                            client.get(
+                            self._request_with_retry(
+                                client,
+                                "GET",
                                 f"{self.public_page_base_url.rstrip('/')}/{quote(skill_id, safe='/')}",
                                 headers={"Accept": "text/html"},
                             )
