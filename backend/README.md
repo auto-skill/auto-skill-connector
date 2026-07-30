@@ -226,7 +226,9 @@ The parity gate must pass before a hosted result can be attributed to this
 router/corpus version.
 
 `bench.skills_sh_live_eval` reports original-query versus structured-query
-hit@1/hit@5, paired wins/losses, audit coverage, and latency. Without the
+hit@1/hit@5, paired wins/losses, paired bootstrap confidence intervals, audit
+coverage, and latency. The checked-in cases use stable skills.sh IDs as
+held-out labels; expand the set before using it as a production gate. Without the
 documented skills.sh OIDC token it emits `status: skipped`; that is a missing
 measurement, not a routing improvement.
 

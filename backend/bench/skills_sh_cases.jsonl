@@ -1,3 +1,3 @@
-{"query":"create a spreadsheet report with formulas"}
-{"query":"debug a Python API timeout and add a regression test"}
-{"query":"design a React landing page with accessible components"}
+{"query":"build a React Native app with Expo","expected_ids":["expo/skills/react-native"]}
+{"query":"find a reusable skill for an AI agent","expected_ids":["vercel-labs/skills/find-skills"]}
+{"query":"design a high-converting landing page","expected_ids":["jezweb/claude-skills/landing-page"]}
