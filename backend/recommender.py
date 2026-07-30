@@ -47,16 +47,18 @@ from query_compiler import CompiledIntent, compile_intent_query, skills_sh_query
 from quality import (
     CONFIG_VERSION,
     NAME_STOPWORDS,
+    PLATFORM_ALIASES,
+    _contains_alias,
     content_hash,
     content_digest,
     has_valid_skill_frontmatter,
     is_non_task_prompt,
+    platform_mentions,
     rerank_candidates,
     skill_capability_flags,
     tier_for_ranked_candidates,
     tier_for_prompt,
 )
-from routing_roles import partition_candidates
 from skills_sh_catalog import SkillsShCatalogError, default_catalog
 
 # Storage moved local 2026-07-05 -- recommender.py always runs embedded inside
@@ -98,21 +100,10 @@ ROUTE_SKILL_FIND_WARN_MS = int(os.getenv("ROUTE_SKILL_FIND_WARN_MS", "500"))
 ROUTE_INJECTED_TOKEN_WARN = int(os.getenv("ROUTE_INJECTED_TOKEN_WARN", "1000"))
 ROUTE_RESPONSE_TOKEN_WARN = int(os.getenv("ROUTE_RESPONSE_TOKEN_WARN", "3500"))
 CONTENT_HASH_RE = re.compile(r"^[a-f0-9]{64}$")
-# Public search is an inference, not an explicit user invocation.  The
-# controlled routing audit found that score-only full delivery could not clear
-# the precision required for silent prompt injection, even after post-hoc
-# threshold tuning.  Keep public matches hint-only unless a skill/version has
-# separately earned an outcome-validated allowlist entry.  The experimental
-# escape hatch is deliberately off by default and exists only for controlled
-# A/B runs.
-ALLOW_UNVALIDATED_PUBLIC_FULL = os.getenv(
-    "AUTOSKILL_EXPERIMENTAL_UNVALIDATED_PUBLIC_FULL", ""
-).lower() in {"1", "true", "yes"}
-OUTCOME_VALIDATED_CAPSULE_DIGESTS = frozenset(
-    value.strip().casefold()
-    for value in os.getenv("AUTOSKILL_VALIDATED_CAPSULE_DIGESTS", "").split(",")
-    if CONTENT_HASH_RE.fullmatch(value.strip().casefold())
-)
+# Reconciliation note: a manual capsule-digest allowlist (ALLOW_UNVALIDATED_PUBLIC_FULL /
+# OUTCOME_VALIDATED_CAPSULE_DIGESTS) used to additionally gate full delivery
+# beyond quality.tier_for_ranked_candidates -- removed. Tiering is the sole
+# full/hint/none decision (see find_deliverable_primary_candidate).
 UPGRADE_URL = os.getenv("BACKEND_BASE_URL", "https://skills.autoskill.dev").rstrip("/") + "/account"
 EMBED_INTERVAL_SECONDS = int(os.getenv("EMBED_INTERVAL_SECONDS", "300"))
 # ONNX memory grows sharply with batch size at the 512-token window.  A batch
@@ -163,8 +154,7 @@ _CODING_TERMS = frozenset(
 )
 _INTEGRATION_REQUEST_TERMS = frozenset(
     {
-        "integrate", "integration", "connect", "connector", "sync", "webhook", "oauth", "api",
-        "mcp", "send", "post", "publish", "deploy", "import", "export",
+        "integrate", "integration", "connect", "connector", "sync", "webhook", "oauth", "mcp",
     }
 )
 _GENERIC_INTEGRATION_NAME_TERMS = frozenset(
@@ -455,18 +445,26 @@ def skill_role(candidate: dict) -> str:
 
 
 def _integration_is_explicit(query: str, candidate: dict) -> bool:
+    """Require a named service for platform-specific integrations.
+
+    Broad name overlap such as "storefront" or "blog" is not an explicit
+    integration request and must not route a generic task to Shopify or
+    WordPress.
+    """
+    platforms = [str(p) for p in (candidate.get("platforms") or []) if p]
+    if platforms:
+        return platform_mentions(query, platforms)
+
     prompt_tokens = _task_tokens(query)
     if prompt_tokens & _INTEGRATION_REQUEST_TERMS:
         return True
-    platforms = {
-        token
-        for platform in (candidate.get("platforms") or [])
-        for token in _task_tokens(str(platform))
-    }
-    if platforms & prompt_tokens:
-        return True
-    name_tokens = _task_tokens(str(candidate.get("name") or "")) - _GENERIC_INTEGRATION_NAME_TERMS
-    return bool(name_tokens & prompt_tokens)
+
+    name_blob = str(candidate.get("name") or "").casefold()
+    return any(
+        _contains_alias(name_blob, alias) and platform_mentions(query, [platform])
+        for platform, aliases in PLATFORM_ALIASES.items()
+        for alias in aliases
+    )
 
 
 def candidate_matches_task_contract(query: str, candidate: dict) -> bool:
@@ -1004,7 +1002,7 @@ def _public_skill(row: dict | None) -> dict | None:
         "id": row.get("id"),
         "slug": row.get("slug") or row.get("name"),
         "name": skill_name,
-        "summary": row.get("description"),
+        "summary": row.get("capability_summary") or row.get("description"),
         "description": row.get("description"),
         "source": row.get("source"),
         "registry": row.get("registry"),
@@ -1192,6 +1190,8 @@ def _empty_context_guard(reason: str = "no-route") -> dict:
         "estimated_tokens": 0,
         "content_hash": None,
         "content_digest": None,
+        "complete": False,
+        "fetch_hint": None,
     }
 
 
@@ -1325,14 +1325,6 @@ def _library_content_by_hash(target_hash: str) -> str:
     return LibraryContent().get_by_hash(target_hash)
 
 
-def _capsule_is_validated_for_full(capsule_digest_value: str | None) -> bool:
-    """Require outcome evidence for the exact distilled capsule bytes."""
-    return ALLOW_UNVALIDATED_PUBLIC_FULL or (
-        bool(capsule_digest_value)
-        and str(capsule_digest_value).casefold() in OUTCOME_VALIDATED_CAPSULE_DIGESTS
-    )
-
-
 def _candidate_context_guard(
     query: str,
     candidate: dict,
@@ -1393,7 +1385,7 @@ async def _build_verified_policy_item(
     capsule_budget = max(200, min(POLICY_CAPSULE_CHARS, int(max_capsule_chars or POLICY_CAPSULE_CHARS)))
     guard = _candidate_context_guard(task, candidate, text, capsule_budget)
     capsule = guard.get("capsule")
-    if not capsule or not _capsule_is_validated_for_full(guard.get("capsule_digest")):
+    if not capsule:
         return None
     digest = content_digest(text)
     public.update(
@@ -1425,6 +1417,7 @@ def _policy_context_guard(policy_item: dict) -> dict:
         "policy": CONTEXT_GUARD_POLICY,
         "delivery": "capsule",
         "reason": "task_family_policy",
+        "complete": False,
         "capsule": policy_item["capsule"],
         "capsule_chars": policy_item["capsule_chars"],
         "estimated_tokens": policy_item["estimated_tokens"],
@@ -1444,6 +1437,7 @@ def _verified_static_candidate_content(candidate: dict) -> str:
         not text
         or not has_valid_skill_frontmatter(text)
         or content_hash(text) != public["content_hash"]
+        or skill_capability_flags(text)
     ):
         return ""
     return text
@@ -1460,10 +1454,11 @@ async def find_deliverable_primary_candidate(
 
     A capability-bearing top result remains available as a hint, but must not
     prevent a slightly lower-ranked verified static specialist from becoming
-    the active route.
+    the active route. quality.tier_for_ranked_candidates (score/risk/
+    similarity/active-status gates) is the sole full/hint/none decision --
+    reaching "full" here is sufficient to deliver, no separate manual
+    capsule-digest allowlist on top of it.
     """
-    if not ALLOW_UNVALIDATED_PUBLIC_FULL and not OUTCOME_VALIDATED_CAPSULE_DIGESTS:
-        return None, ""
     plausible = [
         candidate
         for candidate in candidates
@@ -1476,7 +1471,7 @@ async def find_deliverable_primary_candidate(
     )
     for candidate, text in zip(plausible, contents):
         guard = _candidate_context_guard(query, candidate, text) if text else None
-        if guard and _capsule_is_validated_for_full(guard.get("capsule_digest")):
+        if guard and guard.get("capsule"):
             return candidate, text
     return None, ""
 
@@ -1574,30 +1569,24 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
         if _passes_routing_filters(result, routing_filters)
         and candidate_matches_task_contract(query, result)
     ]
-    role_partition = partition_candidates(
-        intent,
-        results,
-        curated_policy_names=CODING_POLICY_NAMES,
-    )
-    results = role_partition["annotated"]
+    # Reconciliation note: candidate role classification (routing_roles.py --
+    # primary/supporting/policy/harmful, gated behind a manual capsule-digest
+    # allowlist) was not adopted. quality.tier_for_ranked_candidates (score/
+    # risk/similarity/active-status gates, applied via injection_tier below)
+    # is the sole full/hint/none decision, same as before either redesign.
     candidate_filter_ms = int((time.monotonic() - candidate_filter_start) * 1000)
-    primary_results = role_partition["primary_candidates"]
-    supporting_results = role_partition["supporting"] if primary_results else []
+    primary_results = results
     deliverable_validation_start = time.monotonic()
     deliverable_primary, preverified_primary_text = await find_deliverable_primary_candidate(
         query, primary_results, ranked=results_are_ranked
     )
     deliverable_validation_ms = int((time.monotonic() - deliverable_validation_start) * 1000)
     tier_decision_start = time.monotonic()
-    full_evidence_gate_applied = False
     if deliverable_primary:
         primary_results = [deliverable_primary]
         primary_tier = "full"
     else:
         primary_tier = injection_tier(query, primary_results, ranked=results_are_ranked)
-        if primary_tier == "full" and primary_results and not ALLOW_UNVALIDATED_PUBLIC_FULL:
-            primary_tier = "hint"
-            full_evidence_gate_applied = True
     tier_decision_ms = int((time.monotonic() - tier_decision_start) * 1000)
     policy_build_start = time.monotonic()
     policy_item = (
@@ -1610,11 +1599,6 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
     rerank_ms = int((time.monotonic() - rerank_start) * 1000)
     skill_find_ms = int((time.monotonic() - retrieval_start) * 1000)
     warnings: list[str] = []
-    if full_evidence_gate_applied:
-        warnings.append(
-            "Public retrieval matches are hint-only until this skill version has "
-            "independent outcome validation for full delivery."
-        )
     content = None
     content_url = None
     skill = _public_skill(primary_results[0]) if primary_results else None
@@ -1692,17 +1676,11 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
                 if CONTEXT_GUARD_ENABLED
                 else _empty_context_guard("safe-capsule-required")
             )
-            if not _capsule_is_validated_for_full(context_guard.get("capsule_digest")):
-                tier = "hint"
-                warnings.append(
-                    "The exact distilled capsule lacks independent outcome validation; "
-                    "downgraded to hint."
-                )
-            elif context_guard.get("delivery") != "capsule":
+            if context_guard.get("delivery") != "capsule":
                 tier = "hint"
                 warnings.append("Public skill could not be safely distilled; downgraded to hint.")
             else:
-                warnings.append("Verified public skill delivered only as a bounded distilled capsule.")
+                warnings.append("Verified public skill delivered as the whole safety-stripped skill.")
             skill["verification"] = {
                 "content_hash_verified": True,
                 "safe_distilled_capsule": context_guard.get("delivery") == "capsule",
@@ -1769,23 +1747,6 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
         "failure_mode": list(intent.failure_mode),
         "query_count": len(intent.query_variants),
     }
-    debug["role_classification"] = {
-        "abstained": role_partition["abstained"],
-        "harmful_count": role_partition["harmful_count"],
-        "thresholds": role_partition["thresholds"],
-        "primary": (
-            {
-                "name": role_partition["primary"].get("name"),
-                "confidence": role_partition["primary"].get("role_confidence"),
-            }
-            if role_partition["primary"]
-            else None
-        ),
-        "supporting": [
-            {"name": item.get("name"), "confidence": item.get("role_confidence")}
-            for item in supporting_results
-        ],
-    }
     debug["context_guard"] = {
         "policy": context_guard.get("policy"),
         "delivery": context_guard.get("delivery"),
@@ -1796,7 +1757,10 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
     debug["retrieval_backend"] = sorted(
         {str(row.get("retrieval_backend") or "local") for row in results}
     )
-    candidates = _hint_candidates([*primary_results, *supporting_results]) if tier == "hint" else []
+    # The merged route planner currently exposes only primary results here;
+    # supporting candidates are tracked in the plan when available but are
+    # intentionally not allowed to displace the primary strategy in hints.
+    candidates = _hint_candidates(primary_results) if tier == "hint" else []
     input_tokens = _estimate_tokens(query)
     hint_tokens = _estimate_tokens(skill)
     candidate_tokens = _estimate_candidate_tokens(candidates)

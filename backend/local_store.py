@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS skills (
     embedded_at TEXT,
     feedback_score REAL,
     capability_summary TEXT,
+    triggers TEXT DEFAULT '[]',
     retrieval_text TEXT,
     retrieval_text_hash TEXT,
     retrieval_record_hash TEXT,
@@ -68,32 +69,34 @@ CREATE TABLE IF NOT EXISTS skills (
 );
 
 CREATE VIRTUAL TABLE IF NOT EXISTS skills_fts USING fts5(
-    name, description, tags, content='skills', content_rowid='rowid', tokenize='porter unicode61'
+    name, description, tags, capability_summary, triggers, retrieval_text,
+    content='skills', content_rowid='rowid', tokenize='porter unicode61'
 );
 
 CREATE TRIGGER IF NOT EXISTS skills_ai AFTER INSERT ON skills BEGIN
-    INSERT INTO skills_fts(rowid, name, description, tags)
-    VALUES (new.rowid, new.name, new.description, new.tags);
+    INSERT INTO skills_fts(rowid, name, description, tags, capability_summary, triggers, retrieval_text)
+    VALUES (new.rowid, new.name, new.description, new.tags, new.capability_summary, new.triggers, new.retrieval_text);
 END;
 
 CREATE TRIGGER IF NOT EXISTS skills_ad AFTER DELETE ON skills BEGIN
-    INSERT INTO skills_fts(skills_fts, rowid, name, description, tags)
-    VALUES ('delete', old.rowid, old.name, old.description, old.tags);
+    INSERT INTO skills_fts(skills_fts, rowid, name, description, tags, capability_summary, triggers, retrieval_text)
+    VALUES ('delete', old.rowid, old.name, old.description, old.tags, old.capability_summary, old.triggers, old.retrieval_text);
 END;
 
 CREATE TRIGGER IF NOT EXISTS skills_au AFTER UPDATE ON skills BEGIN
-    INSERT INTO skills_fts(skills_fts, rowid, name, description, tags)
-    VALUES ('delete', old.rowid, old.name, old.description, old.tags);
-    INSERT INTO skills_fts(rowid, name, description, tags)
-    VALUES (new.rowid, new.name, new.description, new.tags);
+    INSERT INTO skills_fts(skills_fts, rowid, name, description, tags, capability_summary, triggers, retrieval_text)
+    VALUES ('delete', old.rowid, old.name, old.description, old.tags, old.capability_summary, old.triggers, old.retrieval_text);
+    INSERT INTO skills_fts(rowid, name, description, tags, capability_summary, triggers, retrieval_text)
+    VALUES (new.rowid, new.name, new.description, new.tags, new.capability_summary, new.triggers, new.retrieval_text);
 END;
 
 -- These are deliberately partial indexes: readiness and semantic retrieval
 -- need small metadata indexes, not a second copy of every embedding BLOB.
 CREATE INDEX IF NOT EXISTS skills_active_idx ON skills(id) WHERE quality_status = 'active';
 CREATE INDEX IF NOT EXISTS skills_embedded_idx ON skills(id) WHERE embedding IS NOT NULL;
-CREATE INDEX IF NOT EXISTS skills_active_embedded_idx ON skills(id)
-    WHERE quality_status = 'active' AND embedding IS NOT NULL;
+DROP INDEX IF EXISTS skills_active_embedded_idx;
+CREATE INDEX IF NOT EXISTS skills_route_embedded_idx ON skills(id)
+    WHERE quality_status IN ('active', 'metadata_only') AND embedding IS NOT NULL;
 CREATE TABLE IF NOT EXISTS skill_packages (
     package_hash TEXT PRIMARY KEY,
     source_url TEXT,
@@ -151,6 +154,29 @@ CREATE TABLE IF NOT EXISTS skill_retrieval_records (
     FOREIGN KEY (package_hash) REFERENCES skill_packages(package_hash)
 );
 CREATE INDEX IF NOT EXISTS skill_retrieval_records_skill_idx ON skill_retrieval_records(skill_id, active);
+
+-- One row per MCP tool, embedded separately from the parent skill. A
+-- multi-tool server's single blended skill-level embedding dilutes a query
+-- that matches one specific tool among many; matching per-tool and rolling
+-- up to the parent skill (see vector_search_tools) fixes that without
+-- touching the skill-level embedding path at all.
+-- Keyed by the skill's URL, not its id: upsert_rows() regenerates a fresh
+-- uuid4 for "id" on every re-upsert of an already-known url (scraper.py
+-- never sends "id" back, and the generic ON CONFLICT UPDATE clause includes
+-- id=excluded.id) -- a skill's id is NOT stable across scrape runs today.
+-- url is the one identifier that actually is stable throughout this
+-- pipeline (it's the upsert conflict key), so that's what this FKs to.
+CREATE TABLE IF NOT EXISTS skill_tools (
+    id TEXT PRIMARY KEY,
+    skill_url TEXT NOT NULL,
+    tool_name TEXT NOT NULL,
+    tool_description TEXT,
+    embedding BLOB,
+    embedding_text_hash TEXT,
+    created_at TEXT
+);
+CREATE INDEX IF NOT EXISTS skill_tools_url_idx ON skill_tools(skill_url);
+CREATE INDEX IF NOT EXISTS skill_tools_embedded_idx ON skill_tools(id) WHERE embedding IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS scrape_runs (
     id TEXT PRIMARY KEY,
@@ -437,7 +463,7 @@ CREATE TABLE IF NOT EXISTS mcp_auth_codes (
 """
 
 TABLES = {
-    "skills": {"unique": "url", "json_cols": {"tags", "raw", "risk_flags", "quality_reasons", "platforms"}},
+    "skills": {"unique": "url", "json_cols": {"tags", "raw", "risk_flags", "quality_reasons", "platforms", "triggers"}},
     "scrape_runs": {"unique": None, "json_cols": set()},
     "route_events": {"unique": None, "json_cols": {"warnings"}},
     "users": {"unique": "email", "json_cols": set()},
@@ -451,6 +477,7 @@ TABLES = {
     "org_members": {"unique": None, "json_cols": set()},
     "oauth_clients": {"unique": None, "json_cols": {"client_info"}},
     "mcp_auth_codes": {"unique": None, "json_cols": {"scopes"}},
+    "skill_tools": {"unique": None, "json_cols": set()},
 }
 
 SKILL_COLUMN_DEFAULTS = {
@@ -466,6 +493,8 @@ SKILL_COLUMN_DEFAULTS = {
     "category": "TEXT",
     "feedback_score": "REAL",
     "capability_summary": "TEXT",
+    "triggers": "TEXT DEFAULT '[]'",
+    "tools_hash": "TEXT",
     "retrieval_text": "TEXT",
     "retrieval_text_hash": "TEXT",
     "retrieval_record_hash": "TEXT",
@@ -507,6 +536,7 @@ SKILL_RETRIEVAL_COLUMNS = (
     "embedded_at",
     "feedback_score",
     "capability_summary",
+    "triggers",
     "retrieval_text",
     "retrieval_text_hash",
     "retrieval_record_hash",
@@ -602,7 +632,7 @@ SAFE_ROUTE_SKIP_REASONS = frozenset(
 _SAFE_ROUTE_IDENTIFIER_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/+@-]*\Z")
 _ANONYMOUS_HASH_RE = re.compile(r"^[a-f0-9]{64}$")
 
-CLI_TOKEN_TTL_SECONDS = 90 * 24 * 60 * 60  # 90 days, sliding forward on each use
+CLI_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60  # 30 days, sliding forward on each use
 ANONYMOUS_ID_RETENTION_DAYS = max(1, int(os.getenv("AUTOSKILL_ANONYMOUS_ID_RETENTION_DAYS", "90")))
 
 CLI_TOKEN_COLUMN_DEFAULTS = {
@@ -658,7 +688,7 @@ COMPLIMENTARY_PLANS = ("pro", "team")
 _PLAN_RANK = {"free": 0, "pro": 1, "team": 2}
 
 # 0 disables metering entirely (self-hosted deployments).
-FREE_ROUTES_PER_MONTH = int(os.getenv("AUTOSKILL_FREE_ROUTES_PER_MONTH", "250"))
+FREE_ROUTES_PER_MONTH = int(os.getenv("AUTOSKILL_FREE_ROUTES_PER_MONTH", "100"))
 
 # Pro is marketed as unlimited fair-use routing; this is the internal abuse
 # cap behind that promise, never shown on the pricing page. 0 disables.
@@ -838,6 +868,23 @@ def init_db() -> None:
             if col not in existing:
                 conn.execute(f"ALTER TABLE skills ADD COLUMN {col} {spec}")
         conn.execute("CREATE INDEX IF NOT EXISTS skills_package_hash_idx ON skills(package_hash)")
+        # Existing databases may still have a narrow FTS table. Rebuild it
+        # once so capability summaries, author triggers, and the compact
+        # retrieval record participate in lexical discovery.
+        fts_row = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='skills_fts'"
+        ).fetchone()
+        fts_sql = (fts_row["sql"] or "") if fts_row else ""
+        if any(column not in fts_sql for column in ("capability_summary", "triggers", "retrieval_text")):
+            conn.execute("DROP TRIGGER IF EXISTS skills_ai")
+            conn.execute("DROP TRIGGER IF EXISTS skills_ad")
+            conn.execute("DROP TRIGGER IF EXISTS skills_au")
+            conn.execute("DROP TABLE IF EXISTS skills_fts")
+            conn.executescript(_SCHEMA)
+            conn.execute(
+                "INSERT INTO skills_fts(rowid, name, description, tags, capability_summary, triggers, retrieval_text) "
+                "SELECT rowid, name, description, tags, capability_summary, triggers, retrieval_text FROM skills"
+            )
         route_existing = {row["name"] for row in conn.execute("PRAGMA table_info(route_events)").fetchall()}
         for col, spec in ROUTE_EVENT_COLUMN_DEFAULTS.items():
             if col not in route_existing:
@@ -1094,7 +1141,7 @@ def upsert_rows(table: str, rows: list[dict], on_conflict: str | None) -> list[d
             for col in TABLES[table]["json_cols"]:
                 if col in row and not isinstance(row[col], str):
                     row[col] = json.dumps(row[col])
-            if table == "skills" and isinstance(row.get("embedding"), list):
+            if table in ("skills", "skill_tools") and isinstance(row.get("embedding"), list):
                 row["embedding"] = pack_embedding(row["embedding"])
 
             cols = list(row.keys())
@@ -1122,7 +1169,7 @@ def upsert_rows(table: str, rows: list[dict], on_conflict: str | None) -> list[d
                 _record_skill_version(cur, stored["id"], stored["content_hash"])
             out.append(stored)
         conn.commit()
-        if table == "skills":
+        if table in ("skills", "skill_tools"):
             invalidate_vector_cache()
         return out
     finally:
@@ -1240,7 +1287,7 @@ def delete_rows(table: str, filters: dict) -> int:
         sql = f"DELETE FROM {table} WHERE {' AND '.join(where_sql)}"
         cur = conn.execute(sql, params)
         conn.commit()
-        if table == "skills" and cur.rowcount:
+        if table in ("skills", "skill_tools") and cur.rowcount:
             invalidate_vector_cache()
         return cur.rowcount
     finally:
@@ -1641,7 +1688,7 @@ def warm_lexical_index() -> dict:
         postings: dict[str, list[str]] = defaultdict(list)
         rows = conn.execute(
             """
-            SELECT id, name, description, tags, capability_summary, retrieval_text
+            SELECT id, name, description, tags, capability_summary, triggers, retrieval_text
             FROM skills
             WHERE risk_score < 3
               AND COALESCE(quality_status, 'pending') IN ('active', 'metadata_only')
@@ -1657,6 +1704,7 @@ def warm_lexical_index() -> dict:
                     str(row["description"] or ""),
                     str(row["tags"] or ""),
                     str(row["capability_summary"] or ""),
+                    str(row["triggers"] or ""),
                     str(row["retrieval_text"] or ""),
                 ]
             )
@@ -1675,6 +1723,94 @@ def warm_lexical_index() -> dict:
         return {"tokens": len(postings), "skills": len(rows)}
     finally:
         conn.close()
+        warm_fast_path_index()
+
+
+# Separate from the general lexical postings above: this indexes *only*
+# triggers[] phrases and skill_tools.tool_name, kept apart from the general
+# name/description/tags/capability_summary token soup so a match here can be
+# recognized as "the query is near-exactly one of this skill's own declared
+# triggers or tool names" -- strong, specific evidence -- rather than an
+# ordinary keyword overlap. hybrid_search_skills uses this to force a skill
+# into the candidate set even when FTS/vector both missed it.
+_fast_path_cache_lock = threading.RLock()
+_fast_path_cache: dict = {
+    "db_path": "",
+    "phrases": [],  # list of (tokens: frozenset[str], skill_id: str, phrase: str)
+    "token_index": {},  # token -> set[int] (indices into "phrases")
+}
+FAST_PATH_OVERLAP_THRESHOLD = 0.7
+
+
+def warm_fast_path_index() -> dict:
+    conn = get_conn()
+    try:
+        # Keyed by skill url, not id -- see the skill_tools schema comment;
+        # url is the one identifier guaranteed stable across scrape runs.
+        phrases: list[tuple[frozenset, str, str]] = []
+        trigger_rows = conn.execute(
+            "SELECT url, triggers FROM skills WHERE risk_score < 3 "
+            "AND COALESCE(quality_status, 'pending') IN ('active', 'metadata_only') "
+            "AND triggers IS NOT NULL AND triggers != '[]'"
+        ).fetchall()
+        for row in trigger_rows:
+            try:
+                triggers = json.loads(row["triggers"] or "[]")
+            except (TypeError, json.JSONDecodeError):
+                triggers = []
+            if not isinstance(triggers, list):
+                continue
+            for phrase in triggers:
+                tokens = frozenset(_lexical_tokens(str(phrase)))
+                if tokens:
+                    phrases.append((tokens, str(row["url"]), str(phrase)))
+
+        tool_rows = conn.execute("SELECT skill_url, tool_name FROM skill_tools").fetchall()
+        for row in tool_rows:
+            readable = re.sub(r"[_\-]+", " ", str(row["tool_name"] or ""))
+            tokens = frozenset(_lexical_tokens(readable))
+            if tokens:
+                phrases.append((tokens, str(row["skill_url"]), str(row["tool_name"])))
+
+        token_index: dict[str, set[int]] = defaultdict(set)
+        for i, (tokens, _skill_url, _phrase) in enumerate(phrases):
+            for token in tokens:
+                token_index[token].add(i)
+
+        with _fast_path_cache_lock:
+            _fast_path_cache.update(
+                {"db_path": str(DB_PATH), "phrases": phrases, "token_index": dict(token_index)}
+            )
+        return {"phrases": len(phrases)}
+    finally:
+        conn.close()
+
+
+def _fast_path_matches(query_text: str) -> dict[str, float]:
+    """skill url -> match strength (fraction of the matched phrase's tokens
+    present in the query), for triggers/tool-names close enough to the query
+    to count as a near-exact match. Bounded to phrases sharing at least one
+    token with the query via the inverted index, not a full scan."""
+    with _fast_path_cache_lock:
+        if _fast_path_cache.get("db_path") != str(DB_PATH):
+            return {}
+        phrases = _fast_path_cache["phrases"]
+        token_index = _fast_path_cache["token_index"]
+
+    query_tokens = set(_lexical_tokens(query_text))
+    if not query_tokens:
+        return {}
+    candidate_indices: set[int] = set()
+    for token in query_tokens:
+        candidate_indices |= token_index.get(token, set())
+
+    matches: dict[str, float] = {}
+    for i in candidate_indices:
+        tokens, skill_url, _phrase = phrases[i]
+        overlap = len(tokens & query_tokens) / len(tokens)
+        if overlap >= FAST_PATH_OVERLAP_THRESHOLD and overlap > matches.get(skill_url, 0.0):
+            matches[skill_url] = overlap
+    return matches
 
 
 def _cached_lexical_postings() -> dict[str, list[str]] | None:
@@ -1859,6 +1995,8 @@ def invalidate_vector_cache() -> None:
     """Mark the vector matrix stale after skills writes without dropping it."""
     with _emb_cache_lock:
         _emb_cache["generation"] = int(_emb_cache["generation"] or 0) + 1
+    with _tool_emb_cache_lock:
+        _tool_emb_cache["generation"] = int(_tool_emb_cache["generation"] or 0) + 1
     with _lex_cache_lock:
         _lex_cache["generation"] = -1
 
@@ -1982,7 +2120,7 @@ def _embedding_matrix(conn: sqlite3.Connection, *, refresh: bool = False) -> tup
                 "SELECT id, embedding FROM skills "
                 "WHERE embedding IS NOT NULL "
                 "AND risk_score < 3 "
-                "AND COALESCE(quality_status, 'pending') = 'active'"
+                "AND COALESCE(quality_status, 'pending') IN ('active', 'metadata_only')"
             ).fetchall()
             ids = [r["id"] for r in rows if len(r["embedding"]) == _EMB_BLOB_LEN]
             blobs = [bytes(r["embedding"]) for r in rows if len(r["embedding"]) == _EMB_BLOB_LEN]
@@ -2060,6 +2198,133 @@ def vector_search_skills(
         conn.close()
 
 
+# Second, smaller matrix: one vector per MCP tool rather than per skill (see
+# skill_tools in _SCHEMA). Mirrors the skill-level cache above -- same
+# generation-counter invalidation (invalidate_vector_cache bumps both), same
+# "keep serving the last complete matrix during a background rebuild" shape --
+# but the tool corpus is a fraction of the skill corpus (most skills have no
+# MCP tools at all), so this stays a separate, lighter cache rather than
+# complicating the skill-level one with a second row shape.
+_tool_emb_cache: dict = {
+    "at": 0.0,
+    "ids": [],
+    "skill_urls": [],
+    "tool_names": [],
+    "mat": None,
+    "db_path": "",
+    "generation": 0,
+    "built_generation": -1,
+}
+_tool_emb_cache_lock = threading.RLock()
+_tool_emb_rebuild_lock = threading.Lock()
+
+
+def _cached_tool_embedding_matrix(*, refresh: bool):
+    with _tool_emb_cache_lock:
+        cached = _tool_emb_cache["mat"]
+        if cached is None or _tool_emb_cache.get("db_path") != str(DB_PATH):
+            return None
+        cache_current = _tool_emb_cache["built_generation"] == _tool_emb_cache["generation"]
+        if not refresh or cache_current:
+            return _tool_emb_cache["ids"], _tool_emb_cache["skill_urls"], _tool_emb_cache["tool_names"], cached
+    return None
+
+
+def _tool_embedding_matrix(conn: sqlite3.Connection, *, refresh: bool = False):
+    cached = _cached_tool_embedding_matrix(refresh=refresh)
+    if cached is not None:
+        return cached
+
+    with _tool_emb_rebuild_lock:
+        while True:
+            cached = _cached_tool_embedding_matrix(refresh=refresh)
+            if cached is not None:
+                return cached
+
+            with _tool_emb_cache_lock:
+                target_generation = int(_tool_emb_cache["generation"] or 0)
+
+            rows = conn.execute(
+                "SELECT t.id, t.skill_url, t.tool_name, t.embedding FROM skill_tools t "
+                "JOIN skills s ON s.url = t.skill_url "
+                "WHERE t.embedding IS NOT NULL "
+                "AND s.risk_score < 3 "
+                "AND COALESCE(s.quality_status, 'pending') IN ('active', 'metadata_only')"
+            ).fetchall()
+            ids = [r["id"] for r in rows if len(r["embedding"]) == _EMB_BLOB_LEN]
+            skill_urls = [r["skill_url"] for r in rows if len(r["embedding"]) == _EMB_BLOB_LEN]
+            tool_names = [r["tool_name"] for r in rows if len(r["embedding"]) == _EMB_BLOB_LEN]
+            blobs = [bytes(r["embedding"]) for r in rows if len(r["embedding"]) == _EMB_BLOB_LEN]
+            if blobs:
+                mat = np.frombuffer(b"".join(blobs), dtype=np.float32).reshape(len(blobs), _EMB_DIM)
+            else:
+                mat = np.zeros((0, _EMB_DIM), dtype=np.float32)
+            mat.setflags(write=False)
+
+            with _tool_emb_cache_lock:
+                if int(_tool_emb_cache["generation"] or 0) == target_generation:
+                    _tool_emb_cache.update(
+                        at=time.monotonic(),
+                        ids=ids,
+                        skill_urls=skill_urls,
+                        tool_names=tool_names,
+                        mat=mat,
+                        db_path=str(DB_PATH),
+                        built_generation=target_generation,
+                    )
+                    return ids, skill_urls, tool_names, mat
+
+
+def vector_search_tools(query_embedding: list[float], match_count: int = 10) -> list[dict]:
+    """Match the query against individual tool embeddings and roll up to one
+    row per parent skill (by URL -- see the skill_tools schema comment on why
+    not id), keeping the best-matching tool's similarity and name -- a skill
+    with many tools should be found by its best tool, not diluted by all of
+    them averaged into one skill-level vector."""
+    conn = get_conn()
+    try:
+        _, skill_urls, tool_names, mat = _tool_embedding_matrix(conn)
+        if not skill_urls:
+            return []
+        q = np.array(query_embedding, dtype=np.float32)
+        sims = mat @ q
+        best_by_url: dict[str, tuple[float, str]] = {}
+        for skill_url, tool_name, sim in zip(skill_urls, tool_names, sims):
+            sim = float(sim)
+            current = best_by_url.get(skill_url)
+            if current is None or sim > current[0]:
+                best_by_url[skill_url] = (sim, tool_name)
+        top_urls = sorted(best_by_url, key=lambda u: best_by_url[u][0], reverse=True)[:match_count]
+        if not top_urls:
+            return []
+        placeholders = ",".join("?" for _ in top_urls)
+        fetched = conn.execute(
+            f"SELECT {SKILL_RETRIEVAL_SQL} FROM skills WHERE url IN ({placeholders})", top_urls
+        ).fetchall()
+        by_url: dict[str, dict] = {}
+        for r in fetched:
+            d = _row_to_dict(r, "skills", None)
+            d["stars"] = _stars(dict(r).get("raw", "{}"))
+            by_url[d["url"]] = d
+        out = []
+        for skill_url in top_urls:
+            d = by_url.get(skill_url)
+            if d is not None:
+                sim, tool_name = best_by_url[skill_url]
+                d["rank"] = sim
+                d["matched_tool"] = tool_name
+                out.append(d)
+        return out
+    finally:
+        conn.close()
+
+
+FAST_PATH_BOOST_WEIGHT = 0.15  # a strength=1.0 (near-exact trigger/tool-name) hit
+# outweighs a typical single-channel top-rank RRF contribution (~0.05-0.08),
+# without being large enough to bypass rerank_candidates/tier_for_ranked_candidates
+# -- it forces the candidate INTO the fused set and biases its position, nothing more.
+
+
 def hybrid_search_skills(
     query_text: str,
     query_embedding: list[float] | None,
@@ -2069,18 +2334,28 @@ def hybrid_search_skills(
     rrf_k: int = 20,
 ) -> list[dict]:
     fts = search_skills_fts(query_text, 60)
-    # Keep vector candidate generation independent from lexical retrieval.
-    # Restricting the vector scan to the lexical top 60 made the first twelve
-    # query tokens a hard recall boundary: a semantically strong specialist
-    # could never enter the union when generic task boilerplate won FTS.
-    vec = (
-        vector_search_skills(
-            query_embedding,
-            60,
-        )
-        if query_embedding
-        else []
-    )
+    # Always rank the query vector against the full embedding matrix, not just
+    # rows FTS already found by keyword. Restricting to FTS candidates whenever
+    # FTS found >=10 hits (the previous behavior) defeated the point of hybrid
+    # search: a semantically on-target skill sharing no keywords with the query
+    # could never surface through the vector channel if FTS was "confident" on
+    # an unrelated set of >=10 keyword matches. Measured cost of a full scan
+    # against the real ~150k-row matrix: ~4ms (numpy matvec, BLAS-backed) --
+    # the "scanning the entire matrix" concern this restriction was written
+    # for does not hold up at this corpus size. (Independently confirmed:
+    # origin/master fixed this exact restriction the same way, same root
+    # cause, different wording -- "the first twelve query tokens [became] a
+    # hard recall boundary.")
+    vec = vector_search_skills(query_embedding, 60) if query_embedding else []
+    # Per-tool channel: a multi-tool MCP server's blended skill-level vector
+    # (above) dilutes a query that matches one specific tool -- this ranks
+    # against individual tool embeddings instead and rolls up to the parent
+    # skill (vector_search_tools), so that tool can still win on its own.
+    tool_vec = vector_search_tools(query_embedding, 30) if query_embedding else []
+    # Trigger/tool-name fast path: a near-exact match against a skill's own
+    # declared triggers[] or a tool's name, independent of both FTS and
+    # vector similarity -- see _fast_path_matches.
+    fast_path = _fast_path_matches(query_text)
 
     by_id: dict[str, dict] = {}
     scores: dict[str, float] = {}
@@ -2095,6 +2370,42 @@ def hybrid_search_skills(
         else:
             by_id[row["id"]] = row
         scores[row["id"]] = scores.get(row["id"], 0.0) + vec_weight / (rrf_k + ix)
+    for ix, row in enumerate(tool_vec, start=1):
+        existing = by_id.get(row["id"])
+        if existing is not None:
+            existing.setdefault("matched_tool", row.get("matched_tool"))
+            if row["rank"] > existing.get("similarity", 0.0):
+                existing["similarity"] = row["rank"]
+        else:
+            row["similarity"] = row["rank"]
+            by_id[row["id"]] = row
+        scores[row["id"]] = scores.get(row["id"], 0.0) + vec_weight / (rrf_k + ix)
+
+    if fast_path:
+        # fast_path is keyed by skill url (see _fast_path_matches); by_id/scores
+        # are keyed by the skills row's own "id". Reconcile through url rather
+        # than assuming any id stability across the fetches above.
+        url_to_id = {row.get("url"): row.get("id") for row in by_id.values() if row.get("url")}
+        missing_urls = [url for url in fast_path if url not in url_to_id]
+        if missing_urls:
+            conn = get_conn()
+            try:
+                placeholders = ",".join("?" for _ in missing_urls)
+                fetched = conn.execute(
+                    f"SELECT {SKILL_RETRIEVAL_SQL} FROM skills WHERE url IN ({placeholders})", missing_urls
+                ).fetchall()
+                for r in fetched:
+                    d = _row_to_dict(r, "skills", None)
+                    d["stars"] = _stars(dict(r).get("raw", "{}"))
+                    by_id[d["id"]] = d
+                    url_to_id[d.get("url")] = d["id"]
+            finally:
+                conn.close()
+        for url, strength in fast_path.items():
+            skill_id = url_to_id.get(url)
+            if skill_id is None or skill_id not in by_id:
+                continue  # deleted/ineligible between warm and query; nothing to boost
+            scores[skill_id] = scores.get(skill_id, 0.0) + FAST_PATH_BOOST_WEIGHT * strength
 
     # Dedup near-identical forks (same content_hash) before truncating to
     # match_count -- otherwise a duplicated cluster can crowd out distinct
@@ -2104,7 +2415,13 @@ def hybrid_search_skills(
     fused_rows = []
     for skill_id, score in scores.items():
         row = dict(by_id[skill_id])
-        if (row.get("quality_status") or "pending") != "active":
+        # active + metadata_only: same discovery-eligibility set used
+        # throughout this session's ingestion work (quality.ACTIVE_STATUSES).
+        # Auto-injection safety is a separate, unchanged gate
+        # (quality.tier_for_ranked_candidates, FULL_ROUTE_STATUS = 'active'
+        # only) -- being a fusion candidate here does not make a
+        # metadata_only skill (most MCP servers) eligible for full delivery.
+        if (row.get("quality_status") or "pending") not in quality.ACTIVE_STATUSES:
             continue
         if len(str(row.get("description") or "")) > MAX_ROUTING_DESCRIPTION_CHARS:
             continue

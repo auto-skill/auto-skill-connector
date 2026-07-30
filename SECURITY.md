@@ -38,10 +38,10 @@ such as:
 Feedback notes are accepted only for old-client compatibility and are ignored;
 they are never retained. There is no hosted raw-prompt diagnostics mode.
 
-The optional Claude Code adapter filters acknowledgements, commands,
-meta/status prompts, and pasted context locally. Skipped prompts are not sent
-to `/route` or a separate skip-analytics endpoint. Its local routing log also
-contains metadata only: no prompt body and no prompt snippet.
+The optional Claude Code and Codex Auto Mode adapters filter acknowledgements,
+commands, meta/status prompts, and pasted context locally. Skipped prompts are
+not sent to `/route` or a separate skip-analytics endpoint. Their local routing
+logs also contain metadata only: no prompt body and no prompt snippet.
 
 To disable remote routing entirely:
 
@@ -55,13 +55,16 @@ Auto Mode is a client adapter that sees eligible prompt text before the model
 answers. Enabling it has privacy and latency consequences, so it requires an
 explicit user action and confirmation.
 
-The launch build includes a Claude Code adapter only. Codex and Cursor can use
-MCP-guided proactive task-summary routing, but no raw-prompt Auto Mode adapter
-is claimed for those clients yet. MCP availability cannot guarantee a call;
-the client model must honor the server instruction.
+Shipped adapters: **Claude Code** (`auto-skill enable-hook`) and **Codex CLI**
+(`auto-skill enable-hook --target codex`). Cursor and GitHub Copilot can use
+MCP-guided proactive task-summary routing, but their vendor hook APIs cannot
+inject context yet, so no raw-prompt Auto Mode adapter is claimed for those
+clients. MCP availability cannot guarantee a call; the client model must honor
+the server instruction.
 
 Auto Mode applies only to the current task. It never installs a skill
-persistently.
+persistently. Hosted route calls from an adapter still require a logged-in
+session.
 
 ## What Content-hash Verification Means
 
@@ -161,20 +164,25 @@ hardening.
 
 ## Accounts and Private Data
 
-Public discovery and routing must not require an individual account solely for
-tracking. Authentication is appropriate for private skills, favorites,
-caller-specific history, and hosted MCP identity. Authenticated route metadata
-may be associated with the caller, but raw prompt text is never retained.
+Hosted routing (`POST /route` and the hosted MCP connector) requires login.
+Free accounts get **100 authenticated routes/month**. CLI bearer tokens use a
+**30-day sliding** TTL: successful use refreshes expiry; 30 days idle requires
+re-login. Authenticated route metadata may be associated with the caller, but
+raw prompt text is never retained.
+
+Authentication is also used for private skills, favorites, caller-specific
+history, and hosted MCP identity. Pro/Team entitlements exist in code but are
+not the launch trust story—see `PRICING.md`.
 
 ## Local Files
 
 Local diagnostics are off by default. With `AUTOSKILL_DIAGNOSTICS=1`, the
-optional Claude adapter can create a metadata-only routing log at
-`~/.claude/auto-skill-routing.jsonl`. It is safe to delete. Protect the parent
-directory with normal user-file permissions. On its next invocation, the
-current hook also rewrites an older log to remove legacy prompt snippets and
-prompt hashes. Users who have not upgraded the hook should delete that file
-manually.
+optional Claude or Codex adapter can create a metadata-only routing log (for
+example `~/.claude/auto-skill-routing.jsonl`). It is safe to delete. Protect
+the parent directory with normal user-file permissions. On its next
+invocation, the current hook also rewrites an older log to remove legacy
+prompt snippets and prompt hashes. Users who have not upgraded the hook should
+delete that file manually.
 
 CLI authentication credentials live under the user's Auto-Skill configuration
 directory. Do not copy credential files into a repository, support ticket, or

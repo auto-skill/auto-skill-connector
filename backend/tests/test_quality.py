@@ -33,6 +33,26 @@ def test_quality_rejects_bad_skill_content() -> None:
     assert evaluate_quality(skill, "name: tiny\n\nDo stuff.")["quality_status"] == "rejected"
 
 
+def test_quality_rejects_oversized_content_without_accepting() -> None:
+    from quality import MAX_SKILL_CONTENT_CHARS
+
+    skill = {
+        "name": "demo",
+        "description": "Demo skill with a body that exceeds the hard library ceiling.",
+        "source": "github_skill_file",
+    }
+    huge = (
+        "---\nname: demo\n"
+        "description: Demo skill with a body that exceeds the hard library ceiling.\n"
+        "---\n\n## Workflow\n\n"
+        + ("Validate formulas and preserve identifiers carefully. " * 20000)
+    )
+    assert len(huge) > MAX_SKILL_CONTENT_CHARS
+    result = evaluate_quality(skill, huge)
+    assert result["quality_status"] == "rejected"
+    assert "content-too-large" in result["quality_reasons"]
+
+
 def test_quality_accepts_real_skill_content() -> None:
     skill = {
         "name": "spreadsheet-router",

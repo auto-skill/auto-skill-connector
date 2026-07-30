@@ -45,6 +45,7 @@ from auto_skill_core import (
     validate_skill_content,
     whoami,
 )
+from auto_skill_receipt import format_route_receipt
 from auto_skill_mining import (
     get_mined_skill,
     get_mined_skills_dir,
@@ -171,10 +172,15 @@ async def _command_route(args: argparse.Namespace) -> int:
         print(payload.get("message", "No matching skill found."))
         return 1
 
+    receipt = payload.get("route_receipt") or format_route_receipt(payload)
+    if receipt:
+        print(receipt)
+        print()
+
     plan = payload.get("skill_plan") if isinstance(payload.get("skill_plan"), dict) else {}
     policy_skills = plan.get("policy_skills") or []
     primary_skill = plan.get("primary_skill") if isinstance(plan.get("primary_skill"), dict) else None
-    if policy_skills or primary_skill:
+    if not receipt and (policy_skills or primary_skill):
         print(f"skill plan ({plan.get('task_family') or 'general'}):")
         for policy in policy_skills:
             if isinstance(policy, dict):

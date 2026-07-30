@@ -134,7 +134,7 @@ ROUTE_LATENCY_BUDGET_MS = int(os.getenv("ROUTE_LATENCY_BUDGET_MS", "750"))
 ROUTE_SKILL_FIND_BUDGET_MS = int(os.getenv("ROUTE_SKILL_FIND_BUDGET_MS", "500"))
 ROUTE_RESPONSE_TOKEN_BUDGET = int(os.getenv("ROUTE_RESPONSE_TOKEN_BUDGET", "3500"))
 ROUTE_INJECTED_TOKEN_BUDGET = int(os.getenv("ROUTE_INJECTED_TOKEN_BUDGET", "1000"))
-DEFAULT_ROUTE_CASES_PATH = Path("evals") / "routes.jsonl"
+DEFAULT_ROUTE_CASES_PATH = Path(__file__).resolve().with_name("evals") / "routes.jsonl"
 
 
 def _split_expected_tiers(value) -> set[str]:

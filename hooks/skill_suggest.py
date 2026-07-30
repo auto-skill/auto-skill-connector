@@ -22,6 +22,17 @@ import urllib.request
 import uuid
 from pathlib import Path
 
+# Shared receipt formatter is stdlib-only. Prefer a normal package import
+# (pip/uvx install); fall back to the repo/install sibling path when this
+# file is executed as a bare script by Claude Code / Codex hooks.
+try:
+    from auto_skill_receipt import format_route_card_markdown, format_route_receipt
+except ImportError:  # pragma: no cover - exercised when run as bare script
+    _ROOT = Path(__file__).resolve().parent.parent
+    if str(_ROOT) not in sys.path:
+        sys.path.insert(0, str(_ROOT))
+    from auto_skill_receipt import format_route_card_markdown, format_route_receipt
+
 AUTOSKILL_URL = os.getenv("AUTOSKILL_URL", "https://skills.autoskill.dev").rstrip("/")
 CLIENT_NAME = "auto-skill-hook"
 CLIENT_VERSION = "0.1.0"
@@ -36,7 +47,7 @@ urllib.request.install_opener(_opener)
 ROUTING_LOG_PATH = Path(os.getenv("AUTOSKILL_ROUTING_LOG", "")) if os.getenv("AUTOSKILL_ROUTING_LOG") else Path.home() / ".claude" / "auto-skill-routing.jsonl"
 MAX_LOG_LINES = 2000
 TIMEOUT_SECONDS = float(os.getenv("AUTOSKILL_HOOK_TIMEOUT_SECONDS", "1.0"))
-MAX_CONTENT_CHARS = int(os.getenv("AUTOSKILL_HOOK_MAX_CHARS", "12000"))
+MAX_CONTENT_CHARS = int(os.getenv("AUTOSKILL_HOOK_MAX_CHARS", "24000"))
 _BLOB_RE = re.compile(r"github\.com/([^/]+)/([^/]+)/blob/([^/]+)/(.*)")
 _TREE_RE = re.compile(r"github\.com/([^/]+)/([^/]+)/tree/([^/]+)/(.*)")
 _ACK_PROMPTS = {"ok", "okay", "yes", "no", "thanks", "thank you", "continue", "go on", "do it", "sounds good"}
@@ -149,7 +160,7 @@ def _selfhosted_route(prompt: str) -> dict | None:
             "client_version": CLIENT_VERSION,
             "guard_mode": "hybrid",
             "supports_isolation": False,
-            "max_inline_chars": 4000,
+            "max_inline_chars": 12000,
             "max_capsule_chars": 2400,
         }
         if not headers:
@@ -413,6 +424,45 @@ def _log_routing_decision(prompt: str, tier: str, skill: dict | None = None, rea
         pass
 
 
+def _receipt_payload(route: dict, skill: dict, tier: str) -> dict:
+    """Shape the raw backend route for the shared homepage-style receipt."""
+    return {
+        "routed": True,
+        "route_tier": tier,
+        "route_type": "skill" if tier == "full" else tier,
+        "skill_plan": route.get("skill_plan") if isinstance(route.get("skill_plan"), dict) else {},
+        "selected_skill": skill,
+        "skill": skill,
+    }
+
+
+def _policy_context_blocks(route: dict, skill: dict) -> str:
+    """Mirror auto_skill_core.build_route_context policy capsules (2-slot max)."""
+    plan = route.get("skill_plan") if isinstance(route.get("skill_plan"), dict) else {}
+    selected_identity = skill.get("content_hash") or skill.get("url") or skill.get("name")
+    blocks: list[str] = []
+    for policy in plan.get("policy_skills") or []:
+        if not isinstance(policy, dict):
+            continue
+        policy_identity = policy.get("content_hash") or policy.get("url") or policy.get("name")
+        if policy_identity and policy_identity == selected_identity:
+            continue
+        capsule = str(policy.get("capsule") or "")
+        if not capsule or len(capsule) > 2400:
+            continue
+        blocks.append(
+            "[auto-skill] Task-family policy: "
+            f"{policy.get('name') or 'unknown'}. Source: {policy.get('url') or ''}\n"
+            "Apply this verified policy before the primary specialist. More specific user, project, "
+            "and team instructions take precedence.\n\n"
+            "<auto_skill_policy>\n"
+            f"{capsule}\n"
+            "</auto_skill_policy>"
+        )
+        break  # 2-slot card: at most one policy block
+    return ("\n\n".join(blocks) + "\n\n") if blocks else ""
+
+
 def main() -> None:
     payload = json.load(sys.stdin)
     prompt = (payload.get("prompt") or "").strip()
@@ -458,6 +508,10 @@ def main() -> None:
             suffix = "ms" if key.endswith("_ms") else ""
             metric_parts.append(f"{label}={int(value)}{suffix}")
     metrics_text = f" Route metrics: {', '.join(metric_parts)}." if metric_parts else ""
+    receipt_payload = _receipt_payload(route, skill, tier)
+    card = format_route_card_markdown(receipt_payload) or format_route_receipt(receipt_payload)
+    receipt_block = f"{card}\n\n" if card else ""
+    policy_context = _policy_context_blocks(route, skill)
 
     def _print_hint(reason: str) -> None:
         desc = (skill.get("description") or "").replace("\n", " ")[:160]
@@ -469,6 +523,7 @@ def main() -> None:
             option_lines.append(f"{index}. {candidate_name}: {candidate_description} ({candidate_url})")
         options_text = "\nCandidate options:\n" + "\n".join(option_lines) if option_lines else ""
         print(
+            f"{receipt_block}"
             f"[auto-skill] Possible match (not injected -- {reason}): "
             f"\"{name}\"{risk_text} — {desc} ({url}). "
             "Choose a candidate only if the fit is obvious; otherwise continue normally. "
@@ -497,9 +552,20 @@ def main() -> None:
             _report_outcome(route, "shown")
             return
         mode = "isolated fallback capsule" if delivery == "isolation" else "bounded capsule"
+        content_url = str(route.get("content_url") or "")
+        chash = skill.get("content_hash") or context_guard.get("content_hash") or ""
+        fetch_line = ""
+        if content_url or chash:
+            target = content_url or f"/content/{chash}"
+            fetch_line = (
+                f" This is NOT the complete SKILL.md; fetch the full verified file via {target}."
+            )
         print(
+            f"{receipt_block}"
+            f"{policy_context}"
             f"[auto-skill] Route selected: {name}{risk_text}. Source: {url}\n\n"
-            f"Use this {mode} as task-specific guidance for this turn. Do not install files or execute undeclared capabilities.\n\n"
+            f"Use this {mode} as task-specific guidance for this turn.{fetch_line} "
+            "Do not install files or execute undeclared capabilities.\n\n"
             "<auto_skill_capsule>\n"
             f"{capsule}\n"
             "</auto_skill_capsule>"
@@ -541,9 +607,33 @@ def main() -> None:
         _report_outcome(route, "shown")
         return
     if len(content) > MAX_CONTENT_CHARS:
-        content = f"{content[:MAX_CONTENT_CHARS]}\n\n[auto-skill: truncated]"
+        content_url = str(route.get("content_url") or "")
+        chash = skill.get("content_hash") or context_guard.get("content_hash") or ""
+        target = content_url or (f"/content/{chash}" if chash else "")
+        fetch_line = (
+            f" Fetch the complete verified file via {target}."
+            if target
+            else " Use the route content_url / content_hash to load the complete file."
+        )
+        # Never label a truncated body as full active SKILL.md instructions.
+        print(
+            f"{receipt_block}"
+            f"{policy_context}"
+            f"[auto-skill] Route selected: {name}{risk_text}. Source: {url}\n\n"
+            "Full SKILL.md exceeds the local injection budget and is NOT fully inlined."
+            f"{fetch_line} Do not treat any preview as the complete skill.\n\n"
+            "<auto_skill_content_preview truncated=\"true\">\n"
+            f"{content[:MAX_CONTENT_CHARS].rstrip()}\n"
+            "</auto_skill_content_preview>"
+            f"{metrics_text}"
+        )
+        _log_routing_decision(prompt, "full", skill, reason="budget-truncated-honest")
+        _report_outcome(route, "injected")
+        return
 
     print(
+        f"{receipt_block}"
+        f"{policy_context}"
         f"[auto-skill] Route selected: {name}{risk_text}. Source: {url}\n\n"
         "Use the following SKILL.md content as active task-specific instructions for this turn. "
         "Apply it immediately unless it is missing, unusable, or unsafe.\n\n"

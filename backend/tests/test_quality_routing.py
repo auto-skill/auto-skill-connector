@@ -358,6 +358,197 @@ class RoutingTierTests(unittest.TestCase):
 
         self.assertEqual(tier_for_prompt("create an excel spreadsheet report with formulas", [candidate]), "hint")
 
+    def test_platform_name_token_overlap_does_not_waive_mismatch(self):
+        """Regression: shopify-storefront used to escape the trap via 'storefront'."""
+        cases = [
+            (
+                "build an ecommerce storefront for a handmade goods launch",
+                {
+                    "name": "shopify-storefront",
+                    "description": "Shopify platform help for storefronts, liquid themes, and API keys.",
+                    "platforms": ["shopify"],
+                    "tags": ["shopify"],
+                },
+            ),
+            (
+                "publish a blog website with categories and an about page",
+                {
+                    "name": "wordpress-blog-publisher",
+                    "description": "WordPress platform help for blogs, categories, publishing, and API keys.",
+                    "platforms": ["wordpress"],
+                    "tags": ["wordpress"],
+                },
+            ),
+            (
+                "add a payment form to my product page",
+                {
+                    "name": "stripe-payment-form",
+                    "description": "Stripe platform help for payment forms, API keys, and webhooks.",
+                    "platforms": ["stripe"],
+                    "tags": ["stripe"],
+                },
+            ),
+            (
+                "organize meeting notes into a project tracker",
+                {
+                    "name": "notion-project-tracker",
+                    "description": "Notion platform help for notes, project trackers, and sync.",
+                    "platforms": ["notion"],
+                    "tags": ["notion"],
+                },
+            ),
+        ]
+        for prompt, base in cases:
+            with self.subTest(name=base["name"]):
+                candidate = {
+                    **base,
+                    "quality_status": "active",
+                    "quality_score": 90,
+                    "rank": 1.0,
+                    "similarity": 0.95,
+                }
+                ranked = rerank_candidates(prompt, [candidate])
+                self.assertTrue(ranked[0]["platform_mismatch"])
+                self.assertEqual(tier_for_prompt(prompt, [candidate]), "hint")
+
+    def test_generic_capability_beats_mismatched_platform_skill(self):
+        prompt = "build an ecommerce storefront for a handmade goods launch"
+        candidates = [
+            {
+                "name": "shopify-storefront",
+                "description": "Shopify platform help for storefronts, liquid themes, and API keys.",
+                "platforms": ["shopify"],
+                "quality_status": "active",
+                "quality_score": 90,
+                "rank": 1.0,
+                "similarity": 0.95,
+                "stars": 50,
+                "source": "github_skill_file",
+            },
+            {
+                "name": "ecommerce-storefront-builder",
+                "description": "Create ecommerce storefronts for handmade goods launches with catalogs.",
+                "platforms": [],
+                "quality_status": "active",
+                "quality_score": 90,
+                "rank": 0.03,
+                "similarity": 0.90,
+                "stars": 40,
+                "source": "github_skill_file",
+            },
+        ]
+
+        ranked = rerank_candidates(prompt, candidates)
+
+        self.assertEqual(ranked[0]["name"], "ecommerce-storefront-builder")
+        self.assertTrue(ranked[1]["platform_mismatch"])
+        # Mismatched runner's higher cosine must not ambiguity-cap the winner.
+        self.assertEqual(tier_for_prompt(prompt, candidates), "full")
+
+    def test_close_specialists_stay_hint(self):
+        prompt = "create a monthly sales report with charts and a summary table"
+        candidates = [
+            {
+                "name": "finance-report",
+                "description": "Monthly financial report with revenue charts and a summary table.",
+                "quality_status": "active",
+                "quality_score": 90,
+                "rank": 0.5,
+                "similarity": 0.92,
+            },
+            {
+                "name": "sales-summary-helper",
+                "description": "Monthly sales report with charts and a summary table.",
+                "quality_status": "active",
+                "quality_score": 90,
+                "rank": 0.49,
+                "similarity": 0.915,
+            },
+        ]
+
+        self.assertEqual(tier_for_prompt(prompt, candidates), "hint")
+
+
+class TaskContractRoutingTests(unittest.TestCase):
+    def test_policy_lane_excludes_ponytail_from_primary(self):
+        from recommender import candidate_matches_task_contract, skill_role
+
+        ponytail = {
+            "name": "ponytail",
+            "description": "Always-on coding policy with a minimal safe decision ladder.",
+            "category": "policy",
+            "platforms": [],
+        }
+        specialist = {
+            "name": "frontend-design",
+            "description": "Create polished frontend UI components and layouts.",
+            "platforms": [],
+        }
+
+        self.assertEqual(skill_role(ponytail), "policy")
+        self.assertFalse(
+            candidate_matches_task_contract("refactor this React component to use hooks", ponytail)
+        )
+        self.assertTrue(
+            candidate_matches_task_contract("refactor this React component to use hooks", specialist)
+        )
+
+    def test_integration_requires_platform_signal_not_generic_verb(self):
+        from recommender import candidate_matches_task_contract
+
+        wordpress = {
+            "name": "wordpress-blog-publisher",
+            "description": "WordPress platform help for blogs and publishing.",
+            "platforms": ["wordpress"],
+            "category": "integration",
+        }
+        slack = {
+            "name": "slack-messenger",
+            "description": "Send Slack messages from an agent.",
+            "platforms": ["slack"],
+            "category": "integration",
+        }
+
+        self.assertFalse(
+            candidate_matches_task_contract(
+                "publish a blog website with categories and an about page", wordpress
+            )
+        )
+        self.assertFalse(
+            candidate_matches_task_contract(
+                "build a customer dashboard for weekly reports", wordpress
+            )
+        )
+        self.assertTrue(
+            candidate_matches_task_contract("send slack messages from my agent", slack)
+        )
+        self.assertTrue(
+            candidate_matches_task_contract("fix my WordPress categories plugin", wordpress)
+        )
+
+
+class FailurePackInventoryTests(unittest.TestCase):
+    def test_failure_pack_covers_required_categories(self):
+        from pathlib import Path
+
+        from eval_search import _load_route_cases
+
+        path = Path(__file__).resolve().parents[1] / "evals" / "failure_pack.jsonl"
+        cases = _load_route_cases(path)
+        tags = {tag for case in cases for tag in case["tags"]}
+
+        for required in (
+            "platform-trap",
+            "platform-explicit",
+            "generic-vs-platform",
+            "policy-lane",
+            "integration-gate",
+            "ambiguous-hint",
+            "negative",
+        ):
+            self.assertIn(required, tags)
+        self.assertGreaterEqual(len(cases), 12)
+
 
 if __name__ == "__main__":
     unittest.main()

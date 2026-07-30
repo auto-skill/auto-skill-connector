@@ -49,12 +49,19 @@ def _retrieval_row(skill_id: str, **overrides) -> dict:
 
 
 class HybridRetrievalRecallTests(unittest.TestCase):
+    # This session added two more fusion channels to hybrid_search_skills
+    # (vector_search_tools, _fast_path_matches) alongside the two these tests
+    # already mock -- neutralize both by default so a real, uninitialized
+    # sqlite connection is never touched and these tests keep exercising only
+    # the FTS/skill-vector lanes they're actually about.
     @patch("local_store.quality.meaningfulness_components", return_value={"prominence": 0, "provenance": 0, "meaningfulness": 0})
     @patch("local_store.quality.dedupe_by_content_hash", side_effect=lambda rows: rows)
+    @patch("local_store._fast_path_matches", return_value={})
+    @patch("local_store.vector_search_tools", return_value=[])
     @patch("local_store.vector_search_skills")
     @patch("local_store.search_skills_fts")
     def test_global_vector_lane_can_recover_specialist_outside_lexical_candidates(
-        self, search_fts, vector_search, _dedupe, _components
+        self, search_fts, vector_search, _tool_vec, _fast_path, _dedupe, _components
     ) -> None:
         search_fts.return_value = [_retrieval_row(f"decoy-{index}") for index in range(60)]
         vector_search.return_value = [_retrieval_row("semantic-specialist", rank=0.93)]
@@ -67,10 +74,12 @@ class HybridRetrievalRecallTests(unittest.TestCase):
 
     @patch("local_store.quality.meaningfulness_components", return_value={"prominence": 0, "provenance": 0, "meaningfulness": 0})
     @patch("local_store.quality.dedupe_by_content_hash", side_effect=lambda rows: rows)
+    @patch("local_store._fast_path_matches", return_value={})
+    @patch("local_store.vector_search_tools", return_value=[])
     @patch("local_store.vector_search_skills")
     @patch("local_store.search_skills_fts")
     def test_embedding_lane_retains_active_pending_embedding_and_excludes_prompt_dumps(
-        self, search_fts, vector_search, _dedupe, _components
+        self, search_fts, vector_search, _tool_vec, _fast_path, _dedupe, _components
     ) -> None:
         search_fts.return_value = [
             _retrieval_row("lexical-only"),
@@ -84,18 +93,23 @@ class HybridRetrievalRecallTests(unittest.TestCase):
 
         results = local_store.hybrid_search_skills("specialized task", [0.1] * 384, 10)
 
+        # metadata_only is discovery-eligible this session (quality.ACTIVE_STATUSES,
+        # not active-only) -- it surfaces in the fused set alongside the two
+        # active rows now, still subject to the same description-length bound.
         self.assertEqual(
             [row["id"] for row in results],
-            ["semantic-specialist", "lexical-only"],
+            ["semantic-specialist", "metadata", "lexical-only"],
         )
-        self.assertIsNone(results[1]["similarity"])
+        self.assertIsNone(results[-1]["similarity"])
 
     @patch("local_store.quality.meaningfulness_components", return_value={"prominence": 0, "provenance": 0, "meaningfulness": 0})
     @patch("local_store.quality.dedupe_by_content_hash", side_effect=lambda rows: rows)
+    @patch("local_store._fast_path_matches", return_value={})
+    @patch("local_store.vector_search_tools", return_value=[])
     @patch("local_store.vector_search_skills")
     @patch("local_store.search_skills_fts")
     def test_pending_fts_saturation_cannot_truncate_semantic_lane(
-        self, search_fts, vector_search, _dedupe, _components
+        self, search_fts, vector_search, _tool_vec, _fast_path, _dedupe, _components
     ) -> None:
         search_fts.return_value = [
             _retrieval_row(f"pending-{index}") for index in range(60)
@@ -116,9 +130,10 @@ class HybridRetrievalRecallTests(unittest.TestCase):
 
     @patch("local_store.quality.meaningfulness_components", return_value={"prominence": 0, "provenance": 0, "meaningfulness": 0})
     @patch("local_store.quality.dedupe_by_content_hash", side_effect=lambda rows: rows)
+    @patch("local_store._fast_path_matches", return_value={})
     @patch("local_store.search_skills_fts")
     def test_bounded_active_fts_remains_available_when_embedding_fails(
-        self, search_fts, _dedupe, _components
+        self, search_fts, _fast_path, _dedupe, _components
     ) -> None:
         search_fts.return_value = [
             _retrieval_row("active-fallback"),
@@ -128,7 +143,10 @@ class HybridRetrievalRecallTests(unittest.TestCase):
 
         results = local_store.hybrid_search_skills("specialized task", None, 10)
 
-        self.assertEqual([row["id"] for row in results], ["active-fallback"])
+        # metadata_only is discovery-eligible this session -- it's no longer
+        # excluded from the fused set, just from full/inject tier (a
+        # separate, unchanged gate in quality.tier_for_ranked_candidates).
+        self.assertEqual([row["id"] for row in results], ["active-fallback", "metadata"])
 
 
 class RouteEventPrivacyTests(unittest.TestCase):
@@ -560,6 +578,151 @@ class RecomputeFeedbackScoresTests(unittest.TestCase):
 
         self.assertEqual(len(results), 1)
         self.assertIn(results[0]["id"], {"spreadsheet-a", "spreadsheet-b"})
+
+    def test_fts_finds_skills_by_capability_summary_and_triggers_alone(self) -> None:
+        """A metadata_only MCP server's name/description is often a thin
+        registry blurb; the real signal lives in capability_summary/triggers
+        (see scraper.scan_skill stage 3). FTS must index those columns too,
+        not just name/description/tags."""
+        conn = local_store.get_conn()
+        try:
+            conn.execute(
+                """
+                INSERT INTO skills
+                    (id, name, description, source, url, content_hash, quality_status, quality_score,
+                     capability_summary, triggers)
+                VALUES (?, ?, ?, 'test', ?, 'hash-mcp', 'metadata_only', 40, ?, ?)
+                """,
+                (
+                    "mcp-server",
+                    "acme-mcp",
+                    "A remote MCP server.",
+                    "https://example.com/mcp-server",
+                    "Lets an agent query flibbertigibbet widget telemetry over a websocket.",
+                    json.dumps(["querying flibbertigibbet widget telemetry"]),
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        results = local_store.search_skills_fts("flibbertigibbet widget telemetry", max_results=5)
+
+        self.assertEqual([r["id"] for r in results], ["mcp-server"])
+
+    def test_vector_search_tools_rolls_up_to_best_tool_per_skill(self) -> None:
+        conn = local_store.get_conn()
+        try:
+            _insert_skill(conn, "multi-tool-server", "hash-multi-tool")
+            conn.execute(
+                "UPDATE skills SET quality_status='metadata_only' WHERE id='multi-tool-server'"
+            )
+            tools = [
+                ("get_weather", [1.0, 0.0, 0.0] + [0.0] * 381),
+                ("send_email", [0.0, 1.0, 0.0] + [0.0] * 381),
+                ("list_files", [0.0, 0.0, 1.0] + [0.0] * 381),
+            ]
+            for name, vec in tools:
+                conn.execute(
+                    "INSERT INTO skill_tools (id, skill_url, tool_name, tool_description, embedding, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (
+                        str(uuid.uuid4()),
+                        "https://example.com/multi-tool-server",
+                        name,
+                        f"Tool: {name}",
+                        local_store.pack_embedding(vec),
+                        local_store._now(),
+                    ),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+
+        query = [0.0, 1.0, 0.0] + [0.0] * 381  # matches send_email exactly
+        results = local_store.vector_search_tools(query, match_count=5)
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["id"], "multi-tool-server")
+        self.assertEqual(results[0]["matched_tool"], "send_email")
+        self.assertAlmostEqual(results[0]["rank"], 1.0, places=5)
+
+    def test_hybrid_search_surfaces_skill_via_tool_only_match(self) -> None:
+        """A skill with no matching keywords/skill-level embedding should
+        still surface if one of its tools matches the query well -- this is
+        the whole point of the per-tool channel."""
+        conn = local_store.get_conn()
+        try:
+            conn.execute(
+                "INSERT INTO skills (id, name, description, source, url, content_hash, quality_status, quality_score, risk_score) "
+                "VALUES ('tool-only-skill', 'zzz-unrelated-name', 'completely unrelated filler text', 'test', "
+                "'https://example.com/tool-only-skill', 'hash-tool-only', 'metadata_only', 80, 0)"
+            )
+            conn.execute(
+                "INSERT INTO skill_tools (id, skill_url, tool_name, tool_description, embedding, created_at) "
+                "VALUES (?, 'https://example.com/tool-only-skill', 'exact_match_tool', 'does the exact thing', ?, ?)",
+                (str(uuid.uuid4()), local_store.pack_embedding([1.0] + [0.0] * 383), local_store._now()),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        query = [1.0] + [0.0] * 383
+        results = local_store.hybrid_search_skills("unrelated query text with no overlap", query, match_count=10)
+
+        self.assertIn("tool-only-skill", [r["id"] for r in results])
+
+    def test_fast_path_forces_inclusion_of_trigger_match_missed_by_fts_and_vector(self) -> None:
+        conn = local_store.get_conn()
+        try:
+            conn.execute(
+                "INSERT INTO skills (id, name, description, source, url, content_hash, quality_status, quality_score, risk_score, triggers) "
+                "VALUES ('trigger-only-skill', 'zzz-unrelated', 'nothing in common with the query text', 'test', "
+                "'https://example.com/trigger-only-skill', 'hash-trigger-only', 'active', 80, 0, ?)",
+                (json.dumps(["flibbertigibbet widget telemetry export"]),),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        local_store.warm_lexical_index()  # also warms the fast-path index
+
+        results = local_store.hybrid_search_skills(
+            "please export the flibbertigibbet widget telemetry", None, match_count=10
+        )
+
+        self.assertIn("trigger-only-skill", [r["id"] for r in results])
+
+    def test_hybrid_search_vector_channel_is_not_restricted_to_fts_hits(self) -> None:
+        """Regression test for the FTS-gates-vector bug: hybrid_search_skills
+        used to restrict the vector channel to FTS's candidate set whenever
+        FTS found >=10 hits, so a semantically on-target skill sharing no
+        keywords with the query could never surface via the vector channel.
+        vector_search_skills must be called without candidate_ids."""
+        conn = local_store.get_conn()
+        try:
+            for i in range(12):
+                _insert_skill(conn, f"keyword-match-{i}", f"hash-kw-{i}")
+                conn.execute(
+                    "UPDATE skills SET description=? WHERE id=?",
+                    ("banana banana banana banana", f"keyword-match-{i}"),
+                )
+            _insert_skill(conn, "semantic-only-match", "hash-semantic")
+            conn.commit()
+        finally:
+            conn.close()
+
+        captured = {}
+        real_vector_search = local_store.vector_search_skills
+
+        def spy(query_embedding, match_count=10, candidate_ids=None):
+            captured["candidate_ids"] = candidate_ids
+            return real_vector_search(query_embedding, match_count, candidate_ids=candidate_ids)
+
+        with patch.object(local_store, "vector_search_skills", side_effect=spy):
+            local_store.hybrid_search_skills("banana", [0.1] * 384, match_count=5)
+
+        self.assertIsNone(captured["candidate_ids"])
 
     def test_top_scored_skill_ids_matches_legacy_score_then_id_order(self) -> None:
         scores = {

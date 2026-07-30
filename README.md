@@ -3,25 +3,31 @@
 Just-in-time skill orchestration for Claude Code, Codex, Cursor, and GitHub
 Copilot. No skill installation required.
 
-Auto-Skill classifies a privacy-minimized task, chooses an ordered skill plan,
-fetches verified instructions from its hosted catalog, and supplies only the
-bounded context needed for that turn. A plan can combine an always-on policy
-with a task specialist—for example, Ponytail for minimal safe code plus
-frontend-design for a React interface—without making either skill compete for
-the same ranking slot.
+Auto-Skill is a trusted router and a skill creator. It classifies a
+privacy-minimized task, chooses an ordered skill plan, fetches verified
+instructions from its hosted catalog, and supplies only the bounded context
+needed for that turn. A plan can combine an always-on policy with a task
+specialist—for example, Ponytail for minimal safe code plus frontend-design
+for a React interface—without making either skill compete for the same ranking
+slot. Separately, `skill-creator` turns team standards into portable Agent
+Skills that every supported client can pick up.
 
-Auto-Skill is not another skill directory. Its product is the universal
-router: deciding which guidance matters now, composing compatible skills, and
-delivering them safely at runtime.
+Auto-Skill is not another skill directory. Catalog breadth is an input, not the
+moat: the product is deciding which guidance matters now, composing compatible
+skills, delivering them safely at runtime, and helping teams author skills
+they can trust.
 
 ## Launch Scope
 
 What ships now:
 
+- Hosted routing that requires login. Free accounts get **100 authenticated
+  routes/month** (`AUTOSKILL_FREE_ROUTES_PER_MONTH`). CLI tokens use a
+  **30-day sliding** TTL (refreshes on use; idle 30 days requires re-login).
 - Deterministic task-family classification, role-aware ranking, and platform
   gates.
-- Ordered multi-skill plans: task-family policies first, one primary
-  specialist, then bounded supporting skills as the plan contract expands.
+- Ordered `skill_plan` with **two slots today**: a task-family policy plus one
+  primary specialist. A third supporting slot is deferred.
 - A curated Ponytail coding-policy lane. Policy skills cannot self-promote into
   this lane through semantic similarity alone.
 - Integration skills require an explicit integration, service, or platform
@@ -30,11 +36,14 @@ What ships now:
 - Full in-turn use only for high-confidence, risk-0 public content whose
   canonical hash and returned raw digest verify; ambiguous matches return hints.
 - Explicit search, route, and preview commands for inspection and testing.
-- An optional Claude Code prompt adapter for users who deliberately enable Auto
-  Mode.
+- Optional Auto Mode adapters for **Claude Code** (`auto-skill enable-hook`)
+  and **Codex CLI** (`auto-skill enable-hook --target codex`).
 - A hosted MCP connector that asks capable clients to preflight substantial
   tasks proactively using concise summaries, with no skill/filesystem writes;
-  optional enum-only route feedback.
+  optional enum-only route feedback. Cursor and Copilot stay on this MCP path
+  for inject (vendor hook limits).
+- Skill authoring via `skills/skill-creator` (validate + install into repo
+  standards).
 - Health, readiness, eval, smoke-test, backup, and deploy checks.
 - No server-side retention of raw prompts or prompt snippets.
 
@@ -46,15 +55,18 @@ skill.
 
 Not shipped yet:
 
-- Supporting-skill selection beyond the current policy + primary-specialist
-  slice.
+- A third supporting-skill slot beyond policy + primary.
 - A one-time publisher/permission trust policy.
 - Publisher identity verification or signed releases.
 - Managed local skill installation, updates, uninstall, or rollback. These are
   unnecessary for normal just-in-time routing.
-- Auto Mode adapters for Codex or Cursor.
+- Raw-prompt Auto Mode inject for Cursor or GitHub Copilot (blocked on vendor
+  hook APIs; MCP proactive task-summary routing still works).
 - Complete installation of skill bundles that require scripts, dependencies,
   references, or assets.
+
+Pro and Team plan features exist in code (see `PRICING.md`) but stay quiet in
+launch copy until P1 trust work lands.
 
 ## Client Compatibility
 
@@ -63,10 +75,10 @@ catalog skills into each client's native skill directory.
 
 | Client | Current delivery path | Skill install required? |
 | --- | --- | --- |
-| Claude Code | Hosted/local MCP; optional prompt adapter | No |
-| Codex | Hosted/local MCP proactive task-summary routing | No |
-| Cursor | Hosted/local MCP proactive task-summary routing | No |
-| GitHub Copilot | Local MCP proactive task-summary routing | No |
+| Claude Code | Hosted/local MCP; optional Auto Mode adapter | No |
+| Codex | Hosted/local MCP; optional Auto Mode adapter (`--target codex`) | No |
+| Cursor | Hosted/local MCP proactive task-summary routing (no inject hook yet) | No |
+| GitHub Copilot | Local MCP proactive task-summary routing (no inject hook yet) | No |
 
 Repository-owned skills and always-on instruction files still take precedence.
 That lets teams keep their non-negotiable standards local while Auto-Skill
@@ -207,6 +219,9 @@ python -m venv .venv
 auto-skill login
 ```
 
+`login` is required for hosted routing. Free accounts get 100 routes/month;
+the CLI token is a 30-day sliding session (refreshes on use).
+
 Start in explicit mode:
 
 ```bash
@@ -229,9 +244,16 @@ auto-skill preview "<task-or-url>"
 auto-skill feedback "<route-id>" used
 auto-skill metrics --base-url http://127.0.0.1:8000
 auto-skill doctor
+auto-skill login
 auto-skill enable-hook
+auto-skill enable-hook --target codex
 auto-skill disable-hook
+auto-skill disable-hook --target codex
 ```
+
+Hosted `search` / `route` / MCP routing requires `auto-skill login`. The CLI
+token is a **30-day sliding** session: each successful use refreshes expiry;
+30 days idle means re-login. Free accounts are limited to **100 routes/month**.
 
 `route-prompt` accepts raw prompt text and sends an eligible prompt to the
 configured router. It is intended for an explicitly enabled adapter or manual
@@ -302,6 +324,24 @@ under the standard's authority.
 
 ## MCP
 
+### In-chat route card (Cursor → Claude → Codex)
+
+When routing runs, clients show a homepage-shaped **AUTO-SKILL** markdown card
+inside the agent transcript (not a separate floating window). The card lists
+the ordered 2-slot plan (policy, then primary) and truthful verification chips.
+MCP tools return that card **first**, then APPLY text, then a compact JSON
+block the model uses for `skill_content` / capsules.
+
+| Client | How the card appears |
+| --- | --- |
+| **Cursor** (first) | Connect Auto-Skill MCP. `route_task` tool results render the card in the agent sidebar. This repo ships `.cursor/rules/auto-skill-route-card.mdc` so the agent calls once and leaves the card visible. |
+| **Claude Code** | Same MCP card, plus Auto Mode: `auto-skill enable-hook` injects the markdown card into the turn context. |
+| **Codex CLI** | Same MCP card, plus `auto-skill enable-hook --target codex` (same hook script as Claude). |
+| GitHub Copilot | MCP card only (no prompt-inject hook yet). |
+
+This is text UI inside the chat/tool panel. Cursor and Claude do not allow
+third-party HTML widgets inside the agent chrome.
+
 ### Claude Code local MCP
 
 ```bash
@@ -353,8 +393,9 @@ connector is untested; use the local stdio server with Copilot for now.
 
 - `route_task(task)` classifies a cleaned-up, privacy-minimized task and
   returns an ordered `skill_plan` plus `full`, `hint`, or no-route delivery.
-  A full coding plan can contain a verified policy and a separate primary
-  specialist. Large instructions are reduced to bounded context capsules.
+  Today's full coding plan is a verified policy plus a separate primary
+  specialist (supporting slot deferred). Large instructions are reduced to
+  bounded context capsules.
 - `route_prompt(prompt)` locally preflights a raw prompt, then routes only when
   it is task-shaped.
 - `record_feedback(route_id, outcome)` records an enum-only privacy-safe
@@ -414,20 +455,22 @@ ingress:
   - service: http_status:404
 ```
 
-## Optional Claude Code Auto Mode Adapter
+## Optional Auto Mode Adapters
 
-Enable the adapter only after reading `SECURITY.md`:
+Enable an adapter only after reading `SECURITY.md`. Auto Mode is shipped for
+Claude Code and Codex CLI; Cursor and Copilot stay MCP-only for inject.
 
 ```bash
-auto-skill enable-hook
+auto-skill enable-hook                 # Claude Code (~/.claude/settings.json)
+auto-skill enable-hook --target codex  # Codex CLI (~/.codex/config.toml)
 ```
 
-The command shows a privacy notice and asks for confirmation. Once enabled,
+Each command shows a privacy notice and asks for confirmation. Once enabled,
 eligible prompt text is sent to the configured route service so it can select
 task-specific skill context. Neither the hosted backend nor the local routing
 log retains raw prompt text or snippets. Operational events retain only
 privacy-safe metadata such as prompt length, route tier, selected skill,
-latency, client/version, and outcome.
+latency, client/version, and outcome. Hosted routing still requires login.
 
 Local diagnostics are off by default. Set `AUTOSKILL_DIAGNOSTICS=1` only when
 you need a metadata-only routing log for troubleshooting. The current hook
@@ -442,17 +485,17 @@ IP address, or a machine fingerprint. Remove the file (or unset the variable)
 to reset/stop anonymous tracking. Account authentication always takes priority
 over the anonymous ID.
 
-Disable the adapter at any time:
+Disable at any time:
 
 ```bash
 auto-skill disable-hook
+auto-skill disable-hook --target codex
 ```
 
-There is no invisible prompt interceptor for Codex or Cursor. Their connected
-MCP models can proactively call `route_task`, but raw-prompt interception still
-requires a tested client-specific adapter.
-When a client cannot isolate a large skill, Auto-Skill falls back to a
-deterministic capsule rather than silently injecting the full document.
+Cursor and Copilot have no raw-prompt inject hook yet (vendor limit). Their
+connected MCP models can still proactively call `route_task`. When a client
+cannot isolate a large skill, Auto-Skill falls back to a deterministic capsule
+rather than silently injecting the full document.
 
 ## How Routing Works
 
@@ -467,19 +510,20 @@ Routing uses the service configured by `AUTOSKILL_URL`, defaulting to
    provenance, evaluation/feedback evidence, and a soft popularity prior.
 4. Gate integrations unless the task explicitly calls for an integration,
    service, platform, or external action.
-5. Verify hashes and static capabilities, then compose a bounded ordered plan.
+5. Verify hashes and static capabilities, then compose a bounded ordered plan
+   (policy + primary today; a supporting slot is deferred).
 
-The precedence order is user/project/team instructions, policy, primary
-specialist, then supporting skills. A conflict or failed verification removes
-the lower-trust item instead of blindly merging instructions. Routing never
-installs catalog skills or writes them to a client's skill directory.
+The precedence order is user/project/team instructions, then policy, then
+primary specialist. A conflict or failed verification removes the lower-trust
+item instead of blindly merging instructions. Routing never installs catalog
+skills or writes them to a client's skill directory.
 
 The response tiers are:
 
 - `full`: a verified plan whose active items cleared role, relevance, quality,
-  hash, and static-capability gates. A plan may contain both a task-family
-  policy and a primary specialist. Normal client permissions still govern all
-  tools and side effects.
+  hash, and static-capability gates. Today's plan is policy + primary
+  specialist. Normal client permissions still govern all tools and side
+  effects.
 - `hint`: an ambiguous, unverified, risky, incomplete, platform-specific, or
   capability-bearing match. The response contains metadata and up to three
   candidates, not active instructions.
@@ -519,9 +563,11 @@ checks documented in `backend/README.md` and `backend/RUNBOOK.md`.
 ## Intentionally Deferred
 
 The Ollama `/chat` recommender UI, broad web crawling as a product moat,
-consumer run analytics, mandatory accounts for public discovery, public remote
-installs, and `recommend_skill` are not launch priorities. Compatibility code
-may remain temporarily, but these surfaces are not the product contract.
+consumer run analytics, public remote installs, a third supporting-skill slot,
+hard-selling Pro/Team before P1 trust, and `recommend_skill` are not launch
+priorities. Compatibility code may remain temporarily, but these surfaces are
+not the product contract. Hosted routing already requires login (see Launch
+Scope).
 
 ## Security
 

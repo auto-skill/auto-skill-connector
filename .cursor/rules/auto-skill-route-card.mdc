@@ -1,0 +1,14 @@
+---
+description: Call Auto-Skill MCP route_task once on substantial work and keep the AUTO-SKILL card visible in chat
+alwaysApply: true
+---
+
+# Auto-Skill in-chat route card
+
+When the Auto-Skill MCP server is connected:
+
+1. Call `route_task` **once**, before other tools, on substantial work (coding, debug, deploy, docs, data, design). Skip acks, one-liners, and meta questions.
+2. Pass a short privacy-minimized task summary (no secrets, no pasted file dumps).
+3. The tool result starts with an `### AUTO-SKILL` markdown card. That card is the **user-visible routing UI** in this agent chat. Leave it visible — do not hide it, collapse it into a vague summary, or replace it with raw JSON narration.
+4. Apply the ordered plan (policy then primary, at most two slots) using `skill_content` / capsules from the JSON block under the card. Do not invent a third verify skill.
+5. Hint-tier results are suggestions only — not active instructions.

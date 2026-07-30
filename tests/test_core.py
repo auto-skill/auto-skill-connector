@@ -240,6 +240,7 @@ def test_route_task_payload_composes_policy_before_primary_skill() -> None:
                                 "description": "Minimal safe coding policy.",
                                 "url": "https://github.com/DietrichGebert/ponytail",
                                 "content_hash": "policy-hash",
+                                "risk_score": 0,
                                 "capsule": policy_capsule,
                                 "verification": {
                                     "content_hash_verified": True,
@@ -265,11 +266,25 @@ def test_route_task_payload_composes_policy_before_primary_skill() -> None:
     assert result["skill_plan"]["policy_skills"][0]["name"] == "ponytail"
     assert result["skill_plan"]["primary_skill"]["name"] == "frontend-design"
     assert result["route_summary"]["skill_count"] == 2
+    receipt = result["route_receipt"]
+    assert receipt == (
+        "AUTO-SKILL\n"
+        "2 skills routed\n"
+        "01  policy  ponytail\n"
+        "02  primary frontend-design\n"
+        "✓ verified | risk_score=0 | content-hash verified | static guidance only | no skill install"
+    )
     context = core.build_route_context(result)
+    assert context.startswith("### AUTO-SKILL\n")
+    assert "| policy | ponytail |" in context
+    assert "| primary | frontend-design |" in context
     assert "Task-family policy: ponytail" in context
     assert "Route selected: frontend-design" in context
+    assert context.index("### AUTO-SKILL") < context.index("Task-family policy: ponytail")
     assert context.index("Task-family policy: ponytail") < context.index("Route selected: frontend-design")
     assert policy_capsule in context
+    assert result["route_card_markdown"].startswith("### AUTO-SKILL")
+    assert "| primary | frontend-design |" in result["route_card_markdown"]
 
 
 def test_route_task_payload_downgrades_oversized_backend_content(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -289,20 +304,25 @@ def test_route_task_payload_downgrades_oversized_backend_content(monkeypatch: py
                         "name": "spreadsheet-router",
                         "description": "Create spreadsheet reports.",
                         "url": "https://github.com/example/skills/tree/main/spreadsheet",
+                        "content_hash": "a" * 64,
                         "route_score": 0.92,
                         "similarity": 0.92,
                         "risk_score": 0,
                         "verification": {"content_hash_verified": True, "static_instruction_only": True},
                     },
                     "content": VALID_SKILL + ("\n- Extra detailed workflow step." * 20),
+                    "content_url": "/content/" + "a" * 64,
                     "score_debug": {"tier": "full"},
                 },
             )
 
     result = asyncio.run(core.route_task_payload("make a spreadsheet", client=LargeRouteClient()))
     assert result["routed"] is True
-    assert result["route_type"] == "hint"
+    assert result["route_type"] == "capsule"
+    assert result["route_tier"] == "full"
     assert result["skill_content"] == ""
+    assert result["content_url"] == "/content/" + "a" * 64
+    assert "NOT treat any inlined excerpt as the complete" in result["instructions"]
     assert "injection budget" in result["warnings"][0]
 
 

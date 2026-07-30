@@ -27,8 +27,8 @@ class PlanStoreTests(unittest.TestCase):
         user = local_store.get_or_create_user("a@example.com", "A", None)
         self.assertEqual(user.get("plan"), "free")
 
-    def test_default_free_route_quota_is_250(self) -> None:
-        self.assertEqual(local_store.FREE_ROUTES_PER_MONTH, 250)
+    def test_default_free_route_quota_is_100(self) -> None:
+        self.assertEqual(local_store.FREE_ROUTES_PER_MONTH, 100)
 
     def test_set_user_plan(self) -> None:
         local_store.get_or_create_user("a@example.com", "A", None)

@@ -108,7 +108,12 @@
     }
     async function revoke(id){const reason=prompt('Reason for revocation:');if(!reason)return;try{await api('/admin/entitlements/'+encodeURIComponent(id)+'/revoke',{method:'POST',body:JSON.stringify({reason})});await Promise.all([searchUsers(),loadOverview(),loadAudit()]);setStatus('Complimentary access revoked')}catch(e){setStatus(e.message,true)}}
     async function start(){if(!token)return;$('auth-panel').hidden=true;$('app').hidden=false;try{await Promise.all([loadOverview(),searchUsers(),loadAudit()]);setStatus('Operational data loaded')}catch(e){$('app').hidden=true;$('auth-panel').hidden=false;setStatus(e.message,true)}}
-    $('save-token').addEventListener('click',()=>{token=$('token').value.trim();if(!token)return;sessionStorage.setItem(storageKey,token);$('token').value='';start()});
+    $('save-token').addEventListener('click',()=>{
+      const raw=$('token').value.trim();
+      if(!raw)return;
+      if(!/^[A-Za-z0-9_-]+$/.test(raw)){setStatus('Token contains characters an Auto-Skill token never has (likely a copy/paste artifact like a smart quote or hidden character) -- re-copy it from the source and paste again.',true);return}
+      token=raw;sessionStorage.setItem(storageKey,token);$('token').value='';start();
+    });
     $('forget').addEventListener('click',()=>{sessionStorage.removeItem(storageKey);token='';$('app').hidden=true;$('auth-panel').hidden=false;setStatus('Token forgotten')});
     $('search-button').addEventListener('click',()=>searchUsers().catch(e=>setStatus(e.message,true)));
     $('search').addEventListener('keydown',e=>{if(e.key==='Enter')searchUsers().catch(err=>setStatus(err.message,true))});

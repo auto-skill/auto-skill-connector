@@ -27,6 +27,6 @@ jobs:
       - name: Compile launch-critical modules
         run: >
           python -m py_compile
-          auto_skill_core.py auto_skill_cli.py mcp_server.py hooks/skill_suggest.py
+          auto_skill_core.py auto_skill_cli.py auto_skill_receipt.py mcp_server.py hooks/skill_suggest.py
           scripts/live_smoke.py scripts/check_backend_subtree.py
           tests/test_core.py tests/test_cli.py tests/test_hook_parity.py

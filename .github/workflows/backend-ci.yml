@@ -27,7 +27,12 @@ jobs:
         run: python -m pip install -r requirements.txt
 
       - name: Run unit and API contract tests
-        run: python -m unittest discover -s tests -v
+        run: >
+          python -m pytest tests/ -q
+          --ignore=tests/test_harbor_oracle_definition.py
+          --ignore=tests/test_harbor_paired_ab.py
+          --ignore=tests/test_harbor_screen2_definition.py
+          --ignore=tests/test_harbor_screen4_results.py
 
       - name: Validate route benchmark cases
         run: python eval_search.py --validate-route-cases

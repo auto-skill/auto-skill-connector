@@ -270,3 +270,64 @@ def compile_capsule(
         destructive_actions=destructive,
         external_actions=external,
     )
+
+
+# --- Uncapped safety strip (auto-skill-connector session) ------------------
+# compile_capsule() above bounds output to MAX_CAPSULE_CHARS and keeps only
+# "action-shaped" lines, both in service of fitting a fixed procedural
+# digest. This session's tiering keeps quality.tier_for_ranked_candidates as
+# the sole full/hint/none decision (see quality.py) rather than the
+# capsule-digest allowlist compile_capsule was built for -- so a "full" tier
+# result should deliver the whole curated, already-safety-reviewed skill, not
+# a bounded procedure extract. strip_unsafe_content() reuses this module's
+# credential/meta-control detection (the actual safety property) without the
+# budget or the prose-dropping action-line filter, which existed only to fit
+# that budget.
+STRIP_VERSION = "uncapped-safety-strip-v1"
+
+
+@dataclass(frozen=True)
+class StrippedContent:
+    text: str
+    removed_credential_lines: int
+    removed_meta_lines: int
+    destructive_actions: bool
+    external_actions: bool
+    strip_version: str = STRIP_VERSION
+
+    def as_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+def strip_unsafe_content(content: str) -> StrippedContent:
+    """Drop credential-shaped and prompt-injection/meta-control lines from
+    curated skill content; flag (never strip) destructive/external actions.
+    Everything else -- prose, headings, examples, non-"action-shaped" lines
+    -- is preserved verbatim, including code fences. No length budget."""
+    removed_credentials = 0
+    removed_meta = 0
+    destructive = False
+    external = False
+    out_lines: list[str] = []
+    for raw_line in (content or "").splitlines():
+        if _CREDENTIAL_RE.search(raw_line):
+            removed_credentials += 1
+            out_lines.append("[redacted: credential-like content removed]")
+            continue
+        if _META_CONTROL_RE.search(raw_line):
+            removed_meta += 1
+            out_lines.append("[redacted: agent-control/meta-instruction content removed]")
+            continue
+        destructive = destructive or bool(_DESTRUCTIVE_RE.search(raw_line))
+        external = external or bool(_EXTERNAL_RE.search(raw_line))
+        out_lines.append(raw_line)
+    text = "\n".join(out_lines)
+    if content and content.endswith("\n"):
+        text += "\n"
+    return StrippedContent(
+        text=text,
+        removed_credential_lines=removed_credentials,
+        removed_meta_lines=removed_meta,
+        destructive_actions=destructive,
+        external_actions=external,
+    )

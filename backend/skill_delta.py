@@ -50,9 +50,11 @@ MAX_RECORDS = 250_000
 # actually hold a package this size.
 MAX_COMPRESSED_MEMBER_BYTES = 1024 * 1024 * 1024
 MAX_UNCOMPRESSED_MEMBER_BYTES = 2 * 1024 * 1024 * 1024
-MAX_CONTENT_CHARS = 100_000
+# Keep delta packages aligned with the library ingest ceiling — never silently
+# truncate SKILL.md bodies on export/import.
+MAX_CONTENT_CHARS = quality.MAX_SKILL_CONTENT_CHARS
 
-JSON_FIELDS = frozenset({"tags", "risk_flags", "quality_reasons", "platforms"})
+JSON_FIELDS = frozenset({"tags", "risk_flags", "quality_reasons", "platforms", "triggers"})
 SKILL_FIELDS = (
     "name",
     "description",
@@ -74,12 +76,21 @@ SKILL_FIELDS = (
     "platforms",
     "category",
     "capability_summary",
+    "triggers",
     "embedding_text_hash",
     "embedded_at",
 )
 PACKAGE_FIELDS = frozenset((*SKILL_FIELDS, "embedding_b64"))
 UPDATE_FIELDS = tuple(field for field in SKILL_FIELDS if field not in {"url", "discovered_at"})
-QUALITY_STATUSES = frozenset({"active"})
+# active + metadata_only (quality.ACTIVE_STATUSES): discovery/indexing-eligible
+# skills, not just auto-injectable ones. A metadata_only MCP server now has a
+# real capability_summary/embedding computed locally (see scraper.scan_skill)
+# and must reach production through this same sync path, or all of that
+# ingestion work never becomes recommendable outside the collector machine.
+# quality.tier_for_ranked_candidates is the actual injection-safety gate and
+# is untouched by this -- packaging a metadata_only skill here still never
+# makes it eligible for "full" tier delivery.
+QUALITY_STATUSES = quality.ACTIVE_STATUSES
 
 
 class SkillDeltaError(ValueError):
@@ -214,7 +225,7 @@ def _validate_skill(record: dict) -> dict:
     clean["canonical_id"] = _validate_text(clean.get("canonical_id"), "canonical_id", 2048)
     clean["category"] = _validate_text(clean.get("category"), "category", 200)
     if clean.get("quality_status") not in QUALITY_STATUSES:
-        raise SkillDeltaError("packages may contain only active skills")
+        raise SkillDeltaError("packages may contain only active or metadata_only skills")
     for field in JSON_FIELDS:
         clean[field] = _decode_json_field(clean.get(field, []), field)
     for field in ("risk_score", "quality_score"):
@@ -348,7 +359,7 @@ def load_package(path: Path) -> LoadedPackage:
             },
             content,
         )
-        if assessed.get("quality_status") != "active":
+        if assessed.get("quality_status") not in QUALITY_STATUSES:
             raise SkillDeltaError(f"packaged content does not pass the current quality gate: {skill['url']}")
         if skill.get("content_hash") != assessed.get("content_hash"):
             raise SkillDeltaError(f"skill content_hash does not match reviewed content: {skill['url']}")
@@ -388,7 +399,10 @@ def _library_filenames(library_dir: Path) -> dict[str, str]:
 
 
 def _read_library_file(files_root: Path, filename: str) -> str:
-    return (files_root / filename).read_text(encoding="utf-8", errors="replace")[:MAX_CONTENT_CHARS]
+    # Full body only — truncation here would ship incomplete artifacts while
+    # still looking like a successful export.
+    text = (files_root / filename).read_text(encoding="utf-8", errors="replace")
+    return quality.canonicalize_skill_content(text)
 
 
 def export_package(db_path: Path, library_dir: Path, output: Path) -> dict:
@@ -586,7 +600,7 @@ def _write_library(library_dir: Path, package: LoadedPackage) -> None:
             "source": record["source"],
             "url": url,
             "description": record.get("description"),
-            "content_hash": record.get("content_hash") or _sha256(content.encode("utf-8")),
+            "content_hash": record.get("content_hash") or quality.content_hash(content),
             "file": filename,
             "saved_at": _utc_now(),
         }

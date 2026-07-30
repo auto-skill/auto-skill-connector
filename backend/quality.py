@@ -12,10 +12,13 @@ import math
 import re
 from typing import Any
 
-CONFIG_VERSION = "quality-routing-v9-skills-sh-live-gate"
+CONFIG_VERSION = "quality-routing-v10-package-record-skills-sh-mirror"
 MEANINGFULNESS_VERSION = "meaningfulness-v1"
 MIN_CONTENT_CHARS = 180
 MIN_BODY_WORDS = 35
+# Hard ceiling for a single SKILL.md body. Oversized files are rejected, never
+# silently truncated — the library must store the complete accepted artifact.
+MAX_SKILL_CONTENT_CHARS = 500_000
 MIN_MEANINGFULNESS = 0.55
 MIN_QUALITY_FOR_FULL = 70
 MIN_TRUST_PROVENANCE = 0.55
@@ -71,26 +74,6 @@ PLATFORM_SPECIFIC_MARKERS = (
     "wont publish",
     "not syncing",
     "use when your",
-)
-
-BODY_CUES = (
-    "use when",
-    "when the user",
-    "you should",
-    "must",
-    "do not",
-    "workflow",
-    "steps",
-    "instructions",
-    "create",
-    "generate",
-    "analyze",
-    "edit",
-    "build",
-    "write",
-    "run",
-    "verify",
-    "output",
 )
 
 NAME_STOPWORDS = {
@@ -166,9 +149,23 @@ META_PATTERNS = (
 META_EXACT = {"status", "summarize", "explain this"}
 
 
+def canonicalize_skill_content(text: str) -> str:
+    """On-disk/library form: strip BOM, normalize newlines to LF, keep full body.
+
+    Does not collapse whitespace or alter casing — those belong only in
+    ``normalize_content`` for hashing. Accepted skills must round-trip through
+    save → hash → reload as this complete body.
+    """
+    if not text:
+        return ""
+    if text.startswith("\ufeff"):
+        text = text[1:]
+    return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
 def normalize_content(text: str) -> str:
     """Stable normalization for dedupe hashes."""
-    text = text.replace("\r\n", "\n").replace("\r", "\n").strip()
+    text = canonicalize_skill_content(text).strip()
     text = re.sub(r"(?im)^(updated_at|version|date):\s*.+$", "", text)
     return re.sub(r"\s+", " ", text).strip().lower()
 
@@ -276,6 +273,10 @@ def _is_path_or_link_line(line: str) -> bool:
 def skill_content_rejection_reasons(text: str) -> list[str]:
     """Return rejection reasons for fetched skill-like content."""
     reasons: list[str] = []
+    if len(text or "") > MAX_SKILL_CONTENT_CHARS:
+        # Refuse oversized bodies rather than storing a truncated stub.
+        return ["content-too-large"]
+
     head = text.lstrip()[:300].lower()
     if head.startswith(("<!doctype", "<html", "<?xml")) or "<head>" in head or "githubassets.com" in head:
         reasons.append("html-response")
@@ -295,14 +296,17 @@ def skill_content_rejection_reasons(text: str) -> list[str]:
     if len(words) < MIN_BODY_WORDS:
         reasons.append("too-few-body-words")
 
-    body_lower = body.lower()
     has_structure = "##" in body or re.search(r"^\s*[-*]\s+\S+", body, re.MULTILINE)
     has_name = bool(FRONTMATTER_NAME_RE.search(normalized))
-    has_cue = any(cue in body_lower for cue in BODY_CUES)
     if not (has_name or has_structure):
         reasons.append("no-skill-structure")
-    if not has_cue:
-        reasons.append("no-instruction-cues")
+    # Deliberately no check for self-declared "use when"/imperative phrasing
+    # (formerly BODY_CUES/no-instruction-cues) here. Whether and when a skill
+    # gets recommended is a call the indexing pipeline makes -- via
+    # capability_summary, which is explicitly prompted to name triggers/tasks
+    # -- not a requirement that the skill's own prose already contains the
+    # right verbs. Plenty of legitimate skills (service docs, MCP manifests)
+    # describe what they are without ever writing "use when the user...".
     return reasons
 
 
@@ -485,7 +489,9 @@ def evaluate_quality(skill: dict[str, Any], content: str = "") -> dict[str, Any]
     else:
         reasons.append("missing-description")
 
+    content = canonicalize_skill_content(content) if content else ""
     valid_frontmatter = has_valid_skill_frontmatter(content) if content else False
+    content_reasons: list[str] = []
     if content:
         chash = content_hash(content)
         content_reasons = skill_content_rejection_reasons(content)
@@ -494,11 +500,11 @@ def evaluate_quality(skill: dict[str, Any], content: str = "") -> dict[str, Any]
             score += 45
         elif "html-response" in content_reasons or "path-or-link-only" in content_reasons:
             score -= 20
-        if len(content) > 800:
+        if "content-too-large" not in content_reasons and len(content) > 800:
             score += 10
         if "##" in content:
             score += 5
-        if not valid_frontmatter:
+        if not content_reasons and not valid_frontmatter:
             # Structured README files can be useful for discovery, but without
             # skill metadata they must never be injected as active instructions.
             reasons.append("missing-skill-frontmatter")
@@ -579,7 +585,14 @@ def _platform_specific_penalty(prompt: str, candidate: dict[str, Any]) -> float:
         return 0.0
     if platforms and platform_mentions(prompt, platforms):
         return 0.0
+    # Known platform skills without an explicit prompt mention always mismatch.
+    # Do not waive via generic name tokens ("storefront", "blog", "payment") —
+    # that let Shopify/WordPress/Stripe beat generic task skills on traps.
+    if platforms:
+        return 0.08
 
+    # Marker-only rows (no platforms metadata): waive when the skill name
+    # clearly names the same task the prompt describes.
     name_tokens = [token for token in _tokens(str(candidate.get("name") or "")) if token not in NAME_STOPWORDS]
     prompt_tokens = set(_tokens(prompt))
     if any(token in prompt_tokens for token in name_tokens):
@@ -634,8 +647,11 @@ def rerank_candidates(prompt: str, candidates: list[dict[str, Any]]) -> list[dic
         if sim:
             row["similarity"] = sim
         reranked.append(row)
+    # Hard-demote platform mismatches so a high hybrid/RRF score cannot beat a
+    # non-platform capability skill on a generic task (Shopify-storefront trap).
     reranked.sort(
         key=lambda item: (
+            0 if item.get("platform_mismatch") else 1,
             item.get("route_score", item.get("rank", 0)),
             item.get("meaningfulness_score", 0),
             # When independent query lanes produce exactly the same evidence,
@@ -800,7 +816,11 @@ def dedupe_by_content_hash(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def tier_for_ranked_candidates(candidates: list[dict[str, Any]]) -> str:
-    """Decide a delivery tier for candidates already ranked for this prompt."""
+    """Decide a delivery tier for candidates already ranked for this prompt.
+
+    TODO(phase-3+): supporting/3rd-slot selection is deferred; this returns a
+    single top-candidate tier only (policy composition happens in recommender).
+    """
     if not candidates:
         return "none"
     top = candidates[0]
@@ -830,7 +850,12 @@ def tier_for_ranked_candidates(candidates: list[dict[str, Any]]) -> str:
         return "hint"
     if len(candidates) == 1:
         return "full"
-    runner = candidates[1]
+    # Platform-mismatched runners are already demoted in ranking; their often-
+    # higher cosine must not ambiguity-cap a clean generic/specialist winner.
+    comparable = [c for c in candidates[1:] if not c.get("platform_mismatch")]
+    if not comparable:
+        return "full"
+    runner = comparable[0]
     runner_similarity = runner.get("similarity")
     if runner_similarity is not None:
         try:

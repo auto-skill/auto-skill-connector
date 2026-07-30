@@ -472,3 +472,130 @@ def test_hook_injects_bounded_capsule_without_fetching_full_content(
     assert "<auto_skill_capsule>" in out
     assert capsule in out
     assert "<auto_skill_content>" not in out
+
+
+def test_route_receipt_parity_for_full_plan() -> None:
+    """Hook and core must emit the same homepage-style ordered-plan receipt/card."""
+    from auto_skill_receipt import format_route_card_markdown, format_route_receipt
+
+    policy_capsule = "Prefer existing code, then the standard library."
+    core_payload = {
+        "routed": True,
+        "route_type": "skill",
+        "route_tier": "full",
+        "selected_skill": {
+            "name": "frontend-design",
+            "url": "https://example.com/frontend-design",
+            "risk_score": 0,
+            "verification": {"content_hash_verified": True, "static_instruction_only": True},
+        },
+        "skill_plan": {
+            "policy_skills": [
+                {
+                    "name": "ponytail",
+                    "url": "https://example.com/ponytail",
+                    "risk_score": 0,
+                    "capsule": policy_capsule,
+                    "verification": {"content_hash_verified": True, "static_instruction_only": True},
+                }
+            ],
+            "primary_skill": {
+                "name": "frontend-design",
+                "url": "https://example.com/frontend-design",
+                "role": "specialist",
+            },
+        },
+    }
+    hook_payload = hook._receipt_payload(
+        {
+            "skill_plan": core_payload["skill_plan"],
+        },
+        core_payload["selected_skill"],
+        "full",
+    )
+    assert format_route_receipt(core_payload) == format_route_receipt(hook_payload)
+    assert format_route_card_markdown(core_payload) == format_route_card_markdown(hook_payload)
+    receipt = format_route_receipt(core_payload)
+    assert "01  policy  ponytail" in receipt
+    assert "02  primary frontend-design" in receipt
+    assert "risk_score=0" in receipt
+    assert "content-hash verified" in receipt
+    assert "malware" not in receipt.lower()
+    card = format_route_card_markdown(core_payload)
+    assert card.startswith("### AUTO-SKILL")
+    assert "| policy | ponytail |" in card
+    assert "| primary | frontend-design |" in card
+    assert "`risk_score=0`" in card
+    assert "malware" not in card.lower()
+
+
+def test_hook_full_plan_prints_receipt_and_policy(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    content = """---
+name: frontend-design
+description: Build distinctive frontend interfaces.
+---
+
+## Workflow
+
+- Inspect the existing design system before inventing new tokens.
+- Implement the page with accessible markup and responsive layout.
+- Verify spacing and contrast against the project standards.
+"""
+    policy_capsule = "Prefer existing code, then the standard library."
+    skill = {
+        "name": "frontend-design",
+        "description": "Build distinctive frontend interfaces.",
+        "url": "https://example.com/frontend-design",
+        "risk_score": 0,
+        "verification": {
+            "content_hash_verified": True,
+            "static_instruction_only": True,
+        },
+    }
+    monkeypatch.setattr(
+        hook,
+        "_selfhosted_route",
+        lambda prompt: {
+            "tier": "full",
+            "skill": skill,
+            "content": content,
+            "skill_plan": {
+                "policy_skills": [
+                    {
+                        "name": "ponytail",
+                        "url": "https://example.com/ponytail",
+                        "risk_score": 0,
+                        "capsule": policy_capsule,
+                        "verification": {
+                            "content_hash_verified": True,
+                            "static_instruction_only": True,
+                        },
+                    }
+                ],
+                "primary_skill": {
+                    "name": "frontend-design",
+                    "url": "https://example.com/frontend-design",
+                },
+            },
+        },
+    )
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps({"prompt": "build a React landing page"})))
+
+    hook.main()
+
+    out = capsys.readouterr().out
+    assert "### AUTO-SKILL" in out
+    assert "2 skills routed" in out
+    assert "| policy | ponytail |" in out
+    assert "| primary | frontend-design |" in out
+    assert "risk_score=0" in out
+    assert "content-hash verified" in out
+    assert "no skill install" in out
+    assert "<auto_skill_policy>" in out
+    assert policy_capsule in out
+    assert "<auto_skill_content>" in out
+    assert out.index("### AUTO-SKILL") < out.index("<auto_skill_policy>")
+    assert out.index("<auto_skill_policy>") < out.index("<auto_skill_content>")

@@ -3,6 +3,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 import os
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -42,9 +43,24 @@ class AccountsStoreTests(unittest.TestCase):
         self.assertIsNone(local_store.get_user_by_token_hash("hash-1"))
         self.assertFalse(local_store.revoke_cli_token("hash-1"))  # already revoked
 
+    def test_cli_token_ttl_is_30_days(self) -> None:
+        self.assertEqual(local_store.CLI_TOKEN_TTL_SECONDS, 30 * 24 * 60 * 60)
+
     def test_cli_token_expires_and_slides_forward_on_use(self) -> None:
         user = local_store.get_or_create_user("a@example.com", "Alice", None)
+        before = datetime.now(timezone.utc)
         local_store.create_cli_token(user["id"], "hash-2")
+        after = datetime.now(timezone.utc)
+
+        conn = local_store.get_conn()
+        created_expires = conn.execute(
+            "SELECT expires_at FROM cli_tokens WHERE token_hash='hash-2'"
+        ).fetchone()[0]
+        conn.close()
+        created_exp = datetime.fromisoformat(created_expires)
+        ttl = timedelta(seconds=local_store.CLI_TOKEN_TTL_SECONDS)
+        self.assertGreaterEqual(created_exp, before + ttl - timedelta(seconds=2))
+        self.assertLessEqual(created_exp, after + ttl + timedelta(seconds=2))
 
         # A pre-migration token (no expires_at yet) must keep working --
         # this deploy must not silently log out everyone already logged in.
@@ -57,12 +73,27 @@ class AccountsStoreTests(unittest.TestCase):
         conn.close()
         self.assertIsNotNone(local_store.get_user_by_token_hash("hash-legacy"))
 
-        # An expired token is rejected.
+        # Unused token past the 30-day window is rejected.
+        past_expiry = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
         conn = local_store.get_conn()
-        conn.execute("UPDATE cli_tokens SET expires_at=? WHERE token_hash='hash-2'", ("2020-01-01T00:00:00+00:00",))
+        conn.execute("UPDATE cli_tokens SET expires_at=? WHERE token_hash='hash-2'", (past_expiry,))
         conn.commit()
         conn.close()
         self.assertIsNone(local_store.get_user_by_token_hash("hash-2"))
+
+        # Recreate a live token and confirm successful use slides expiry forward by 30d.
+        local_store.create_cli_token(user["id"], "hash-slide")
+        before_use = datetime.now(timezone.utc)
+        self.assertIsNotNone(local_store.get_user_by_token_hash("hash-slide"))
+        after_use = datetime.now(timezone.utc)
+        conn = local_store.get_conn()
+        slid_expires = conn.execute(
+            "SELECT expires_at FROM cli_tokens WHERE token_hash='hash-slide'"
+        ).fetchone()[0]
+        conn.close()
+        slid_exp = datetime.fromisoformat(slid_expires)
+        self.assertGreaterEqual(slid_exp, before_use + ttl - timedelta(seconds=2))
+        self.assertLessEqual(slid_exp, after_use + ttl + timedelta(seconds=2))
 
     def test_favorites_are_isolated_per_user(self) -> None:
         user_a = local_store.get_or_create_user("a@example.com", "A", None)

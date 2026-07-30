@@ -1,5 +1,6 @@
-"""Backfill/redo capability_summary for every active skill using a local
-Ollama model, then re-embed with the summary folded in (see
+"""Backfill/redo capability_summary for every active or metadata_only skill
+(quality.ACTIVE_STATUSES -- discovery-eligible, not necessarily inject-eligible)
+using a local Ollama model, then re-embed with the summary folded in (see
 embeddings.build_embed_text).
 
 Resumable: selects rows with capability_summary IS NULL, so an interrupted
@@ -22,39 +23,16 @@ from pathlib import Path
 
 import httpx
 
-from embeddings import LibraryContent, build_embed_text, embed_text_hash, embed_texts
+from embeddings import LibraryContent, build_embed_text, embed_text_hash, embed_texts, generate_capability_summary
 
 BASE = Path(__file__).parent
 DB_PATH = Path(os.getenv("LOCAL_DB_PATH", str(BASE / "local_skills.db")))
 REST = "http://127.0.0.1:8000/rest/v1/skills?on_conflict=url"
 HEADERS = {"Content-Type": "application/json", "Prefer": "resolution=merge-duplicates"}
 
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434").rstrip("/")
-SUMMARY_MODEL = os.getenv("AUTOSKILL_SUMMARY_MODEL", "llama3.2:3b")
-
 SCAN_PAGE = 2000
 EMBED_BATCH = 128
 UPSERT_CHUNK = 50
-MAX_CONTENT_CHARS = 1500
-MAX_SUMMARY_CHARS = 2000
-
-SUMMARY_SCHEMA = {
-    "type": "object",
-    "properties": {"summary": {"type": "string"}},
-    "required": ["summary"],
-}
-
-SUMMARY_SYSTEM = (
-    "You analyze developer tool/skill listings for a search index. Given a name, "
-    "short description, and (if available) file content, write a concise capability "
-    "summary as JSON: {\"summary\": \"...\"}. "
-    "summary: 1-3 plain factual sentences stating what the skill/tool actually does, "
-    "what task or workflow it helps with, and any concrete capabilities, triggers, "
-    "integrations, or platforms it mentions. Third person, no marketing language, no "
-    "meta-commentary ('this skill', 'in summary'), no preamble. If the material is too "
-    "sparse to say anything concrete, summarize plainly what little is known instead of "
-    "inventing detail."
-)
 
 
 def _now() -> str:
@@ -85,7 +63,7 @@ def pending_rows(limit: int | None) -> list[dict]:
         while True:
             page = conn.execute(
                 "SELECT id,url,name,source,description,tags FROM skills "
-                "WHERE url IS NOT NULL AND quality_status='active' "
+                "WHERE url IS NOT NULL AND quality_status IN ('active', 'metadata_only') "
                 "  AND capability_summary IS NULL "
                 "ORDER BY id LIMIT ? OFFSET ?",
                 (SCAN_PAGE, offset),
@@ -107,53 +85,21 @@ def pending_rows(limit: int | None) -> list[dict]:
     return rows
 
 
-async def summarize_one(client: httpx.AsyncClient, sem: asyncio.Semaphore, row: dict, content: str) -> str:
-    description = (row.get("description") or "").strip()
-    body = content[:MAX_CONTENT_CHARS].strip()
-    if not description and not body:
-        return ""
-    user = (
-        f"Name: {row.get('name') or ''}\n"
-        f"Description: {description or '(none)'}\n"
-        f"Content:\n{body or '(no file content available)'}"
-    )
+async def summarize_one(client: httpx.AsyncClient, sem: asyncio.Semaphore, row: dict, content: str) -> dict:
     async with sem:
-        for attempt in range(2):
-            try:
-                r = await client.post(
-                    f"{OLLAMA_URL}/api/chat",
-                    json={
-                        "model": SUMMARY_MODEL,
-                        "messages": [
-                            {"role": "system", "content": SUMMARY_SYSTEM},
-                            {"role": "user", "content": user},
-                        ],
-                        "stream": False,
-                        "format": SUMMARY_SCHEMA,
-                        "options": {"temperature": 0, "num_predict": 200},
-                    },
-                    timeout=60,
-                )
-                if r.status_code != 200:
-                    continue
-                content_json = r.json().get("message", {}).get("content", "")
-                parsed = json.loads(content_json)
-                summary = str(parsed.get("summary") or "").strip()
-                return summary[:MAX_SUMMARY_CHARS]
-            except (json.JSONDecodeError, httpx.HTTPError):
-                continue
-    return ""
+        return await generate_capability_summary(client, row.get("name"), row.get("description"), content)
 
 
 async def process_batch(
     client: httpx.AsyncClient, sem: asyncio.Semaphore, library: LibraryContent, batch: list[dict]
 ) -> int:
     contents = [library.get(row["url"]) for row in batch]
-    summaries = await asyncio.gather(
+    understandings = await asyncio.gather(
         *(summarize_one(client, sem, row, content) for row, content in zip(batch, contents))
     )
-    for row, summary in zip(batch, summaries):
-        row["capability_summary"] = summary
+    for row, understanding in zip(batch, understandings):
+        row["capability_summary"] = understanding.get("summary") or ""
+        row["triggers"] = understanding.get("triggers") or []
     texts = [build_embed_text(row, content) for row, content in zip(batch, contents)]
     vectors = await asyncio.to_thread(embed_texts, texts, EMBED_BATCH)
     now = _now()
@@ -163,6 +109,7 @@ async def process_batch(
             "name": row.get("name") or "",
             "source": row.get("source") or "",
             "capability_summary": row["capability_summary"],
+            "triggers": row["triggers"],
             "embedding": vec,
             "embedding_text_hash": embed_text_hash(text),
             "embedded_at": now,

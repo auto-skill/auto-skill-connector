@@ -16,6 +16,11 @@ def test_mcp_instructions_proactively_route_privacy_minimized_tasks() -> None:
     assert "omit secrets, personal data, pasted" in instructions
     assert "Never call route_task twice for the same task" in instructions
     assert "only when the user explicitly enabled" in instructions
+    assert "### AUTO-SKILL" in instructions
+    assert "user-visible" in instructions
+    assert "Leave it visible" in instructions
+    assert "policy then primary" in instructions
+    assert "Do not narrate the receipt" not in instructions
 
 
 def test_routing_tools_advertise_read_only_idempotent_semantics() -> None:
@@ -38,3 +43,5 @@ def test_route_task_and_raw_prompt_descriptions_preserve_consent_boundary() -> N
     tools = _tools_by_name()
     assert "even if the user never mentioned a skill" in (tools["route_task"].description or "")
     assert "Do not send raw prompts proactively" in (tools["route_prompt"].description or "")
+    assert "AUTO-SKILL card" in (tools["route_task"].description or "")
+    assert "Leave the card visible" in (tools["route_task"].description or "")

@@ -23,15 +23,20 @@ Launch-facing endpoints:
 - `GET /healthz`: process liveness.
 - `GET /readyz`: SQLite, active embedded rows, vector cache, and scraper
   readiness.
-- `POST /find-semantic {"q":"...","limit":8}`: body-only ranked discovery.
-- `POST /route {"task":"..."}`: deterministic full/hint/none route contract.
+- `POST /find-semantic {"q":"...","limit":8}`: body-only ranked discovery
+  (auth required, same as `/route`).
+- `POST /route {"task":"..."}`: deterministic full/hint/none route contract
+  (auth required; Free quota applies).
 - `GET /content/{content_hash}`: content-addressed `SKILL.md` snapshot bytes.
 - `POST /route-feedback`: privacy-safe route outcome feedback.
 - `GET /route-metrics`: host-local aggregate latency/token operational metrics.
 
-The public API does not retain raw prompts or prompt snippets. It does not need
-an individual account solely to search or route; authentication remains useful
-for private skills, favorites, caller-specific history, and hosted MCP identity.
+The public API does not retain raw prompts or prompt snippets. Hosted
+`POST /route` requires login (`401` with signup URL when missing). Free
+accounts get **100 authenticated routes/month**
+(`AUTOSKILL_FREE_ROUTES_PER_MONTH`). CLI tokens use a **30-day sliding** TTL
+(refreshes on use; idle 30 days → re-login). Authentication is also used for
+private skills, favorites, caller-specific history, and hosted MCP identity.
 
 ## Product and Internal Surfaces
 
@@ -65,8 +70,9 @@ format. Client code owns the native install destination:
 MCP cannot invisibly intercept every client prompt, but its server instructions
 ask capable clients to call the read-only `route_task` once for substantial
 work using a privacy-minimized summary. Raw-prompt Auto Mode still requires a
-client-specific, explicitly enabled adapter; only the Claude Code adapter ships
-in the launch scope.
+client-specific, explicitly enabled adapter. Shipped adapters: Claude Code and
+Codex CLI (`enable-hook` / `enable-hook --target codex`). Cursor and Copilot
+remain MCP-only for inject until their vendors add a context-injection field.
 
 ## Quality and Integrity Gate
 
@@ -318,8 +324,9 @@ https://autoskill.dev,https://www.autoskill.dev
 ```
 
 Local development origins are allowed by default when the variable is not set.
-Accounts are for private/caller-specific features, not mandatory public
-discovery tracking.
+Hosted routing requires an account (Free: 100 routes/month). Private skills,
+favorites, and caller-specific history also use authentication. Pro/Team
+billing surfaces exist but stay quiet in launch messaging until P1 trust.
 
 ## Readiness and Vector Cache
 
