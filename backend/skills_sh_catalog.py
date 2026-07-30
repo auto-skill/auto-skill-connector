@@ -12,12 +12,13 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import os
 import re
 import time
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 from pathlib import Path
 
 import httpx
@@ -35,6 +36,7 @@ MAX_SEARCH_LIMIT = 50
 MAX_DETAIL_CANDIDATES = 12
 MAX_CONTENT_CHARS = 300_000
 MAX_RETRIEVAL_CHARS = 1_500
+MAX_PUBLIC_DESCRIPTION_CHARS = 800
 
 _FRONTMATTER_RE = re.compile(r"\A\ufeff?---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\Z)", re.S)
 _FIELD_RE = re.compile(r"^(name|description):[ \t]*(.*)$", re.I)
@@ -112,6 +114,7 @@ class SkillsShCatalog:
         *,
         api_url: str | None = None,
         public_search_url: str | None = None,
+        public_page_base_url: str | None = None,
         oidc_token: str | None = None,
         timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
         search_ttl_seconds: float = DEFAULT_SEARCH_TTL_SECONDS,
@@ -122,6 +125,9 @@ class SkillsShCatalog:
         self.api_url = (api_url or os.getenv("SKILLS_SH_API_URL", DEFAULT_API_URL)).rstrip("/")
         self.public_search_url = public_search_url or os.getenv(
             "SKILLS_SH_PUBLIC_SEARCH_URL", DEFAULT_PUBLIC_SEARCH_URL
+        )
+        self.public_page_base_url = public_page_base_url or (
+            f"{urlsplit(self.public_search_url).scheme}://{urlsplit(self.public_search_url).netloc}"
         )
         self._explicit_oidc_token = oidc_token
         self.timeout_seconds = max(1.0, float(timeout_seconds))
@@ -233,6 +239,43 @@ class SkillsShCatalog:
             raise SkillsShCatalogError("skills.sh public search returned invalid JSON") from exc
         return payload if isinstance(payload, dict) else {}
 
+    async def _public_page_metadata(self, skill_id: str) -> dict[str, Any]:
+        if not skill_id or not self.public_page_base_url:
+            return {}
+        cached = self._cached("page", skill_id)
+        if cached is not None:
+            return dict(cached)
+        url = f"{self.public_page_base_url.rstrip('/')}/{quote(skill_id, safe='/')}"
+        try:
+            async with httpx.AsyncClient(
+                transport=self.transport,
+                timeout=self.timeout_seconds,
+                follow_redirects=False,
+            ) as client:
+                response = await client.get(url, headers={"Accept": "text/html"})
+        except (httpx.HTTPError, OSError):
+            return {}
+        if response.status_code >= 400:
+            return {}
+        matches = re.findall(
+            r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',
+            response.text,
+            flags=re.I | re.S,
+        )
+        metadata: dict[str, Any] = {}
+        for raw in matches:
+            try:
+                value = json.loads(raw)
+            except (TypeError, ValueError):
+                continue
+            if isinstance(value, dict) and value.get("@type") == "SoftwareApplication":
+                metadata = {
+                    "description": str(value.get("description") or "")[:MAX_PUBLIC_DESCRIPTION_CHARS],
+                    "installs": (value.get("interactionStatistic") or {}).get("userInteractionCount"),
+                }
+                break
+        return dict(self._put("page", skill_id, metadata, self.detail_ttl_seconds)) if metadata else {}
+
     @staticmethod
     def _public_listing_row(item: dict[str, Any]) -> dict[str, Any]:
         skill_id = str(item.get("id") or "").strip()
@@ -296,8 +339,18 @@ class SkillsShCatalog:
         ]
         details = await asyncio.gather(*detail_jobs)
         audits = await asyncio.gather(*audit_jobs)
+        page_metadata = await asyncio.gather(
+            *(
+                self._public_page_metadata(_stable_skill_id(item))
+                if item.get("_public_search_only")
+                else asyncio.sleep(0, result={})
+                for item in shortlist
+            )
+        )
         rows: list[dict[str, Any]] = []
-        for rank, (listing_item, detail, partner_audits) in enumerate(zip(shortlist, details, audits)):
+        for rank, (listing_item, detail, partner_audits, page_meta) in enumerate(
+            zip(shortlist, details, audits, page_metadata)
+        ):
             detail = detail or {}
             files = detail.get("files") if isinstance(detail.get("files"), list) else []
             entrypoint, content = _entrypoint(files)
@@ -307,7 +360,12 @@ class SkillsShCatalog:
             fields = _frontmatter_fields(content)
             skill_id = _stable_skill_id(listing_item) or _stable_skill_id(detail)
             name = str(listing_item.get("name") or fields.get("name") or detail.get("slug") or skill_id)
-            description = str(listing_item.get("description") or fields.get("description") or "")
+            description = str(
+                listing_item.get("description")
+                or fields.get("description")
+                or page_meta.get("description")
+                or ""
+            )
             install_url = str(listing_item.get("installUrl") or "")
             page_url = str(listing_item.get("url") or f"https://skills.sh/{skill_id}")
             row: dict[str, Any] = {
@@ -327,7 +385,7 @@ class SkillsShCatalog:
                 "source_snapshot_hash": str(detail.get("hash") or "") or None,
                 "is_duplicate": bool(listing_item.get("isDuplicate")),
                 "stars": 0,
-                "installs": listing_item.get("installs"),
+                "installs": listing_item.get("installs") or page_meta.get("installs"),
                 "source_type": listing_item.get("sourceType"),
                 "rank": 1.0 / (60.0 + rank + 1.0),
                 "similarity": None,

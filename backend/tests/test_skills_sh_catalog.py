@@ -114,23 +114,28 @@ def test_missing_audit_is_not_treated_as_safe() -> None:
 
 def test_public_search_fallback_is_metadata_only_hint() -> None:
     def public_transport(request: httpx.Request) -> httpx.Response:
-        assert request.url.path == "/api/search"
+        if request.url.path == "/api/search":
+            return httpx.Response(
+                200,
+                json={
+                    "query": "react landing page",
+                    "searchType": "semantic",
+                    "skills": [
+                        {
+                            "id": "acme/skills/landing-page",
+                            "skillId": "landing-page",
+                            "name": "landing-page",
+                            "source": "acme/skills",
+                            "installs": 42,
+                        }
+                    ],
+                    "count": 1,
+                },
+                request=request,
+            )
         return httpx.Response(
             200,
-            json={
-                "query": "react landing page",
-                "searchType": "semantic",
-                "skills": [
-                    {
-                        "id": "acme/skills/landing-page",
-                        "skillId": "landing-page",
-                        "name": "landing-page",
-                        "source": "acme/skills",
-                        "installs": 42,
-                    }
-                ],
-                "count": 1,
-            },
+            text='<script type="application/ld+json">{"@type":"SoftwareApplication","description":"Build landing pages.","interactionStatistic":{"userInteractionCount":42}}</script>',
             request=request,
         )
 
@@ -145,6 +150,7 @@ def test_public_search_fallback_is_metadata_only_hint() -> None:
     assert rows[0]["audit_status"] == "unknown"
     assert rows[0]["content_hash"] is None
     assert rows[0]["install_url"] == "acme/skills"
+    assert rows[0]["description"] == "Build landing pages."
 
 
 def test_catalog_reads_rotating_token_from_environment(monkeypatch) -> None:
