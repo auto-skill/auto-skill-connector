@@ -44,8 +44,13 @@ def test_live_eval_skips_when_public_discovery_is_unavailable(tmp_path, monkeypa
 
 def test_live_eval_reads_expected_ids(tmp_path) -> None:
     cases = tmp_path / "cases.jsonl"
-    cases.write_text(json.dumps({"query": "make a report", "expected_ids": ["acme/reporting"]}) + "\n", encoding="utf-8")
+    cases.write_text(
+        json.dumps({"query": "make a report", "expected_ids": ["acme/reporting"], "label_status": "verified"})
+        + "\n",
+        encoding="utf-8",
+    )
     assert _read_cases(cases)[0]["expected_ids"] == ["acme/reporting"]
+    assert _read_cases(cases)[0]["label_status"] == "verified"
 
 
 def test_rrf_fusion_can_promote_compiled_lane() -> None:

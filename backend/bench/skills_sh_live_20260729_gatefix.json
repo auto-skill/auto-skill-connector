@@ -1,0 +1,107 @@
+{
+  "status": "diagnostic_unverified_labels",
+  "label_status": "expected_ids_not_human_verified",
+  "backend": "skills_sh",
+  "access_mode": "public_search_only",
+  "case_count": 3,
+  "labeled_case_count": 3,
+  "metrics": {
+    "original_hit_at_1": 0.0,
+    "dual_hit_at_1": 0.0,
+    "original_hit_at_5": 0.0,
+    "dual_hit_at_5": 0.0,
+    "delta_at_1_pp": 0.0,
+    "delta_at_5_pp": 0.0,
+    "paired_bootstrap_95ci_at_1_pp": [
+      0.0,
+      0.0
+    ],
+    "paired_bootstrap_95ci_at_5_pp": [
+      0.0,
+      0.0
+    ],
+    "paired_wins_at_1": 0,
+    "paired_losses_at_1": 0,
+    "paired_ties_at_1": 3,
+    "audit_unknown_rows": 15,
+    "audit_fail_rows": 0
+  },
+  "elapsed_ms": 7724.34,
+  "cases": [
+    {
+      "query": "build a React Native app with Expo",
+      "compiled_query": "react native expo build app",
+      "label_status": "unverified",
+      "original_ids": [
+        "expo/skills/expo-brownfield",
+        "minimax-ai/skills/react-native-dev",
+        "jezweb/claude-skills/react-native",
+        "clerk/skills/clerk-expo",
+        "auth0/agent-skills/auth0-expo"
+      ],
+      "dual_ids": [
+        "expo/skills/expo-brownfield",
+        "minimax-ai/skills/react-native-dev",
+        "jezweb/claude-skills/react-native",
+        "clerk/skills/clerk-expo",
+        "auth0/agent-skills/auth0-expo"
+      ],
+      "original_hit_at_1": false,
+      "dual_hit_at_1": false,
+      "original_hit_at_5": false,
+      "dual_hit_at_5": false,
+      "audit_unknown": 5,
+      "audit_fail": 0
+    },
+    {
+      "query": "find a reusable skill for an AI agent",
+      "compiled_query": "search find reusable skill agent",
+      "label_status": "unverified",
+      "original_ids": [
+        "ulpi-io/skills/find-agents",
+        "prulloac/agent-skills/reusable-commands",
+        "letta-ai/letta-code/finding-agents",
+        "arthurzakirov/proofstack/context-to-capability-framework",
+        "echoleesong/claude-skills-plugin/skill-lookup"
+      ],
+      "dual_ids": [
+        "ulpi-io/skills/find-agents",
+        "prulloac/agent-skills/reusable-commands",
+        "letta-ai/letta-code/finding-agents",
+        "fortunto2/solo-factory/solo-swarm",
+        "arthurzakirov/proofstack/context-to-capability-framework"
+      ],
+      "original_hit_at_1": false,
+      "dual_hit_at_1": false,
+      "original_hit_at_5": false,
+      "dual_hit_at_5": false,
+      "audit_unknown": 5,
+      "audit_fail": 0
+    },
+    {
+      "query": "design a high-converting landing page",
+      "compiled_query": "web page design high-converting landing",
+      "label_status": "unverified",
+      "original_ids": [
+        "mengto/skills/landing-page",
+        "kuse-ai/kuse-skills/landing-page-creator",
+        "bear2u/my-skills/landing-page-guide",
+        "shipshitdev/library/funnel-architect",
+        "borghei/claude-skills/free-tool-strategy"
+      ],
+      "dual_ids": [
+        "mengto/skills/landing-page",
+        "kuse-ai/kuse-skills/landing-page-creator",
+        "scalecommerce/skills/landing-page-guide",
+        "bear2u/my-skills/landing-page-guide",
+        "postplusai/postplus-skills/xiaohongshu-card-notes"
+      ],
+      "original_hit_at_1": false,
+      "dual_hit_at_1": false,
+      "original_hit_at_5": false,
+      "dual_hit_at_5": false,
+      "audit_unknown": 5,
+      "audit_fail": 0
+    }
+  ]
+}

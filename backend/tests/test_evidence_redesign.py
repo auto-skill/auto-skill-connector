@@ -67,8 +67,10 @@ class QueryCompilerTests(unittest.TestCase):
         intent = compile_intent_query("Build a React Native app with Expo")
         query = skills_sh_query(intent)
         self.assertIn("react", query)
+        self.assertIn("native", query)
         self.assertIn("expo", query)
         self.assertIn("build", query)
+        self.assertNotIn("create", query)
         self.assertNotIn("compile", query)
         self.assertNotIn("implement", query)
 

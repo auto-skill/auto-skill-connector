@@ -78,6 +78,14 @@ SKILLS_SH_LIVE_ROUTING = os.getenv("AUTOSKILL_SKILLS_SH_ROUTING", "1").lower() n
     "false",
     "no",
 }
+# A local package corpus is useful for offline development and private/legacy
+# migrations, but it must not silently bypass the skills.sh data gate in the
+# normal public route.  Operators can opt in explicitly for an outage drill
+# or an offline benchmark; production defaults to abstention when the remote
+# catalog cannot be reached.
+ALLOW_LOCAL_RETRIEVAL_FALLBACK = os.getenv(
+    "AUTOSKILL_ALLOW_LOCAL_RETRIEVAL_FALLBACK", "0"
+).lower() in {"1", "true", "yes"}
 SKILLS_SH_SEARCH_LIMIT = min(50, max(2, int(os.getenv("AUTOSKILL_SKILLS_SH_SEARCH_LIMIT", "12"))))
 
 # RRF scores cluster near 1/(rrf_k + ix), so near-ties sit ~1.0x apart; a top hit
@@ -583,18 +591,29 @@ async def _retrieve_local_skills(client: httpx.AsyncClient, query_text: str, lim
 
 
 async def retrieve_skills(client: httpx.AsyncClient, query_text: str, limit: int = 10) -> list[dict]:
-    """Retrieve from skills.sh first, then fall back to the local corpus."""
+    """Retrieve public candidates through skills.sh, abstaining on failure.
+
+    The local package corpus is deliberately not a silent second public index:
+    its freshness, provenance, and audit state differ from skills.sh.  Keep it
+    behind an explicit development/outage flag so a production route cannot
+    accidentally evade the skills.sh gate.
+    """
     if SKILLS_SH_LIVE_ROUTING:
         catalog = default_catalog()
-        if catalog.configured:
-            try:
-                rows = await catalog.retrieve(query_text, min(max(limit, 10), SKILLS_SH_SEARCH_LIMIT))
-                if rows:
-                    for row in rows:
-                        row["retrieval_backend"] = "skills_sh"
-                    return rows[:limit]
-            except SkillsShCatalogError as exc:
-                print(f"[recommender] skills.sh live retrieval unavailable: {exc}")
+        try:
+            # ``retrieve`` selects the documented authenticated API when an
+            # OIDC token is present and the public discovery lane otherwise.
+            # Calling it in both modes is essential: ``configured`` only means
+            # authenticated, not that public discovery is unavailable.
+            rows = await catalog.retrieve(query_text, min(max(limit, 10), SKILLS_SH_SEARCH_LIMIT))
+            if rows:
+                for row in rows:
+                    row["retrieval_backend"] = "skills_sh"
+                return rows[:limit]
+        except SkillsShCatalogError as exc:
+            print(f"[recommender] skills.sh live retrieval unavailable: {exc}")
+        if not ALLOW_LOCAL_RETRIEVAL_FALLBACK:
+            return []
     rows = await _retrieve_local_skills(client, query_text, limit)
     for row in rows:
         row.setdefault("retrieval_backend", "local")

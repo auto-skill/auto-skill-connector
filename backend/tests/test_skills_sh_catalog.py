@@ -4,7 +4,7 @@ import asyncio
 from unittest.mock import patch
 import httpx
 
-from skills_sh_catalog import SkillsShCatalog
+from skills_sh_catalog import SkillsShCatalog, SkillsShCatalogError
 from query_compiler import compile_intent_query
 
 
@@ -200,3 +200,50 @@ def test_recommender_uses_live_catalog_before_local_store() -> None:
     rows = asyncio.run(run())
     assert rows[0]["retrieval_backend"] == "skills_sh"
     assert rows[0]["skills_sh_id"] == "acme/skills/reporting"
+
+
+def test_recommender_calls_public_catalog_without_oidc_token() -> None:
+    """Tokenless routing must use skills.sh public discovery, not skip it."""
+
+    class PublicCatalog:
+        configured = False
+
+        async def retrieve(self, query: str, limit: int) -> list[dict]:
+            assert query == "create a spreadsheet report"
+            assert limit >= 3
+            return [{"id": "acme/skills/reporting", "name": "Reporting"}]
+
+    import recommender
+
+    async def run() -> list[dict]:
+        with patch.object(recommender, "default_catalog", return_value=PublicCatalog()), patch.object(
+            recommender, "SKILLS_SH_LIVE_ROUTING", True
+        ), patch.object(
+            recommender, "_retrieve_local_skills", side_effect=AssertionError("public route bypassed skills.sh")
+        ):
+            return await recommender.retrieve_skills(None, "create a spreadsheet report", limit=3)
+
+    rows = asyncio.run(run())
+    assert rows[0]["retrieval_backend"] == "skills_sh"
+
+
+def test_recommender_abstains_when_skills_sh_is_unavailable_by_default() -> None:
+    class BrokenCatalog:
+        configured = False
+
+        async def retrieve(self, query: str, limit: int) -> list[dict]:
+            raise SkillsShCatalogError("public search unavailable")
+
+    import recommender
+
+    async def run() -> list[dict]:
+        with patch.object(recommender, "default_catalog", return_value=BrokenCatalog()), patch.object(
+            recommender, "SKILLS_SH_LIVE_ROUTING", True
+        ), patch.object(
+            recommender, "ALLOW_LOCAL_RETRIEVAL_FALLBACK", False
+        ), patch.object(
+            recommender, "_retrieve_local_skills", side_effect=AssertionError("local fallback bypassed gate")
+        ):
+            return await recommender.retrieve_skills(None, "create a spreadsheet report", limit=3)
+
+    assert asyncio.run(run()) == []

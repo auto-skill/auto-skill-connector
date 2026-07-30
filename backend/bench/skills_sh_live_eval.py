@@ -38,7 +38,16 @@ def _read_cases(path: Path) -> list[dict[str, Any]]:
         expected = row.get("expected_ids") or []
         if not isinstance(expected, list):
             raise ValueError("expected_ids must be a list when supplied")
-        rows.append({"query": " ".join(str(row["query"]).split()), "expected_ids": [str(item) for item in expected]})
+        label_status = str(row.get("label_status") or "unverified").strip().casefold()
+        if label_status not in {"verified", "unverified"}:
+            raise ValueError("label_status must be 'verified' or 'unverified'")
+        rows.append(
+            {
+                "query": " ".join(str(row["query"]).split()),
+                "expected_ids": [str(item) for item in expected],
+                "label_status": label_status,
+            }
+        )
     return rows
 
 
@@ -95,6 +104,7 @@ async def _evaluate(catalog: SkillsShCatalog, cases: list[dict[str, Any]], limit
             {
                 "query": query,
                 "compiled_query": compiled_query,
+                "label_status": case["label_status"],
                 "original_ids": [row.get("id") for row in original[:limit]],
                 "dual_ids": [row.get("id") for row in dual[:limit]],
                 "original_hit_at_1": _hit(original, expected, 1),
@@ -115,8 +125,16 @@ async def _evaluate(catalog: SkillsShCatalog, cases: list[dict[str, Any]], limit
     deltas_at_5 = [float(row["dual_hit_at_5"]) - float(row["original_hit_at_5"]) for row in labeled]
     minimum_labeled = 2
 
+    labels_verified = bool(labeled) and all(row["label_status"] == "verified" for row in labeled)
     return {
-        "status": "complete" if len(labeled) >= minimum_labeled else "insufficient_labels",
+        "status": (
+            "complete"
+            if len(labeled) >= minimum_labeled and labels_verified
+            else "diagnostic_unverified_labels"
+            if len(labeled) >= minimum_labeled
+            else "insufficient_labels"
+        ),
+        "label_status": "human_verified" if labels_verified else "expected_ids_not_human_verified",
         "backend": "skills_sh",
         "access_mode": "authenticated" if catalog.configured else "public_search_only",
         "case_count": len(cases),

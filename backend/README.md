@@ -192,9 +192,11 @@ shortlist through the detail endpoint, and fetches audit metadata before
 ranking. The live rows carry the stable skills.sh ID, snapshot hash, audit
 state, and a session-scoped `npx skills use <source> --skill <name> --agent codex`
 activation plan. The plan is bounded metadata for a client adapter; the
-backend never executes `npx` or writes to the caller's filesystem. If the remote
-catalog is unavailable, routing falls back to the local package-backed corpus;
-it never silently blends stale local and live rows. SkillsMP discovery remains
+backend never executes `npx` or writes to the caller's filesystem. Without a
+token, the same route calls the public skills.sh discovery lane and keeps those
+metadata-only rows hint-only. If skills.sh is unavailable, public routing
+abstains by default; `AUTOSKILL_ALLOW_LOCAL_RETRIEVAL_FALLBACK=1` is an explicit
+offline/outage experiment switch, never a production default. SkillsMP discovery remains
 capped at 100 unique URLs per run by default. Unpinned GitHub content is
 retained for triage with `pending_package` status and is not embedded. Package
 bytes, paths, hashes, licenses, roles, references, and source aliases remain

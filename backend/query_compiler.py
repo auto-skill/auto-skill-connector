@@ -41,7 +41,7 @@ _TECHNOLOGIES = (
     "latex", "linux", "mongodb", "mysql", "next.js", "nginx", "node.js",
     "notion", "numpy", "ocaml", "ollama", "openssl", "oracle", "pandas",
     "pdf", "php", "playwright", "postgres", "postgresql", "powerpoint", "powershell", "python",
-    "prometheus", "puppeteer", "pytorch", "qemu", "r", "react", "redis",
+    "prometheus", "puppeteer", "pytorch", "qemu", "r", "react native", "react", "expo", "redis",
     "ruby", "rust", "salesforce", "sentry", "shopify", "slack", "spark", "sqlite",
     "ssh", "stripe", "supabase", "tensorflow", "terraform", "typescript",
     "ubuntu", "vue", "windows", "wordpress",
@@ -112,8 +112,15 @@ def skills_sh_query(intent: CompiledIntent) -> str:
     operation token and a bounded tail of task nouns while retaining the
     original query as a separate retrieval lane.
     """
-    operations = [str(value).split()[0] for value in intent.operation if str(value).strip()]
-    parts = [*intent.technology, *operations, *intent.artifact, *intent.failure_mode]
+    # Keep one canonical operation. ``compile_intent_query`` may retain
+    # multiple matching rule families for auditability, but sending every
+    # synonym/rule hit to skills.sh dilutes the technology and artifact
+    # signals that its semantic search already understands.
+    operation = next(
+        (str(value).split()[0] for value in intent.operation if str(value).strip()),
+        "",
+    )
+    parts = [*intent.technology, operation, *intent.artifact, *intent.failure_mode]
     if not parts:
         parts.extend(intent.original_query.split()[:12])
     else:
