@@ -190,7 +190,9 @@ enables the live skills.sh data gate: Auto-Skill sends the original and
 compiled multi-word queries to `/api/v1/skills/search`, hydrates only a bounded
 shortlist through the detail endpoint, and fetches audit metadata before
 ranking. The live rows carry the stable skills.sh ID, snapshot hash, audit
-state, and a session-scoped `npx skills use` activation plan. If the remote
+state, and a session-scoped `npx skills use <source> --skill <name> --agent codex`
+activation plan. The plan is bounded metadata for a client adapter; the
+backend never executes `npx` or writes to the caller's filesystem. If the remote
 catalog is unavailable, routing falls back to the local package-backed corpus;
 it never silently blends stale local and live rows. SkillsMP discovery remains
 capped at 100 unique URLs per run by default. Unpinned GitHub content is
