@@ -34,6 +34,121 @@ def _insert_route_event(conn: sqlite3.Connection, skill_id: str, outcome: str, s
     )
 
 
+def _retrieval_row(skill_id: str, **overrides) -> dict:
+    row = {
+        "id": skill_id,
+        "name": skill_id,
+        "description": "bounded specialist guidance",
+        "quality_status": "active",
+        "risk_score": 0,
+        "content_hash": skill_id,
+        "rank": 1.0,
+    }
+    row.update(overrides)
+    return row
+
+
+class HybridRetrievalRecallTests(unittest.TestCase):
+    # This session added two more fusion channels to hybrid_search_skills
+    # (vector_search_tools, _fast_path_matches) alongside the two these tests
+    # already mock -- neutralize both by default so a real, uninitialized
+    # sqlite connection is never touched and these tests keep exercising only
+    # the FTS/skill-vector lanes they're actually about.
+    @patch("local_store.quality.meaningfulness_components", return_value={"prominence": 0, "provenance": 0, "meaningfulness": 0})
+    @patch("local_store.quality.dedupe_by_content_hash", side_effect=lambda rows: rows)
+    @patch("local_store._fast_path_matches", return_value={})
+    @patch("local_store.vector_search_tools", return_value=[])
+    @patch("local_store.vector_search_skills")
+    @patch("local_store.search_skills_fts")
+    def test_global_vector_lane_can_recover_specialist_outside_lexical_candidates(
+        self, search_fts, vector_search, _tool_vec, _fast_path, _dedupe, _components
+    ) -> None:
+        search_fts.return_value = [_retrieval_row(f"decoy-{index}") for index in range(60)]
+        vector_search.return_value = [_retrieval_row("semantic-specialist", rank=0.93)]
+
+        results = local_store.hybrid_search_skills("generic boilerplate before niche terms", [0.1] * 384, 20)
+
+        vector_search.assert_called_once_with([0.1] * 384, 60)
+        specialist = next(row for row in results if row["id"] == "semantic-specialist")
+        self.assertEqual(specialist["similarity"], 0.93)
+
+    @patch("local_store.quality.meaningfulness_components", return_value={"prominence": 0, "provenance": 0, "meaningfulness": 0})
+    @patch("local_store.quality.dedupe_by_content_hash", side_effect=lambda rows: rows)
+    @patch("local_store._fast_path_matches", return_value={})
+    @patch("local_store.vector_search_tools", return_value=[])
+    @patch("local_store.vector_search_skills")
+    @patch("local_store.search_skills_fts")
+    def test_embedding_lane_retains_active_pending_embedding_and_excludes_prompt_dumps(
+        self, search_fts, vector_search, _tool_vec, _fast_path, _dedupe, _components
+    ) -> None:
+        search_fts.return_value = [
+            _retrieval_row("lexical-only"),
+            _retrieval_row("semantic-specialist"),
+        ]
+        vector_search.return_value = [
+            _retrieval_row("semantic-specialist", rank=0.91),
+            _retrieval_row("metadata", rank=0.99, quality_status="metadata_only"),
+            _retrieval_row("prompt-dump", rank=0.98, description="x" * 2001),
+        ]
+
+        results = local_store.hybrid_search_skills("specialized task", [0.1] * 384, 10)
+
+        # metadata_only is discovery-eligible this session (quality.ACTIVE_STATUSES,
+        # not active-only) -- it surfaces in the fused set alongside the two
+        # active rows now, still subject to the same description-length bound.
+        self.assertEqual(
+            [row["id"] for row in results],
+            ["semantic-specialist", "metadata", "lexical-only"],
+        )
+        self.assertIsNone(results[-1]["similarity"])
+
+    @patch("local_store.quality.meaningfulness_components", return_value={"prominence": 0, "provenance": 0, "meaningfulness": 0})
+    @patch("local_store.quality.dedupe_by_content_hash", side_effect=lambda rows: rows)
+    @patch("local_store._fast_path_matches", return_value={})
+    @patch("local_store.vector_search_tools", return_value=[])
+    @patch("local_store.vector_search_skills")
+    @patch("local_store.search_skills_fts")
+    def test_pending_fts_saturation_cannot_truncate_semantic_lane(
+        self, search_fts, vector_search, _tool_vec, _fast_path, _dedupe, _components
+    ) -> None:
+        search_fts.return_value = [
+            _retrieval_row(f"pending-{index}") for index in range(60)
+        ]
+        vector_search.return_value = [
+            _retrieval_row(f"semantic-{index}", rank=0.99 - index / 1000)
+            for index in range(20)
+        ]
+
+        results = local_store.hybrid_search_skills("exact lexical saturation", [0.1] * 384, 10)
+
+        semantic = [row for row in results if row["similarity"] is not None]
+        pending = [row for row in results if row["similarity"] is None]
+        self.assertEqual(len(semantic), 9)
+        self.assertEqual(len(pending), 1)
+        self.assertTrue(all(row["id"].startswith("semantic-") for row in semantic))
+        self.assertEqual(results[-1]["id"], "pending-0")
+
+    @patch("local_store.quality.meaningfulness_components", return_value={"prominence": 0, "provenance": 0, "meaningfulness": 0})
+    @patch("local_store.quality.dedupe_by_content_hash", side_effect=lambda rows: rows)
+    @patch("local_store._fast_path_matches", return_value={})
+    @patch("local_store.search_skills_fts")
+    def test_bounded_active_fts_remains_available_when_embedding_fails(
+        self, search_fts, _fast_path, _dedupe, _components
+    ) -> None:
+        search_fts.return_value = [
+            _retrieval_row("active-fallback"),
+            _retrieval_row("metadata", quality_status="metadata_only"),
+            _retrieval_row("prompt-dump", description="x" * 2001),
+        ]
+
+        results = local_store.hybrid_search_skills("specialized task", None, 10)
+
+        # metadata_only is discovery-eligible this session -- it's no longer
+        # excluded from the fused set, just from full/inject tier (a
+        # separate, unchanged gate in quality.tier_for_ranked_candidates).
+        self.assertEqual([row["id"] for row in results], ["active-fallback", "metadata"])
+
+
 class RouteEventPrivacyTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()

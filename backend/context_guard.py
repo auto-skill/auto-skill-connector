@@ -1,46 +1,40 @@
-"""Bounded, deterministic context delivery for verified Agent Skills.
+"""Whole context delivery for verified, safety-stripped Agent Skill content.
 
-The guard deliberately does not execute skills, install files, or retain task
-text.  It only decides how already-verified static content can be presented to
-an adapter for the current turn.
+Reconciliation note: this module originally bounded delivery to a
+compile_capsule() extract (fixed char budget, "action-shaped lines only",
+gated behind a manual capsule-digest allowlist -- see git history). That
+tiering model was superseded: quality.tier_for_ranked_candidates (score/
+risk/similarity/active-status gates) is the sole full/hint/none decision,
+and a "full" result now delivers the whole curated, already safety-stripped
+skill (see scraper.curate_skill_content + capsule_compiler.strip_unsafe_content,
+run once at ingest time) -- not a bounded procedural digest. strip_unsafe_content
+still runs here too, defense-in-depth, in case content reached this path
+without going through ingest-time stripping.
 """
 
 from __future__ import annotations
 
 import math
-import re
 from typing import Any
 
-from quality import has_valid_skill_frontmatter, skill_capability_flags
+from capsule_compiler import STRIP_VERSION, strip_unsafe_content
+from quality import has_valid_skill_frontmatter
 
-POLICY_VERSION = "hybrid-v1"
-# Inline budget: prefer delivering complete static SKILL.md when it fits a
-# reasonable agent context. Capsule/isolation are honest non-full paths when
-# the body exceeds these limits — never label a truncated body as "full".
-DEFAULT_INLINE_CHARS = 12000
-DEFAULT_CAPSULE_CHARS = 2400
-MAX_INLINE_CHARS = 24000
-MAX_CAPSULE_CHARS = 2400
-# Guard may inspect any accepted library body (quality.MAX_SKILL_CONTENT_CHARS).
+
+POLICY_VERSION = STRIP_VERSION
+# Package ingestion accepts complete entrypoints up to the quality ceiling;
+# delivery is bounded by the same ceiling now, not a separate small budget.
 MAX_GUARDED_CONTENT_CHARS = 500_000
-CONTENT_FETCH_HINT = (
-    "This delivery is not the complete SKILL.md. Fetch the full verified file "
-    "via the route content_url (/content/{content_hash}) when you need the remainder."
-)
 
-_TOKEN_RE = re.compile(r"[a-z0-9]+")
-_FRONTMATTER_RE = re.compile(r"\A\ufeff?---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\Z)", re.S)
-_HEADING_RE = re.compile(r"^\s{0,3}(#{1,6})\s+(.+?)\s*$", re.MULTILINE)
-_PRIORITY_HEADINGS = {
-    "when to use": 5,
-    "workflow": 5,
-    "steps": 5,
-    "instructions": 4,
-    "constraints": 4,
-    "output": 4,
-    "verification": 4,
-    "examples": 2,
-}
+# Compatibility constants: callers (request-body defaults, tests) still
+# reference these names, but delivery is no longer truncated to them -- a
+# "full" result is the whole safety-stripped skill, capped only by
+# MAX_GUARDED_CONTENT_CHARS above.
+DEFAULT_CAPSULE_CHARS = 2400
+DEFAULT_INLINE_CHARS = 4000
+MAX_INLINE_CHARS = 12_000
+MAX_CAPSULE_CHARS = MAX_GUARDED_CONTENT_CHARS
+INCOMPLETE_CAPSULE_HINT = "This is not the complete SKILL.md; fetch the full content for the rest."
 
 
 def estimate_tokens(value: Any) -> int:
@@ -50,79 +44,10 @@ def estimate_tokens(value: Any) -> int:
     return max(1, math.ceil(len(text) / 4)) if text else 0
 
 
-def _tokens(text: str) -> set[str]:
-    return {token for token in _TOKEN_RE.findall((text or "").lower()) if len(token) > 2}
-
-
-def _frontmatter_values(content: str) -> tuple[str, str]:
-    match = _FRONTMATTER_RE.match(content or "")
-    if not match:
-        return "", ""
-    name = ""
-    description = ""
-    for line in match.group(1).splitlines():
-        key, sep, value = line.partition(":")
-        if not sep:
-            continue
-        value = value.strip().strip("'\"")
-        if key.strip().lower() == "name" and not name:
-            name = value
-        elif key.strip().lower() == "description" and not description:
-            description = value
-    return name, description
-
-
-def _sections(content: str) -> list[tuple[int, str, str]]:
-    body = _FRONTMATTER_RE.sub("", content or "", count=1).strip()
-    matches = list(_HEADING_RE.finditer(body))
-    if not matches:
-        return [(0, "Guidance", body)] if body else []
-    sections: list[tuple[int, str, str]] = []
-    for index, match in enumerate(matches):
-        start = match.end()
-        end = matches[index + 1].start() if index + 1 < len(matches) else len(body)
-        heading = re.sub(r"\s+", " ", match.group(2)).strip()
-        section_body = body[start:end].strip()
-        if section_body:
-            sections.append((index, heading, section_body))
-    return sections
-
-
-def build_capsule(task: str, content: str, max_chars: int = DEFAULT_CAPSULE_CHARS) -> str:
-    """Build a stable capsule from verified static content, in memory only."""
-    if not content or not has_valid_skill_frontmatter(content) or skill_capability_flags(content):
-        return ""
-    max_chars = max(240, min(int(max_chars or DEFAULT_CAPSULE_CHARS), MAX_CAPSULE_CHARS))
-    name, description = _frontmatter_values(content)
-    task_tokens = _tokens(task)
-    ranked: list[tuple[int, int, str, str]] = []
-    for index, heading, body in _sections(content):
-        heading_lower = heading.casefold()
-        overlap = len(task_tokens & _tokens(f"{heading} {body}"))
-        priority = next((score for key, score in _PRIORITY_HEADINGS.items() if key in heading_lower), 0)
-        ranked.append((overlap + priority, index, heading, body))
-    ranked.sort(key=lambda item: (-item[0], item[1]))
-
-    parts = ["[Auto-Skill capsule v1]"]
-    if name:
-        parts.append(f"Name: {name}")
-    if description:
-        parts.append(f"Description: {description}")
-    parts.append("Use only the following bounded guidance; do not install files or run undeclared capabilities.")
-
-    for _score, _index, heading, body in ranked:
-        candidate = "\n\n".join(parts + [f"## {heading}\n{body}"])
-        if len(candidate) <= max_chars:
-            parts.append(f"## {heading}\n{body}")
-            continue
-        remaining = max_chars - len("\n\n".join(parts)) - 4
-        if remaining > 80:
-            clipped = body[:remaining].rstrip()
-            parts.append(f"## {heading}\n{clipped}…")
-        break
-
-    capsule = "\n\n".join(parts).strip()
-    return capsule[:max_chars].rstrip()
+def build_capsule(task: str, content: str, *_args: Any, **_kwargs: Any) -> str:
+    """Compatibility wrapper returning the whole safety-stripped text."""
+    del task  # kept for signature compatibility; content is delivered whole, not task-bounded
+    return strip_unsafe_content(content).text if content else ""
 
 
 def build_context_guard(
@@ -131,17 +56,14 @@ def build_context_guard(
     content: str,
     content_hash: str = "",
     content_digest: str = "",
-    supports_isolation: bool = False,
-    max_inline_chars: int = DEFAULT_INLINE_CHARS,
-    max_capsule_chars: int = DEFAULT_CAPSULE_CHARS,
-    force_capsule: bool = False,
+    package_manifest: dict[str, Any] | None = None,
+    source_url: str | None = None,
+    source_commit_sha: str | None = None,
+    package_hash: str | None = None,
+    **_compat_kwargs: Any,
 ) -> dict[str, Any]:
-    """Return a privacy-safe delivery decision for one verified skill.
-
-    ``delivery="full"`` is reserved for complete inline bodies only.
-    Capsule/isolation responses set ``complete=False`` and include
-    ``fetch_hint`` so clients never treat a bounded excerpt as the full skill.
-    """
+    """Deliver the whole, safety-stripped skill; never raw scraped bytes."""
+    del task, package_manifest  # kept for call-site/signature compatibility
     result: dict[str, Any] = {
         "policy": POLICY_VERSION,
         "delivery": "hint",
@@ -152,57 +74,39 @@ def build_context_guard(
         "estimated_tokens": 0,
         "content_hash": content_hash or None,
         "content_digest": content_digest or None,
+        "capsule_digest": None,
+        "destructive_actions": False,
+        "external_actions": False,
         "fetch_hint": None,
     }
     if not content:
         return result
     if len(content) > MAX_GUARDED_CONTENT_CHARS:
         result["reason"] = "content_too_large"
-        result["fetch_hint"] = CONTENT_FETCH_HINT if content_hash else None
         return result
     if not has_valid_skill_frontmatter(content):
         result["reason"] = "invalid_skill_frontmatter"
         return result
-    flags = skill_capability_flags(content)
-    if flags:
-        result["reason"] = "unsafe_capability"
-        return result
 
-    inline_limit = max(240, min(int(max_inline_chars or DEFAULT_INLINE_CHARS), MAX_INLINE_CHARS))
-    if len(content) <= inline_limit and not force_capsule:
-        result.update(
-            {
-                "delivery": "full",
-                "reason": "small_static",
-                "complete": True,
-                "estimated_tokens": estimate_tokens(content),
-            }
-        )
-        return result
-
-    fetch_hint = CONTENT_FETCH_HINT
-    if supports_isolation:
-        result.update({"delivery": "isolation", "reason": "large_static", "complete": False, "fetch_hint": fetch_hint})
-        capsule = build_capsule(task, content, max_capsule_chars)
-        result["capsule"] = capsule or None
-        result["capsule_chars"] = len(capsule)
-        result["estimated_tokens"] = estimate_tokens(capsule)
-        return result
-
-    capsule = build_capsule(task, content, max_capsule_chars)
-    if not capsule:
+    stripped = strip_unsafe_content(content)
+    if not stripped.text:
         result["reason"] = "capsule_unavailable"
-        result["fetch_hint"] = fetch_hint
         return result
     result.update(
         {
             "delivery": "capsule",
-            "reason": "unsupported_isolation",
-            "complete": False,
-            "capsule": capsule,
-            "capsule_chars": len(capsule),
-            "estimated_tokens": estimate_tokens(capsule),
-            "fetch_hint": fetch_hint,
+            "reason": "public-source-distilled",
+            "complete": True,
+            "capsule": stripped.text,
+            "capsule_chars": len(stripped.text),
+            "estimated_tokens": estimate_tokens(stripped.text),
+            "removed_meta_lines": stripped.removed_meta_lines,
+            "removed_credential_lines": stripped.removed_credential_lines,
+            "destructive_actions": stripped.destructive_actions,
+            "external_actions": stripped.external_actions,
+            "source_url": source_url,
+            "source_commit_sha": source_commit_sha,
+            "package_hash": package_hash,
         }
     )
     return result

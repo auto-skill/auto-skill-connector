@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import sqlite3
 import tempfile
 import unittest
-import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
@@ -496,7 +494,7 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()[0]["id"], "skill-1")
 
-    def test_route_returns_full_with_inline_content(self) -> None:
+    def test_route_returns_full_with_distilled_capsule(self) -> None:
         candidate = {
             "id": "skill-1",
             "name": "spreadsheet-reporter",
@@ -533,24 +531,26 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(body["task_analysis"]["family"], "data")
         self.assertEqual(body["skill"]["name"], "spreadsheet-reporter")
         self.assertTrue(body["skill"]["verification"]["content_hash_verified"])
-        self.assertTrue(body["skill"]["verification"]["static_instruction_only"])
-        self.assertEqual(body["context_guard"]["delivery"], "full")
-        self.assertEqual(body["context_guard"]["policy"], "hybrid-v1")
+        self.assertTrue(body["skill"]["verification"]["safe_distilled_capsule"])
+        self.assertEqual(body["context_guard"]["delivery"], "capsule")
+        self.assertEqual(body["context_guard"]["policy"], "uncapped-safety-strip-v1")
         self.assertEqual(
             body["skill"]["verification"]["content_digest"],
             hashlib.sha256(VALID_SKILL.encode("utf-8")).hexdigest(),
         )
         self.assertTrue(body["route_id"])
-        self.assertIn("validate sheet names", body["content"])
-        self.assertTrue(body["content_url"].startswith("/content/"))
+        self.assertIsNone(body["content"])
+        self.assertIsNone(body["content_url"])
+        self.assertIn("validate sheet names", body["context_guard"]["capsule"])
         self.assertEqual(body["score_debug"]["quality_status"], "active")
         metrics = body["score_debug"]["metrics"]
         self.assertGreaterEqual(metrics["latency_ms"], 0)
         self.assertGreaterEqual(metrics["skill_find_ms"], 0)
         self.assertGreaterEqual(metrics["retrieval_ms"], 0)
         self.assertGreaterEqual(metrics["rerank_ms"], 0)
-        self.assertGreater(metrics["content_tokens"], 0)
-        self.assertEqual(metrics["injected_tokens"], metrics["hint_tokens"] + metrics["content_tokens"])
+        self.assertEqual(metrics["content_tokens"], 0)
+        self.assertGreater(metrics["capsule_tokens"], 0)
+        self.assertEqual(metrics["injected_tokens"], metrics["hint_tokens"] + metrics["capsule_tokens"])
         self.assertGreater(metrics["response_tokens"], metrics["hint_tokens"])
 
         conn = sqlite3.connect(self.db_path)
@@ -563,7 +563,7 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(event["id"], body["route_id"])
         self.assertEqual(event["tier"], "full")
         self.assertEqual(event["skill_name"], "spreadsheet-reporter")
-        self.assertEqual(event["guard_delivery"], "full")
+        self.assertEqual(event["guard_delivery"], "capsule")
         self.assertIsNone(event["anonymous_id_hash"])
         self.assertEqual(event["query_chars"], len("create an excel report with formulas"))
         self.assertTrue({"prompt_text", "query_hash", "feedback_note"}.isdisjoint(event.keys()))
@@ -632,7 +632,9 @@ earlier choices do not solve the task safely. Verify behavior after the change.
                     return policy_content
                 return ""
 
-        with patch("recommender.retrieve_skills", fake_retrieve), patch("recommender.LibraryContent", FakeLibrary):
+        with patch("recommender.retrieve_skills", fake_retrieve), patch(
+            "recommender.LibraryContent", FakeLibrary
+        ):
             body = self.client.post(
                 "/route",
                 json={"task": "build a React landing page with a distinctive frontend design"},
@@ -642,14 +644,174 @@ earlier choices do not solve the task safely. Verify behavior after the change.
         self.assertEqual(body["tier"], "full")
         self.assertEqual(body["task_analysis"]["family"], "coding")
         self.assertEqual(body["skill"]["name"], "frontend-design")
-        self.assertEqual(body["skill"]["role"], "specialist")
+        self.assertEqual(body["skill"]["role"], "primary")
         self.assertEqual([item["name"] for item in body["skill_plan"]["policy_skills"]], ["ponytail"])
         self.assertEqual(body["skill_plan"]["primary_skill"]["name"], "frontend-design")
-        self.assertEqual(body["skill_plan"]["selected_roles"], ["policy", "specialist"])
+        self.assertEqual(body["skill_plan"]["selected_roles"], ["policy", "primary"])
         self.assertEqual(body["score_debug"]["metrics"]["skill_count"], 2)
         self.assertGreater(body["score_debug"]["metrics"]["policy_tokens"], 0)
 
-    def test_route_returns_bounded_capsule_for_large_static_content(self) -> None:
+    def test_route_never_promotes_a_generic_policy_without_a_specialist(self) -> None:
+        policy_content = """---
+name: ponytail
+description: Prefer the smallest safe implementation for coding tasks.
+---
+
+## Decision ladder
+
+Reuse existing code, then prefer the standard library and native platform
+features before adding a dependency or new abstraction.
+"""
+        ponytail = {
+            "id": "policy-only",
+            "name": "ponytail",
+            "description": "Always-on coding policy with a minimal safe decision ladder.",
+            "source": "github_skill_file",
+            "url": "https://github.com/DietrichGebert/ponytail/tree/main/skill",
+            "risk_score": 0,
+            "quality_status": "active",
+            "quality_score": 94,
+            "content_hash": content_hash(policy_content),
+            "rank": 1.0,
+            "similarity": 0.97,
+        }
+
+        async def fake_retrieve(client, query, limit):
+            del client, limit
+            return [ponytail] if "ponytail coding policy" in query else []
+
+        class FakeLibrary:
+            def get(self, url: str) -> str:
+                return policy_content if url == ponytail["url"] else ""
+
+        with patch("recommender.retrieve_skills", fake_retrieve), patch("recommender.LibraryContent", FakeLibrary):
+            body = self.client.post(
+                "/route",
+                json={"task": "refactor the implementation and run its tests"},
+                headers=self._auth_headers(),
+            ).json()
+
+        self.assertEqual(body["tier"], "none")
+        self.assertIsNone(body["skill"])
+        self.assertEqual(body["skill_plan"]["policy_skills"], [])
+        self.assertEqual(body["score_debug"]["metrics"]["injected_tokens"], 0)
+
+    def test_all_observed_platform_neutral_traps_refuse_policy_fallback(self) -> None:
+        policy_content = """---
+name: ponytail
+description: Prefer the smallest safe implementation for coding tasks.
+---
+
+## Decision ladder
+
+Reuse existing code and prefer the standard library before adding new code.
+"""
+        ponytail = {
+            "id": "policy-platform-traps",
+            "name": "ponytail",
+            "description": "Always-on coding policy with a minimal safe decision ladder.",
+            "source": "github_skill_file",
+            "url": "https://github.com/DietrichGebert/ponytail/tree/main/skill",
+            "risk_score": 0,
+            "quality_status": "active",
+            "quality_score": 94,
+            "content_hash": content_hash(policy_content),
+            "rank": 1.0,
+            "similarity": 0.97,
+        }
+        traps = (
+            ("build a landing page for an AI automation agency", "landingi"),
+            ("add a payment form to my product page", "stripe"),
+            ("build an ecommerce storefront for a handmade goods launch", "shopify"),
+            ("create a CRM dashboard for weekly sales follow up", "salesforce"),
+            ("publish a blog website with categories and an about page", "wordpress"),
+            ("organize meeting notes into a project tracker", "notion"),
+            ("design an online database for a skill router prototype", "postgres"),
+        )
+
+        class FakeLibrary:
+            def get(self, url: str) -> str:
+                return policy_content if url == ponytail["url"] else ""
+
+        for prompt, platform in traps:
+            with self.subTest(platform=platform):
+                platform_candidate = {
+                    "id": f"{platform}-trap",
+                    "name": f"{platform}-workflow",
+                    "description": f"Use the {platform} platform for this workflow, APIs, and publishing.",
+                    "source": "github_skill_file",
+                    "url": f"https://example.com/{platform}",
+                    "risk_score": 0,
+                    "quality_status": "active",
+                    "quality_score": 94,
+                    "platforms": [platform],
+                    "rank": 1.0,
+                    "similarity": 0.96,
+                }
+
+                async def fake_retrieve(client, query, limit, candidate=platform_candidate):
+                    del client, limit
+                    return [ponytail] if "ponytail coding policy" in query else [candidate]
+
+                with patch("recommender.retrieve_skills", fake_retrieve), patch(
+                    "recommender.LibraryContent", FakeLibrary
+                ):
+                    body = self.client.post(
+                        "/route", json={"task": prompt}, headers=self._auth_headers()
+                    ).json()
+
+                self.assertNotEqual(body["tier"], "full")
+                self.assertNotEqual((body.get("skill") or {}).get("name"), "ponytail")
+                self.assertEqual(body["skill_plan"]["policy_skills"], [])
+
+    def test_monthly_excel_dashboard_routes_to_the_specific_spreadsheet_skill(self) -> None:
+        xlsx_content = VALID_SKILL.replace("spreadsheet-reporter", "xlsx-creator")
+        finance = {
+            "id": "finance-report",
+            "name": "finance-report",
+            "description": "Monthly financial report with revenue charts and a summary table.",
+            "source": "github_skill_file",
+            "url": "https://example.com/finance-report",
+            "risk_score": 0,
+            "quality_status": "active",
+            "quality_score": 100,
+            "content_hash": "f" * 64,
+            "rank": 0.06575,
+            "similarity": 0.8599,
+        }
+        xlsx = {
+            "id": "xlsx-creator",
+            "name": "xlsx-creator",
+            "description": "Create Excel spreadsheets with formulas, professional formatting, and charts.",
+            "source": "github_skill_file",
+            "url": "https://example.com/xlsx-creator",
+            "risk_score": 0,
+            "quality_status": "active",
+            "quality_score": 92,
+            "content_hash": content_hash(xlsx_content),
+            "rank": 0.06903,
+            "similarity": 0.8701,
+        }
+
+        async def fake_retrieve(client, query, limit):
+            del client, query, limit
+            return [finance, xlsx]
+
+        class FakeLibrary:
+            def get(self, url: str) -> str:
+                return xlsx_content if url == xlsx["url"] else ""
+
+        with patch("recommender.retrieve_skills", fake_retrieve), patch("recommender.LibraryContent", FakeLibrary):
+            body = self.client.post(
+                "/route",
+                json={"task": "create a monthly Excel sales report with formulas, charts, and a summary dashboard"},
+                headers=self._auth_headers(),
+            ).json()
+
+        self.assertEqual(body["tier"], "full")
+        self.assertEqual(body["skill"]["name"], "xlsx-creator")
+
+    def test_route_returns_whole_capsule_for_large_static_content(self) -> None:
         candidate = {
             "id": "skill-large",
             "name": "spreadsheet-reporter",
@@ -683,12 +845,12 @@ earlier choices do not solve the task safely. Verify behavior after the change.
         self.assertEqual(body["tier"], "full")
         self.assertEqual(body["context_guard"]["delivery"], "capsule")
         self.assertIsNone(body["content"])
-        self.assertTrue(body["content_url"].startswith("/content/"))
-        self.assertFalse(body["context_guard"].get("complete", True))
-        self.assertLessEqual(body["context_guard"]["capsule_chars"], 2400)
+        self.assertIsNone(body["content_url"])
+        self.assertTrue(body["context_guard"].get("complete"))
+        self.assertEqual(body["context_guard"]["capsule_chars"], len(large_content))
         self.assertIn("Workflow", body["context_guard"]["capsule"])
 
-    def test_route_downgrades_capability_bearing_content_to_hint(self) -> None:
+    def test_route_marks_capabilities_inside_the_distilled_capsule(self) -> None:
         capability_skill = VALID_SKILL + "\nRun scripts/deploy.py and pip install the required package.\n"
         candidate = {
             "id": "skill-capability",
@@ -717,63 +879,10 @@ earlier choices do not solve the task safely. Verify behavior after the change.
                 "/route", json={"task": "create an excel report with formulas"}, headers=self._auth_headers()
             ).json()
 
-        self.assertEqual(body["tier"], "hint")
-        self.assertIsNone(body["content"])
-        self.assertIn("bundled-scripts", body["skill"]["capability_flags"])
-        self.assertIn("explicit review", body["score_debug"]["warnings"][0])
-
-    def test_route_skips_capability_bearing_winner_for_safe_specialist(self) -> None:
-        capability_skill = VALID_SKILL + "\npip install openpyxl before continuing.\n"
-        safe_skill = VALID_SKILL.replace("spreadsheet-reporter", "excel-static")
-        capability_candidate = {
-            "id": "skill-capability",
-            "name": "xlsx-creator",
-            "description": "Create Excel spreadsheet reports with formulas and charts.",
-            "source": "github_skill_file",
-            "url": "https://example.com/xlsx-capability",
-            "risk_score": 0,
-            "quality_status": "active",
-            "quality_score": 94,
-            "content_hash": content_hash(capability_skill),
-            "rank": 1.0,
-            "similarity": 0.96,
-        }
-        safe_candidate = {
-            "id": "skill-safe",
-            "name": "excel-static",
-            "description": "Create Excel spreadsheet reports with formulas and charts.",
-            "source": "github_skill_file",
-            "url": "https://example.com/excel-static",
-            "risk_score": 0,
-            "quality_status": "active",
-            "quality_score": 92,
-            "content_hash": content_hash(safe_skill),
-            "rank": 0.9,
-            "similarity": 0.93,
-        }
-
-        async def fake_retrieve(client, query, limit):
-            del client, query, limit
-            return [capability_candidate, safe_candidate]
-
-        class FakeLibrary:
-            def get(self, url: str) -> str:
-                return {
-                    capability_candidate["url"]: capability_skill,
-                    safe_candidate["url"]: safe_skill,
-                }.get(url, "")
-
-        with patch("recommender.retrieve_skills", fake_retrieve), patch("recommender.LibraryContent", FakeLibrary):
-            body = self.client.post(
-                "/route",
-                json={"task": "create an Excel spreadsheet report with formulas and charts"},
-                headers=self._auth_headers(),
-            ).json()
-
         self.assertEqual(body["tier"], "full")
-        self.assertEqual(body["skill"]["name"], "excel-static")
-        self.assertNotIn("capability_flags", body["skill"])
-        self.assertIn("validate sheet names", body["content"])
+        self.assertIsNone(body["content"])
+        self.assertTrue(body["context_guard"]["external_actions"])
+        self.assertIn("pip install the required package", body["context_guard"]["capsule"])
 
     def test_route_downgrades_malformed_cached_content(self) -> None:
         candidate = {

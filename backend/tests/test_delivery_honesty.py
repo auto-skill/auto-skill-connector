@@ -1,4 +1,10 @@
-"""Phase 2B: honest full vs capsule delivery and complete /content bytes."""
+"""Phase 2B: honest whole-skill delivery and complete /content bytes.
+
+Reconciliation note: delivery is no longer bounded to a small char budget --
+a "full" result ships the whole curated, safety-stripped skill (see
+context_guard.build_context_guard). These tests assert completeness, not
+truncation.
+"""
 
 from __future__ import annotations
 
@@ -15,7 +21,6 @@ import local_store
 import scraper
 from context_guard import (
     DEFAULT_INLINE_CHARS,
-    MAX_INLINE_CHARS,
     build_context_guard,
 )
 from embeddings import LibraryContent
@@ -35,27 +40,26 @@ and explain the generated file.
 
 
 def _large_static_skill() -> str:
-    # Exceeds DEFAULT_INLINE_CHARS (12k) so delivery must be non-full.
+    # Exceeds DEFAULT_INLINE_CHARS so we can assert the whole body still ships.
     body = VALID_SMALL + "\n## Reference\n" + ("Keep the workbook reproducible. " * 500)
     assert len(body) > DEFAULT_INLINE_CHARS
-    assert len(body) < MAX_INLINE_CHARS * 2
     return body
 
 
 class DeliveryHonestyUnitTests(unittest.TestCase):
-    def test_small_skill_is_complete_full_inline(self) -> None:
+    def test_small_skill_is_delivered_whole(self) -> None:
         guard = build_context_guard(
             task="create an excel report with formulas",
             content=VALID_SMALL,
             content_hash="a" * 64,
             content_digest="b" * 64,
         )
-        self.assertEqual(guard["delivery"], "full")
+        self.assertEqual(guard["delivery"], "capsule")
         self.assertTrue(guard["complete"])
+        self.assertEqual(guard["capsule"], VALID_SMALL)
         self.assertIsNone(guard["fetch_hint"])
-        self.assertLessEqual(len(VALID_SMALL), DEFAULT_INLINE_CHARS)
 
-    def test_large_skill_capsule_is_explicitly_incomplete(self) -> None:
+    def test_large_skill_is_delivered_whole_not_truncated(self) -> None:
         content = _large_static_skill()
         guard = build_context_guard(
             task="create an excel report with formulas",
@@ -65,21 +69,22 @@ class DeliveryHonestyUnitTests(unittest.TestCase):
             supports_isolation=False,
         )
         self.assertEqual(guard["delivery"], "capsule")
-        self.assertFalse(guard["complete"])
-        self.assertIn("not the complete SKILL.md", guard["fetch_hint"])
-        self.assertIn("/content/{content_hash}", guard["fetch_hint"])
-        self.assertLessEqual(guard["capsule_chars"], 2400)
+        self.assertTrue(guard["complete"])
+        self.assertIsNone(guard["fetch_hint"])
+        self.assertEqual(guard["capsule"], content)
+        self.assertEqual(guard["capsule_chars"], len(content))
 
-    def test_large_skill_isolation_is_explicitly_incomplete(self) -> None:
+    def test_isolation_request_still_delivers_whole_content(self) -> None:
+        content = _large_static_skill()
         guard = build_context_guard(
             task="create an excel report with formulas",
-            content=_large_static_skill(),
+            content=content,
             content_hash="e" * 64,
             supports_isolation=True,
         )
-        self.assertEqual(guard["delivery"], "isolation")
-        self.assertFalse(guard["complete"])
-        self.assertIn("content_url", guard["fetch_hint"])
+        self.assertEqual(guard["delivery"], "capsule")
+        self.assertTrue(guard["complete"])
+        self.assertEqual(guard["capsule"], content)
 
 
 class ContentAndRouteDeliveryTests(unittest.TestCase):
@@ -132,7 +137,7 @@ class ContentAndRouteDeliveryTests(unittest.TestCase):
         self.assertEqual(response.text, body)
         self.assertGreater(len(response.text), DEFAULT_INLINE_CHARS)
 
-    def test_route_capsule_includes_content_url_for_remainder(self) -> None:
+    def test_validated_full_route_delivers_the_whole_skill(self) -> None:
         content = _large_static_skill()
         chash = content_hash(content)
         candidate = {
@@ -173,12 +178,10 @@ class ContentAndRouteDeliveryTests(unittest.TestCase):
         body = response.json()
         self.assertEqual(body["tier"], "full")
         self.assertEqual(body["context_guard"]["delivery"], "capsule")
-        self.assertFalse(body["context_guard"]["complete"])
-        self.assertIsNone(body["content"])
-        self.assertEqual(body["content_url"], f"/content/{chash}")
-        warnings = body.get("score_debug", {}).get("warnings") or []
-        self.assertTrue(any("not full" in warning.lower() for warning in warnings))
-        self.assertTrue(any(f"/content/{chash}" in warning for warning in warnings))
+        self.assertTrue(body["context_guard"]["complete"])
+        # No allowlist gate downgrades a verified, safety-stripped match --
+        # the whole skill ships, not a bounded excerpt.
+        self.assertEqual(body["context_guard"]["capsule"], content)
 
 
 if __name__ == "__main__":

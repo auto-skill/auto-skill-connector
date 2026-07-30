@@ -1,0 +1,11 @@
+{
+  "tasks": [
+    {
+      "name": "terminal-bench/dna-insert",
+      "skill_id": "f3a6b22b-a865-4fd7-9265-909d6d6bf943",
+      "skill_name": "bio-applied-primer-design",
+      "source_url": "https://github.com/pavel-kravchenko/bioinformatics/tree/HEAD/Skills/bio-applied-primer-design",
+      "source_content_hash": "4e60a66213d15b486bfebb33182b366a5edc1795a9d1436b0b7e8c8912718711"
+    }
+  ]
+}

@@ -14,6 +14,7 @@ from scraper import (
     fetch_github_raw_content,
     fetch_smithery_tool_list,
     scan_skill,
+    scrape_skills_sh,
 )
 
 
@@ -407,6 +408,85 @@ class ScraperSafetyTests(unittest.TestCase):
         statuses = {id(a): a.get("quality_status"), id(b): b.get("quality_status")}
         self.assertIn("duplicate", (a.get("quality_status"), b.get("quality_status")))
         self.assertNotEqual(a.get("quality_status"), b.get("quality_status"))
+
+    def test_missing_package_is_informational_not_a_status_override(self) -> None:
+        """Reconciliation decision: a GitHub-sourced skill fetched without an
+        immutable package snapshot (no commit-pinned provenance) is NOT
+        downgraded to a separate quality_status and does NOT lose its
+        embedding eligibility -- package_completeness is tracked as an
+        honest, separate metadata field. quality.tier_for_ranked_candidates
+        (active/metadata_only + score/risk/similarity gates) stays the sole
+        tier decision; package completeness is provenance information, not a
+        second gate on top of it."""
+        skill = {
+            "name": "spreadsheet-reporter",
+            "description": "Build spreadsheet reports with formulas and charts.",
+            "source": "github_skill_file",
+            "url": "https://github.com/example/repo/blob/main/SKILL.md",
+            "_content": VALID_CONTENT,
+        }
+
+        asyncio.run(scan_skill(None, skill))
+
+        self.assertEqual(skill["quality_status"], "active")
+        self.assertEqual(skill["package_completeness"], "missing")
+
+    def test_skills_sh_curated_capture_keeps_full_package_separate_from_entrypoint(self) -> None:
+        class Response:
+            def __init__(self, payload):
+                self.status_code = 200
+                self._payload = payload
+
+            def json(self):
+                return self._payload
+
+        class Client:
+            async def get(self, url, **_kwargs):
+                if url.endswith("/curated"):
+                    return Response(
+                        {
+                            "data": [
+                                {
+                                    "skills": [
+                                        {
+                                            "id": "acme/skills/report",
+                                            "name": "report",
+                                            "sourceType": "github",
+                                            "installUrl": "https://github.com/acme/skills",
+                                            "url": "https://skills.sh/acme/skills/report",
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    )
+                return Response(
+                    {
+                        "id": "acme/skills/report",
+                        "slug": "report",
+                        "hash": "registry-snapshot",
+                        "files": [
+                            {"path": "SKILL.md", "contents": VALID_CONTENT},
+                            {"path": "references/checks.md", "contents": "Verify every total."},
+                        ],
+                    }
+                )
+
+        skills = []
+        with patch("scraper.SKILLS_SH_OIDC_TOKEN", "test-oidc"), patch(
+            "scraper.ImmutablePackageStore.put", return_value=None
+        ):
+            asyncio.run(scrape_skills_sh(Client(), skills))
+
+        self.assertEqual(len(skills), 1)
+        skill = skills[0]
+        self.assertEqual(skill["source"], "skills_sh")
+        # The immutable package stores every file (audit/provenance)...
+        self.assertEqual(skill["_package_manifest"]["stored_files"], 2)
+        self.assertEqual(skill["_package_manifest"]["source"]["registry_snapshot_hash"], "registry-snapshot")
+        # ...but the entrypoint content scan_skill will curate/embed from is
+        # only SKILL.md itself, not the sibling reference file's contents.
+        self.assertNotIn("Verify every total", skill["_content"])
 
 
 if __name__ == "__main__":

@@ -1,0 +1,3 @@
+Use this bounded planning capsule only where applicable. Keep the benchmark task primary.
+
+Keep any non-template 5′ mutation/insert sequence separate from each template-annealing segment, and calculate reported Tm only for that annealing segment. Do not substitute Biopython or primer3-py Tm values for the required `oligotm` result, because their models can differ. After satisfying the specified `oligotm` limits, optionally rank candidates with `primer3.bindings.calc_hairpin`, `calc_homodimer`, and `calc_heterodimer`; their ΔG values are in cal/mol, with values below roughly −9000 cal/mol commonly flagged as problematic.

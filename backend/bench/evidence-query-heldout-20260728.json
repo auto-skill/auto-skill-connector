@@ -1,0 +1,195 @@
+{
+  "compiler_version": "structured-intent-v1",
+  "control": "BM25 over original public prompt only",
+  "dataset": {
+    "all_rows": 23,
+    "path": "C:\\Users\\Pranay Dinesh\\.codex\\worktrees\\47a1\\Skills\\backend\\bench\\tasks.jsonl",
+    "sha256": "1b971f9a29cb420c9bf4e1b4cae3e2bed4596c3f1eff6b09789380aa33e10353"
+  },
+  "eval_version": "evidence-gates-v1",
+  "evaluation": "heldout-intent-retrieval-proxy",
+  "hypothesis": "dual original+structured queries improve paired target retrieval",
+  "metrics": {
+    "top1": {
+      "baseline": 12,
+      "compiled": 13,
+      "delta_pp": 7.6923076923076925,
+      "mcnemar_exact_p": 1.0,
+      "paired_bootstrap_95ci_pp": [
+        0.0,
+        23.076923076923077
+      ],
+      "paired_losses": 0,
+      "paired_ties": 12,
+      "paired_wins": 1,
+      "total": 13
+    },
+    "top5": {
+      "baseline": 13,
+      "compiled": 13,
+      "delta_pp": 0.0,
+      "mcnemar_exact_p": 1.0,
+      "paired_bootstrap_95ci_pp": [
+        0.0,
+        0.0
+      ],
+      "paired_losses": 0,
+      "paired_ties": 13,
+      "paired_wins": 0,
+      "total": 13
+    }
+  },
+  "split": {
+    "compiler_forbidden_inputs": [
+      "task id",
+      "route_query target",
+      "candidate labels"
+    ],
+    "compiler_inputs": [
+      "public prompt text"
+    ],
+    "heldout_rows": 13,
+    "rule": "sha256(public_prompt) modulo 10 < 4"
+  },
+  "surfaced_precision_proxy": {
+    "note": "Target-record precision in a small offline proxy, not production route precision.",
+    "value": 1.0,
+    "wilson_95ci": [
+      0.7718981569447083,
+      1.0
+    ]
+  },
+  "tasks": [
+    {
+      "baseline_rank": 1,
+      "baseline_top1": true,
+      "baseline_top5": true,
+      "compiled_rank": 1,
+      "compiled_top1": true,
+      "compiled_top5": true,
+      "query_variant_count": 2,
+      "task_key": "98e12a12b8f6"
+    },
+    {
+      "baseline_rank": 1,
+      "baseline_top1": true,
+      "baseline_top5": true,
+      "compiled_rank": 1,
+      "compiled_top1": true,
+      "compiled_top5": true,
+      "query_variant_count": 2,
+      "task_key": "aa82eda8c984"
+    },
+    {
+      "baseline_rank": 1,
+      "baseline_top1": true,
+      "baseline_top5": true,
+      "compiled_rank": 1,
+      "compiled_top1": true,
+      "compiled_top5": true,
+      "query_variant_count": 2,
+      "task_key": "08be570242a6"
+    },
+    {
+      "baseline_rank": 1,
+      "baseline_top1": true,
+      "baseline_top5": true,
+      "compiled_rank": 1,
+      "compiled_top1": true,
+      "compiled_top5": true,
+      "query_variant_count": 2,
+      "task_key": "40b0678f9107"
+    },
+    {
+      "baseline_rank": 1,
+      "baseline_top1": true,
+      "baseline_top5": true,
+      "compiled_rank": 1,
+      "compiled_top1": true,
+      "compiled_top5": true,
+      "query_variant_count": 2,
+      "task_key": "c6f791711713"
+    },
+    {
+      "baseline_rank": 1,
+      "baseline_top1": true,
+      "baseline_top5": true,
+      "compiled_rank": 1,
+      "compiled_top1": true,
+      "compiled_top5": true,
+      "query_variant_count": 2,
+      "task_key": "717f9f079a35"
+    },
+    {
+      "baseline_rank": 1,
+      "baseline_top1": true,
+      "baseline_top5": true,
+      "compiled_rank": 1,
+      "compiled_top1": true,
+      "compiled_top5": true,
+      "query_variant_count": 2,
+      "task_key": "083ddc9e9d54"
+    },
+    {
+      "baseline_rank": 1,
+      "baseline_top1": true,
+      "baseline_top5": true,
+      "compiled_rank": 1,
+      "compiled_top1": true,
+      "compiled_top5": true,
+      "query_variant_count": 2,
+      "task_key": "136d3f0e9550"
+    },
+    {
+      "baseline_rank": 2,
+      "baseline_top1": false,
+      "baseline_top5": true,
+      "compiled_rank": 1,
+      "compiled_top1": true,
+      "compiled_top5": true,
+      "query_variant_count": 2,
+      "task_key": "491cd4378b25"
+    },
+    {
+      "baseline_rank": 1,
+      "baseline_top1": true,
+      "baseline_top5": true,
+      "compiled_rank": 1,
+      "compiled_top1": true,
+      "compiled_top5": true,
+      "query_variant_count": 2,
+      "task_key": "a9e4380fdebe"
+    },
+    {
+      "baseline_rank": 1,
+      "baseline_top1": true,
+      "baseline_top5": true,
+      "compiled_rank": 1,
+      "compiled_top1": true,
+      "compiled_top5": true,
+      "query_variant_count": 2,
+      "task_key": "e3922deaa718"
+    },
+    {
+      "baseline_rank": 1,
+      "baseline_top1": true,
+      "baseline_top5": true,
+      "compiled_rank": 1,
+      "compiled_top1": true,
+      "compiled_top5": true,
+      "query_variant_count": 2,
+      "task_key": "68e5b5b12df4"
+    },
+    {
+      "baseline_rank": 1,
+      "baseline_top1": true,
+      "baseline_top5": true,
+      "compiled_rank": 1,
+      "compiled_top1": true,
+      "compiled_top5": true,
+      "query_variant_count": 2,
+      "task_key": "be0b8921b186"
+    }
+  ],
+  "treatment": "RRF over original and structured compiled public queries"
+}

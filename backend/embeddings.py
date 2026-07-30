@@ -252,6 +252,13 @@ def build_embed_text(skill: dict, content: str = "") -> str:
     Body text uses ``sample_content_for_embed`` so indexing reflects head +
     priority sections + tail within the model window, not a random head clip.
     """
+    # Package-first ingestion creates a compact, versioned retrieval record.
+    # Prefer it when available; legacy rows retain the content-aware sampler
+    # below until they are rebuilt into the new representation.
+    retrieval_text = str(skill.get("retrieval_text") or "").strip()
+    if retrieval_text:
+        return retrieval_text[:1500]
+
     parts = [skill.get("name") or ""]
     if skill.get("description"):
         parts.append(skill["description"])

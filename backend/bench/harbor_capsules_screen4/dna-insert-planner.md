@@ -1,0 +1,3 @@
+Use this bounded planning capsule only where applicable. Keep the benchmark task primary.
+
+Parse both FASTA records; identify input and desired output. Normalize case and whitespace, then compare circular molecules across rotations and strand orientations to locate edits and unchanged flanks. Choose the fewest Q5 mutagenesis reactions and primer pairs covering all changes. For each pair, design forward then reverse primers with 15–45-nt template-annealing segments and any required non-annealing edit tails. Score only annealing segments with primer3 oligotm using exactly `-tp 1 -sc 1 -mv 50 -dv 2 -n 0.8 -d 500`; adjust…

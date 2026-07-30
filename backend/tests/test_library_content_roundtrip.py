@@ -132,6 +132,10 @@ class LibraryContentRoundTripTests(unittest.TestCase):
             {"stars": 3, "updated_at": "2026-07-01T00:00:00Z"},
         )
         self.assertGreater(len(skill["_content"]), 20_000)
+        # Full-content persistence applies after the source has been pinned
+        # into an immutable package. Unpinned GitHub content is intentionally
+        # quarantined by the evidence gate.
+        skill["_package_manifest"] = {"package_hash": "a" * 64}
 
         asyncio.run(scan_skill(None, skill))
 

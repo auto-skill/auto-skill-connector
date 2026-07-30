@@ -15,12 +15,20 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from datetime import datetime, timezone, date, timedelta
 import os
+from capsule_compiler import strip_unsafe_content
 from embeddings import (
     build_embed_text,
     embed_text_hash,
     embed_texts,
     embedding_model_status,
     generate_capability_summary,
+)
+from package_store import (
+    MAX_PACKAGE_BYTES,
+    MAX_PACKAGE_FILES,
+    ImmutablePackageStore,
+    PackageFileInput,
+    build_package_manifest,
 )
 from quality import (
     ACTIVE_STATUSES,
@@ -29,6 +37,7 @@ from quality import (
     canonicalize_skill_content,
     content_hash as quality_content_hash,
     evaluate_quality,
+    has_valid_skill_frontmatter,
     pick_canonical,
 )
 import admin_security
@@ -1681,6 +1690,124 @@ async def scrape_skillsmp(client: httpx.AsyncClient, skills: list):
                 break
 
 
+SKILLS_SH_OIDC_TOKEN = os.getenv("SKILLS_SH_OIDC_TOKEN", "") or os.getenv("VERCEL_OIDC_TOKEN", "")
+SKILLS_SH_DISCOVERY_LIMIT = max(1, min(200, int(os.getenv("SKILLS_SH_DISCOVERY_LIMIT", "50"))))
+
+
+async def scrape_skills_sh(client: httpx.AsyncClient, skills: list):
+    """Capture a bounded official/curated skills.sh slice as full packages.
+
+    The official API requires Vercel OIDC. Registry snapshot hashes are kept
+    separately from Git commit SHAs; GitHub-backed snapshots without an exact
+    upstream commit remain auditable packages but cannot claim commit parity.
+    Skipped entirely (no-op) when no token is configured.
+    """
+    if not SKILLS_SH_OIDC_TOKEN:
+        return
+    headers = {
+        "Accept": "application/json",
+        "Authorization": f"Bearer {SKILLS_SH_OIDC_TOKEN}",
+    }
+    try:
+        response = await client.get(
+            "https://skills.sh/api/v1/skills/curated",
+            headers=headers,
+            timeout=20,
+        )
+        if response.status_code != 200:
+            return
+        payload = response.json() or {}
+    except Exception:
+        return
+    items = [
+        skill
+        for owner in payload.get("data") or []
+        if isinstance(owner, dict)
+        for skill in owner.get("skills") or []
+        if isinstance(skill, dict)
+    ][:SKILLS_SH_DISCOVERY_LIMIT]
+    for item in items:
+        skill_id = str(item.get("id") or "").strip("/")
+        if not skill_id:
+            continue
+        try:
+            detail_response = await client.get(
+                f"https://skills.sh/api/v1/skills/{skill_id}",
+                headers=headers,
+                timeout=20,
+            )
+            if detail_response.status_code != 200:
+                continue
+            detail = detail_response.json() or {}
+        except Exception:
+            continue
+        raw_files = detail.get("files") if isinstance(detail.get("files"), list) else []
+        file_inputs = [
+            PackageFileInput(
+                path=str(file.get("path") or ""),
+                content=str(file.get("contents") or "").encode("utf-8"),
+            )
+            for file in raw_files
+            if isinstance(file, dict) and file.get("path") and file.get("contents") is not None
+        ]
+        entrypoint = next(
+            (
+                file.path
+                for file in file_inputs
+                if file.path.casefold() == "skill.md" or file.path.casefold().endswith("/skill.md")
+            ),
+            "",
+        )
+        if not entrypoint:
+            continue
+        source_url = str(item.get("url") or f"https://skills.sh/{skill_id}")
+        manifest, objects = build_package_manifest(
+            source={
+                "provider": "skills.sh",
+                "source_id": skill_id,
+                "source_type": item.get("sourceType"),
+                "install_url": item.get("installUrl"),
+                "registry_snapshot_hash": detail.get("hash"),
+                "commit_sha": None,
+            },
+            source_url=source_url,
+            entrypoint=entrypoint,
+            files=file_inputs,
+            tree_complete=bool(detail.get("hash") and raw_files),
+            provenance={
+                "collector": "skills.sh-curated-api",
+                "duplicate_flag": bool(item.get("isDuplicate")),
+            },
+        )
+        await asyncio.to_thread(
+            ImmutablePackageStore(Path(__file__).parent / "skills_library" / "packages").put,
+            manifest,
+            objects,
+        )
+        content = next(file.content.decode("utf-8", errors="replace") for file in file_inputs if file.path == entrypoint)
+        fields, _body = parse_frontmatter(content)
+        skills.append({
+            "name": str(fields.get("name") or item.get("name") or detail.get("slug") or skill_id),
+            "description": str(fields.get("description") or ""),
+            "source": "skills_sh",
+            "url": source_url,
+            "tags": [],
+            "raw": {
+                "source_id": skill_id,
+                "installs": item.get("installs"),
+                "install_url": item.get("installUrl"),
+            },
+            "_content": content,
+            "_package_manifest": manifest,
+            "package_hash": manifest["package_hash"],
+            "source_commit_sha": None,
+            "license_spdx": (manifest.get("license") or {}).get("spdx_id"),
+            "package_completeness": manifest.get("completeness_status"),
+            "dependency_closure_status": manifest.get("dependency_closure_status"),
+            "entrypoint_truncated": int(bool(manifest.get("entrypoint_truncated"))),
+        })
+
+
 def _emit_web_result(skills: list, seen: set, q: str, url: str, title: str, snippet: str, engine: str):
     if not url or url in seen:
         return
@@ -1843,6 +1970,181 @@ async def fetch_github_raw_content(client: httpx.AsyncClient, owner: str, repo: 
         return ""
     paths = [p for p in all_paths if p.startswith(prefix)] if prefix else all_paths
     return await _fetch_text_bundle(client, owner, repo, paths, branch)
+
+
+async def _fetch_raw_bytes(client: httpx.AsyncClient, owner: str, repo: str, ref: str, path: str) -> bytes | None:
+    """Fetch one immutable package file without the legacy 20k truncation."""
+    async with RAW_FETCH_SEMAPHORE:
+        try:
+            response = await client.get(
+                f"https://raw.githubusercontent.com/{owner}/{repo}/{ref}/{path}", timeout=20
+            )
+            if response.status_code == 200 and len(response.content) <= 5 * 1024 * 1024:
+                return bytes(response.content)
+        except Exception:
+            pass
+    return None
+
+
+def _package_tree_entries(tree: list[dict], entrypoint: str) -> tuple[list[dict], bool]:
+    root = entrypoint.rsplit("/", 1)[0] if "/" in entrypoint else ""
+    prefix = f"{root}/" if root else ""
+    entries = [
+        item
+        for item in tree
+        if item.get("type") == "blob"
+        and (
+            str(item.get("path") or "").startswith(prefix)
+            or "/" not in str(item.get("path") or "")
+            and str(item.get("path") or "").casefold().startswith(("license", "copying", "notice"))
+        )
+    ]
+    total_bytes = sum(int(item.get("size") or 0) for item in entries)
+    within_limits = len(entries) <= MAX_PACKAGE_FILES and total_bytes <= MAX_PACKAGE_BYTES
+    return entries if within_limits else [item for item in entries if item.get("path") == entrypoint], within_limits
+
+
+async def _snapshot_github_skill_package(
+    client: httpx.AsyncClient,
+    *,
+    owner: str,
+    repo: str,
+    commit_sha: str,
+    tree_sha: str,
+    tree: list[dict],
+    tree_complete: bool,
+    skill: dict,
+) -> None:
+    """Immutable, commit-pinned package snapshot for a GitHub-hosted skill --
+    provenance/audit storage (package_store.py), separate from and in
+    addition to this session's fetch-everything bundle used for
+    curation/understanding (see curate_skill_content, skill_tools)."""
+    entrypoint = str((skill.get("raw") or {}).get("path") or "")
+    if not entrypoint or not commit_sha:
+        return
+    entries, package_within_limits = _package_tree_entries(tree, entrypoint)
+    entrypoint_bytes = str(skill.get("_content") or "").encode("utf-8")
+    fetch_entries = [item for item in entries if item.get("path") != entrypoint]
+    fetched = await asyncio.gather(
+        *(
+            _fetch_raw_bytes(client, owner, repo, commit_sha, str(item.get("path") or ""))
+            for item in fetch_entries
+        )
+    )
+    file_inputs = [
+        PackageFileInput(
+            path=entrypoint,
+            content=entrypoint_bytes,
+            git_blob_sha=str(next((item.get("sha") for item in entries if item.get("path") == entrypoint), "")),
+            expected_size=next((int(item.get("size") or 0) for item in entries if item.get("path") == entrypoint), None),
+        )
+    ]
+    for item, content in zip(fetch_entries, fetched):
+        if content is None:
+            continue
+        file_inputs.append(
+            PackageFileInput(
+                path=str(item.get("path") or ""),
+                content=content,
+                mode=str(item.get("mode") or "100644"),
+                git_blob_sha=str(item.get("sha") or ""),
+                expected_size=int(item.get("size") or 0),
+            )
+        )
+    root_path = entrypoint.rsplit("/", 1)[0] if "/" in entrypoint else ""
+    source_url = str(skill.get("url") or "")
+    manifest, objects = build_package_manifest(
+        source={
+            "provider": "github",
+            "owner": owner,
+            "repo": repo,
+            "requested_ref": str((skill.get("raw") or {}).get("requested_ref") or "HEAD"),
+            "commit_sha": commit_sha,
+            "tree_sha": tree_sha,
+            "root_path": root_path,
+        },
+        source_url=source_url,
+        entrypoint=entrypoint,
+        files=file_inputs,
+        tree_complete=tree_complete and package_within_limits and len(file_inputs) == len(entries),
+        provenance={
+            "collector": str(skill.get("source") or "github-tree-crawl"),
+            "immutable_ref": commit_sha,
+            "marketplace_url": str((skill.get("raw") or {}).get("skill_page") or "") or None,
+        },
+    )
+    package_root = Path(__file__).parent / "skills_library" / "packages"
+    await asyncio.to_thread(ImmutablePackageStore(package_root).put, manifest, objects)
+    skill["_package_manifest"] = manifest
+    skill.update(
+        {
+            "package_hash": manifest["package_hash"],
+            "source_commit_sha": commit_sha,
+            "license_spdx": (manifest.get("license") or {}).get("spdx_id"),
+            "package_completeness": manifest.get("completeness_status"),
+            "dependency_closure_status": manifest.get("dependency_closure_status"),
+            "entrypoint_truncated": int(bool(manifest.get("entrypoint_truncated"))),
+        }
+    )
+
+
+async def _snapshot_github_tree_url_package(client: httpx.AsyncClient, skill: dict) -> bool:
+    """Hydrate one marketplace GitHub path into a commit-pinned package."""
+    match = GITHUB_TREE_URL_RE.search(str(skill.get("url") or ""))
+    if not match:
+        return False
+    owner, repo, requested_ref, subpath = match.groups()
+    entrypoint = subpath.rstrip("/")
+    if not entrypoint.casefold().endswith("skill.md"):
+        entrypoint += "/SKILL.md"
+    headers = {"Accept": "application/vnd.github+json"}
+    commit_response = await github_get(
+        client,
+        f"https://api.github.com/repos/{owner}/{repo}/commits/{requested_ref}",
+        {},
+        headers,
+        github_core_limiter,
+    )
+    if commit_response is None or commit_response.status_code != 200:
+        return False
+    commit_sha = str((commit_response.json() or {}).get("sha") or "")
+    if not commit_sha:
+        return False
+    tree_response = await github_get(
+        client,
+        f"https://api.github.com/repos/{owner}/{repo}/git/trees/{commit_sha}",
+        {"recursive": "1"},
+        headers,
+        github_core_limiter,
+    )
+    if tree_response is None or tree_response.status_code != 200:
+        return False
+    tree_payload = tree_response.json() or {}
+    tree = tree_payload.get("tree") if isinstance(tree_payload.get("tree"), list) else []
+    entry = next(
+        (item for item in tree if item.get("type") == "blob" and item.get("path") == entrypoint),
+        None,
+    )
+    if not entry:
+        return False
+    content_bytes = await _fetch_raw_bytes(client, owner, repo, commit_sha, entrypoint)
+    if content_bytes is None:
+        return False
+    content = content_bytes.decode("utf-8", errors="replace")
+    skill["_content"] = content
+    raw = skill.setdefault("raw", {})
+    raw.update({"path": entrypoint, "requested_ref": requested_ref})
+    await _snapshot_github_skill_package(
+        client,
+        owner=owner,
+        repo=repo,
+        commit_sha=commit_sha,
+        tree_sha=str(tree_payload.get("sha") or ""),
+        tree=tree,
+        tree_complete=not bool(tree_payload.get("truncated")),
+        skill=skill,
+    )
+    return bool(skill.get("_package_manifest"))
 
 
 def _format_mcp_tools(tools: list) -> str:
@@ -2166,6 +2468,16 @@ async def scan_skill(client: httpx.AsyncClient, skill: dict):
 
             if content:
                 pass
+            elif GITHUB_TREE_URL_RE.search(url):
+                # A marketplace-style pinned path (e.g. skillsmp's githubUrl =
+                # .../tree/main/skills/foo): hydrate it into a commit-pinned,
+                # provenance-complete package (package_store.py) as well as
+                # fetching content -- this is the durable storage model for
+                # GitHub-sourced skills; skills_library/ is retired for these.
+                await _snapshot_github_tree_url_package(client, skill)
+                content = skill.pop("_content", "") or ""
+                if not content:
+                    content = await fetch_github_raw_content(client, match.group(1), match.group(2), repo_url) if match else ""
             elif match:
                 content = await fetch_github_raw_content(client, match.group(1), match.group(2), repo_url)
             elif source == "npm":
@@ -2190,17 +2502,44 @@ async def scan_skill(client: httpx.AsyncClient, skill: dict):
                 content = canonicalize_skill_content(curated) or raw_bundle
             except Exception:
                 content = raw_bundle
+            # Deterministic safety pass: strips credential-shaped and
+            # prompt-injection/meta-control lines (the actual safety
+            # property), keeps everything else -- prose, headings, examples
+            # -- verbatim, no length budget. This is what makes curated
+            # content safe to eventually deliver whole at "full" tier.
+            safety_flags: list[str] = []
+            try:
+                stripped = strip_unsafe_content(content)
+                content = canonicalize_skill_content(stripped.text) or content
+                if stripped.destructive_actions:
+                    safety_flags.append("destructive-actions")
+                if stripped.external_actions:
+                    safety_flags.append("external-actions")
+            except Exception:
+                pass
+        else:
+            safety_flags = []
         if content != raw_bundle:
             # Kept for audit persistence in run_scrape/run_rescan -- lets the
-            # curated body be diffed against exactly what was fetched.
+            # curated+safety-stripped body be diffed against exactly what was
+            # fetched.
             skill["_raw_bundle"] = raw_bundle
 
         blob = f"{skill.get('name', '')} {skill.get('description', '')} {content}"
         score, flags = heuristic_scan(blob)
         skill["risk_score"] = score
-        skill["risk_flags"] = flags
+        skill["risk_flags"] = sorted(set(flags) | set(safety_flags))
         skill["scanned_at"] = datetime.now(timezone.utc).isoformat()
         skill.update(evaluate_quality(skill, content))
+
+        # package_completeness is an honest informational signal (was this
+        # GitHub-sourced skill backed by a commit-pinned, provenance-complete
+        # package snapshot, or just a raw fetch) -- alongside, not instead of,
+        # quality_status/ACTIVE_STATUSES. It does not gate discovery, indexing,
+        # or embedding; quality.tier_for_ranked_candidates is the sole tier
+        # decision (see the comment below).
+        if content and GITHUB_OWNER_REPO_RE.search(str(skill.get("url") or "")) and not skill.get("_package_manifest"):
+            skill.setdefault("package_completeness", "missing")
 
         # The embedding/summary reflect this exact body. A re-scan that
         # changes it (or makes it ineligible) must force a redo; otherwise a
@@ -2277,6 +2616,16 @@ async def scan_skill(client: httpx.AsyncClient, skill: dict):
                         skill["tools_hash"] = tools_hash
                     except Exception:
                         pass
+
+
+def _persist_package_records(skills: list[dict], skill_ids_by_url: dict[str, str]) -> None:
+    for skill in skills:
+        if skill.get("_package_manifest"):
+            store.upsert_skill_package(
+                skill["_package_manifest"],
+                skill.get("_retrieval_record"),
+                skill_id=skill_ids_by_url.get(str(skill.get("url") or "")),
+            )
 
 
 async def get_scanned_urls(client: httpx.AsyncClient) -> set:
@@ -2378,6 +2727,7 @@ async def run_scrape(run_id: str) -> bool:
                 scrape_awesome_lists(client, skills, budget),
                 scrape_web_search(client, skills),
                 scrape_skillsmp(client, skills),
+                scrape_skills_sh(client, skills),
             )
             skills = dedup_skills(skills)
 
@@ -2417,10 +2767,24 @@ async def run_scrape(run_id: str) -> bool:
                 row = skill_to_row(s)
                 rows_by_shape.setdefault(frozenset(row.keys()), []).append(row)
             chunk_size = 50
+            skill_ids_by_url: dict[str, str] = {}
             for rows in rows_by_shape.values():
                 for i in range(0, len(rows), chunk_size):
                     write = await db_post(client, "skills", rows[i:i+chunk_size], on_conflict="url")
                     write.raise_for_status()
+                    try:
+                        stored_rows = write.json()
+                    except Exception:
+                        stored_rows = []
+                    if isinstance(stored_rows, list):
+                        skill_ids_by_url.update(
+                            {
+                                str(row.get("url") or ""): str(row.get("id") or "")
+                                for row in stored_rows
+                                if isinstance(row, dict) and row.get("url") and row.get("id")
+                            }
+                        )
+            await asyncio.to_thread(_persist_package_records, skills, skill_ids_by_url)
             count_after = await count_skills(client)
 
             finished = await db_patch(client, "scrape_runs", {"id": run_id}, {
