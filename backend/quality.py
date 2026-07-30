@@ -12,7 +12,7 @@ import math
 import re
 from typing import Any
 
-CONFIG_VERSION = "quality-routing-v4-platform-explicit"
+CONFIG_VERSION = "quality-routing-v9-package-record"
 MEANINGFULNESS_VERSION = "meaningfulness-v1"
 MIN_CONTENT_CHARS = 180
 MIN_BODY_WORDS = 35
@@ -31,6 +31,11 @@ FULL_ROUTE_STATUS = "active"
 # lexical rerank as a small tie-breaker so generic terms such as "monthly
 # report" cannot outweigh an explicitly semantic Excel/spreadsheet match.
 LEXICAL_OVERLAP_WEIGHT = 0.001
+# Retrieval records are compact, normalized procedure views. Use them as a
+# bounded reranking signal after hybrid retrieval; they must not overwhelm
+# semantic similarity or the advertised name/description.
+RETRIEVAL_RECORD_OVERLAP_WEIGHT = 0.002
+MAX_RETRIEVAL_RECORD_OVERLAP = 6
 
 TRUSTED_METADATA_SOURCES = {
     "mcp_official_registry",
@@ -541,6 +546,22 @@ def lexical_overlap(prompt: str, candidate: dict[str, Any]) -> int:
     return len(prompt_tokens & name_tokens) * 2 + len(prompt_tokens & desc_tokens)
 
 
+def retrieval_record_overlap(prompt: str, candidate: dict[str, Any]) -> int:
+    """Return a capped overlap against normalized procedure metadata."""
+    prompt_tokens = set(_tokens(prompt))
+    tags = candidate.get("tags") or []
+    if isinstance(tags, str):
+        tags = [tags]
+    record_text = " ".join(
+        [
+            str(candidate.get("retrieval_text") or ""),
+            str(candidate.get("capability_summary") or ""),
+            " ".join(str(tag) for tag in tags),
+        ]
+    )
+    return min(MAX_RETRIEVAL_RECORD_OVERLAP, len(prompt_tokens & set(_tokens(record_text))))
+
+
 def _platform_specific_penalty(prompt: str, candidate: dict[str, Any]) -> float:
     platforms = candidate.get("platforms") or []
     if isinstance(platforms, str):
@@ -587,6 +608,9 @@ def rerank_candidates(prompt: str, candidates: list[dict[str, Any]]) -> list[dic
         except (TypeError, ValueError):
             sim = 0.0
         overlap = lexical_overlap(prompt, row)
+        record_overlap = retrieval_record_overlap(prompt, row)
+        variant_overlap = retrieval_record_overlap(str(row.get("query_variant") or ""), row)
+        content_overlap = max(record_overlap, variant_overlap)
         penalty = _platform_specific_penalty(prompt, row)
         quality = float(row.get("quality_score") or 50) / 100.0
         feedback = row.get("feedback_score")
@@ -595,6 +619,7 @@ def rerank_candidates(prompt: str, candidates: list[dict[str, Any]]) -> list[dic
         route_score = (
             base_rank
             + (LEXICAL_OVERLAP_WEIGHT * overlap)
+            + (RETRIEVAL_RECORD_OVERLAP_WEIGHT * content_overlap)
             + (0.01 * quality)
             + (0.01 * (feedback - 0.5))
             + (0.003 * float(components["meaningfulness"]))
@@ -602,6 +627,8 @@ def rerank_candidates(prompt: str, candidates: list[dict[str, Any]]) -> list[dic
         )
 
         row["lexical_overlap"] = overlap
+        row["retrieval_record_overlap"] = record_overlap
+        row["query_variant_overlap"] = variant_overlap
         row["platform_mismatch"] = penalty > 0
         row["quality_component"] = components["quality"]
         row["prominence_score"] = components["prominence"]

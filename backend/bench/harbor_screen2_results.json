@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "status": "screen-rejected",
+  "definition": "harbor_screen2.json",
+  "decision": "Reject the extractive raw-skill capsule treatment for this screen. Both tasks were ceiling cases under gpt-5.6-sol/max, so no task-success benefit was observed and the planned three-replicate confirmation was not launched.",
+  "summary": {
+    "paired_tasks": 2,
+    "control_passes": 2,
+    "treatment_passes": 2,
+    "treatment_wins": 0,
+    "treatment_losses": 0,
+    "ties": 2,
+    "control_pass_rate": 1.0,
+    "treatment_pass_rate": 1.0,
+    "pass_rate_lift": 0.0,
+    "mean_control_agent_seconds": 198.172,
+    "mean_treatment_agent_seconds": 255.281,
+    "mean_treatment_minus_control_seconds": 57.109,
+    "latency_direction": "treatment slower on both tasks",
+    "statistical_claim": "none; two screening pairs are insufficient for inference"
+  },
+  "excluded_runs": [
+    {
+      "task": "terminal-bench/financial-document-processor",
+      "arm": "treatment",
+      "reason": "Concurrent Harbor task-package cache extraction failed with WinError 145; no scored trial was produced.",
+      "disposition": "excluded as infrastructure failure and rerun alone after the cache was warm"
+    }
+  ],
+  "cells": [
+    {
+      "task": "terminal-bench/financial-document-processor",
+      "arm": "control",
+      "reward": 1.0,
+      "trial_id": "1f5aa064-50e1-433c-bc66-6a7dbbb05d5b",
+      "task_ref": "sha256:63dc43a15d9ec401613016e9114d1a93ec860eea63b2db02abfe8060deea30fb",
+      "task_checksum": "bef11236a9642a91b77c3344506f00921a749b1b7c9b746b0895de109b33effc",
+      "agent_seconds": 200.111,
+      "input_tokens": 487568,
+      "cache_tokens": 370432,
+      "output_tokens": 6961,
+      "cost_usd": 0.979726,
+      "result_path": "C:\\tmp\\autoskill-harbor-runs\\financial-control-screen2-r1\\2026-07-21__21-08-08\\financial-document-processor__CbE6Hbn\\result.json"
+    },
+    {
+      "task": "terminal-bench/financial-document-processor",
+      "arm": "treatment",
+      "reward": 1.0,
+      "trial_id": "e68d013c-77bd-4408-a83c-279bf83db507",
+      "task_ref": "sha256:63dc43a15d9ec401613016e9114d1a93ec860eea63b2db02abfe8060deea30fb",
+      "task_checksum": "bef11236a9642a91b77c3344506f00921a749b1b7c9b746b0895de109b33effc",
+      "capsule_sha256": "ec037d922e92cb34cb2b523cb23c2b56d7b8ae68252cbe196b7e928494db1d79",
+      "agent_seconds": 215.510,
+      "input_tokens": 651390,
+      "cache_tokens": 517632,
+      "output_tokens": 9007,
+      "cost_usd": 1.197816,
+      "result_path": "C:\\tmp\\autoskill-harbor-runs\\financial-treatment-screen2-r1-rerun\\2026-07-21__21-17-51\\financial-document-processor__hXzdY6Q\\result.json"
+    },
+    {
+      "task": "terminal-bench/git-leak-recovery",
+      "arm": "control",
+      "reward": 1.0,
+      "trial_id": "c128d762-daf0-4997-bff0-29503d05bc68",
+      "task_ref": "sha256:22a9ec10dbd4cd8b99477b70e1944103775ca41de9b9e0025ec4898cd17bd334",
+      "task_checksum": "45308cc1d3e5c665486621c50d95a4789861f41066e85e572eb7ccddb7932720",
+      "agent_seconds": 196.233,
+      "input_tokens": 196852,
+      "cache_tokens": 171008,
+      "output_tokens": 9120,
+      "cost_usd": 0.488324,
+      "result_path": "C:\\tmp\\autoskill-harbor-runs\\git-leak-control-screen2-r1\\2026-07-21__21-08-08\\git-leak-recovery__K7Mukvi\\result.json"
+    },
+    {
+      "task": "terminal-bench/git-leak-recovery",
+      "arm": "treatment",
+      "reward": 1.0,
+      "trial_id": "1ca92d7a-d016-46fb-8118-a6b6e967e618",
+      "task_ref": "sha256:22a9ec10dbd4cd8b99477b70e1944103775ca41de9b9e0025ec4898cd17bd334",
+      "task_checksum": "45308cc1d3e5c665486621c50d95a4789861f41066e85e572eb7ccddb7932720",
+      "capsule_sha256": "20bef9e2bb7710f61903c01dc5dc8c765ef8c61f29704f60bda1cb13b364e5cd",
+      "agent_seconds": 295.052,
+      "input_tokens": 146451,
+      "cache_tokens": 106752,
+      "output_tokens": 12093,
+      "cost_usd": 0.614661,
+      "result_path": "C:\\tmp\\autoskill-harbor-runs\\git-leak-treatment-screen2-r1\\2026-07-21__21-08-08\\git-leak-recovery__RpdKNdz\\result.json"
+    }
+  ]
+}

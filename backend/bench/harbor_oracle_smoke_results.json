@@ -1,0 +1,217 @@
+{
+  "agent": {
+    "model": "gpt-5.6-sol",
+    "name": "codex",
+    "reasoning_effort": "max",
+    "reasoning_summary": "none",
+    "version": "0.145.0",
+    "web_search": "disabled"
+  },
+  "created_at": "2026-07-23T01:00:45.784289+00:00",
+  "dataset": {
+    "name": "terminal-bench/terminal-bench-2-1",
+    "ref": "sha256:7d7bdc1cbedad549fc1140404bd4dc45e5fd0ea7c4186773687d177ad3a0699a"
+  },
+  "definition_sha256": "1e7049c375d5dd2e69d50e2aaedba4a054f2ee0d3ef6607a57ec770f2a714b53",
+  "execution_attempts": [
+    {
+      "finished_at": "2026-07-22T23:50:42.966783+00:00",
+      "harbor_executable": "C:\\tmp\\autoskill-harbor-py312\\Scripts\\harbor.exe",
+      "max_infra_retries": 2,
+      "started_at": "2026-07-22T23:05:12.673985+00:00",
+      "status": "infra_failed",
+      "workers": 3
+    },
+    {
+      "finished_at": "2026-07-23T00:59:08.009424+00:00",
+      "harbor_executable": "C:\\tmp\\autoskill-harbor-py312\\Scripts\\harbor.exe",
+      "max_infra_retries": 3,
+      "started_at": "2026-07-23T00:59:06.129884+00:00",
+      "status": "infra_failed",
+      "workers": 1
+    }
+  ],
+  "random_seed": 260722,
+  "results": {
+    "arm_metrics": {
+      "control": {
+        "completed_cells": 6,
+        "mean_total_seconds": 319.2934965,
+        "totals": {
+          "cache_tokens": 4288256.0,
+          "cost_usd": 6.028298,
+          "input_tokens": 4674376.0,
+          "output_tokens": 65119.0
+        }
+      },
+      "oracle_skill": {
+        "completed_cells": 6,
+        "mean_total_seconds": 481.70842833333336,
+        "totals": {
+          "cache_tokens": 6609408.0,
+          "cost_usd": 8.143189,
+          "input_tokens": 6983711.0,
+          "output_tokens": 98899.0
+        }
+      }
+    },
+    "by_task": {
+      "terminal-bench/dna-assembly": {
+        "control_passes": 0,
+        "losses": 0,
+        "pairs": 1,
+        "ties": 0,
+        "treatment_passes": 1,
+        "wins": 1
+      },
+      "terminal-bench/dna-insert": {
+        "control_passes": 0,
+        "losses": 0,
+        "pairs": 1,
+        "ties": 1,
+        "treatment_passes": 0,
+        "wins": 0
+      },
+      "terminal-bench/headless-terminal": {
+        "control_passes": 1,
+        "losses": 0,
+        "pairs": 1,
+        "ties": 1,
+        "treatment_passes": 1,
+        "wins": 0
+      },
+      "terminal-bench/pypi-server": {
+        "control_passes": 0,
+        "losses": 0,
+        "pairs": 1,
+        "ties": 1,
+        "treatment_passes": 0,
+        "wins": 0
+      },
+      "terminal-bench/regex-log": {
+        "control_passes": 1,
+        "losses": 0,
+        "pairs": 1,
+        "ties": 1,
+        "treatment_passes": 1,
+        "wins": 0
+      },
+      "terminal-bench/sanitize-git-repo": {
+        "control_passes": 0,
+        "losses": 0,
+        "pairs": 1,
+        "ties": 1,
+        "treatment_passes": 0,
+        "wins": 0
+      }
+    },
+    "comparison_arm": "oracle_skill",
+    "complete_pairs": 6,
+    "control_pass_rate": 0.3333333333333333,
+    "control_passes": 2,
+    "losses": 0,
+    "mcnemar_exact_two_sided_p": 1.0,
+    "pairs": [
+      {
+        "comparison_arm": "oracle_skill",
+        "comparison_cell_id": "r01-dna-assembly-oracle_skill",
+        "comparison_instruction_sha256": "efdc0f66626d055a2ff706619beeec792181bc50cacb20bfbfb6b1b6fef1d313",
+        "comparison_result_path": "C:\\tmp\\autoskill-oracle-smoke-solmax-20260722\\jobs\\01-r01-dna-assembly-oracle_skill-try01\\dna-assembly__aa7CFGD\\result.json",
+        "comparison_reward": 1.0,
+        "control_cell_id": "r01-dna-assembly-control",
+        "control_pass": false,
+        "control_result_path": "C:\\tmp\\autoskill-oracle-smoke-solmax-20260722\\jobs\\02-r01-dna-assembly-control-try01\\dna-assembly__qkLDzSw\\result.json",
+        "control_reward": 0.0,
+        "outcome": "win",
+        "replicate": 1,
+        "task": "terminal-bench/dna-assembly",
+        "treatment_pass": true
+      },
+      {
+        "comparison_arm": "oracle_skill",
+        "comparison_cell_id": "r01-dna-insert-oracle_skill",
+        "comparison_instruction_sha256": "8b12c33c94b427a94dcd592307da547722630702aaa5b37780d407b4fc758e8c",
+        "comparison_result_path": "C:\\tmp\\autoskill-oracle-smoke-solmax-20260722\\jobs\\10-r01-dna-insert-oracle_skill-try01\\dna-insert__sbgbNaZ\\result.json",
+        "comparison_reward": null,
+        "control_cell_id": "r01-dna-insert-control",
+        "control_pass": false,
+        "control_result_path": "C:\\tmp\\autoskill-oracle-smoke-solmax-20260722\\jobs\\09-r01-dna-insert-control-try01\\dna-insert__7nYCYC6\\result.json",
+        "control_reward": 0.0,
+        "outcome": "tie",
+        "replicate": 1,
+        "task": "terminal-bench/dna-insert",
+        "treatment_pass": false
+      },
+      {
+        "comparison_arm": "oracle_skill",
+        "comparison_cell_id": "r01-headless-terminal-oracle_skill",
+        "comparison_instruction_sha256": "007d5b38a862dc52782e3db87d6a77830f6d06d1a5629c458b71bc9d8eef245c",
+        "comparison_result_path": "C:\\tmp\\autoskill-oracle-smoke-solmax-20260722\\jobs\\04-r01-headless-terminal-oracle_skill-try01\\headless-terminal__mYESxr6\\result.json",
+        "comparison_reward": 1.0,
+        "control_cell_id": "r01-headless-terminal-control",
+        "control_pass": true,
+        "control_result_path": "C:\\tmp\\autoskill-oracle-smoke-solmax-20260722\\jobs\\03-r01-headless-terminal-control-try01\\headless-terminal__rpznbd9\\result.json",
+        "control_reward": 1.0,
+        "outcome": "tie",
+        "replicate": 1,
+        "task": "terminal-bench/headless-terminal",
+        "treatment_pass": true
+      },
+      {
+        "comparison_arm": "oracle_skill",
+        "comparison_cell_id": "r01-pypi-server-oracle_skill",
+        "comparison_instruction_sha256": "8f9ee3a5371384eafdf09af4c360727392557b0388193bfd5bb3c8cc095d503a",
+        "comparison_result_path": "C:\\tmp\\autoskill-oracle-smoke-solmax-20260722\\jobs\\06-r01-pypi-server-oracle_skill-try01\\pypi-server__NGaMuVi\\result.json",
+        "comparison_reward": 0.0,
+        "control_cell_id": "r01-pypi-server-control",
+        "control_pass": false,
+        "control_result_path": "C:\\tmp\\autoskill-oracle-smoke-solmax-20260722\\jobs\\05-r01-pypi-server-control-try01\\pypi-server__JcfJbBB\\result.json",
+        "control_reward": 0.0,
+        "outcome": "tie",
+        "replicate": 1,
+        "task": "terminal-bench/pypi-server",
+        "treatment_pass": false
+      },
+      {
+        "comparison_arm": "oracle_skill",
+        "comparison_cell_id": "r01-regex-log-oracle_skill",
+        "comparison_instruction_sha256": "510a6800b5c3d663d19c10f4f629a6f367485a0f0eb881b31eb674cc0db85e8f",
+        "comparison_result_path": "C:\\tmp\\autoskill-oracle-smoke-solmax-20260722\\jobs\\11-r01-regex-log-oracle_skill-try01\\regex-log__qP88pzz\\result.json",
+        "comparison_reward": 1.0,
+        "control_cell_id": "r01-regex-log-control",
+        "control_pass": true,
+        "control_result_path": "C:\\tmp\\autoskill-oracle-smoke-solmax-20260722\\jobs\\12-r01-regex-log-control-try01\\regex-log__m6TVeYz\\result.json",
+        "control_reward": 1.0,
+        "outcome": "tie",
+        "replicate": 1,
+        "task": "terminal-bench/regex-log",
+        "treatment_pass": true
+      },
+      {
+        "comparison_arm": "oracle_skill",
+        "comparison_cell_id": "r01-sanitize-git-repo-oracle_skill",
+        "comparison_instruction_sha256": "7c2129c7edc9260018d9f9ed6d2e40c0d30357a57fbef3663780cb22fdd062b4",
+        "comparison_result_path": "C:\\tmp\\autoskill-oracle-smoke-solmax-20260722\\jobs\\07-r01-sanitize-git-repo-oracle_skill-try01\\sanitize-git-repo__wUrGL7t\\result.json",
+        "comparison_reward": 0.0,
+        "control_cell_id": "r01-sanitize-git-repo-control",
+        "control_pass": false,
+        "control_result_path": "C:\\tmp\\autoskill-oracle-smoke-solmax-20260722\\jobs\\08-r01-sanitize-git-repo-control-try01\\sanitize-git-repo__WvdDzSV\\result.json",
+        "control_reward": null,
+        "outcome": "tie",
+        "replicate": 1,
+        "task": "terminal-bench/sanitize-git-repo",
+        "treatment_pass": false
+      }
+    ],
+    "pass_rate_delta": 0.16666666666666666,
+    "task_clustered_exact_sign_two_sided_p": 1.0,
+    "task_level_losses": 0,
+    "task_level_ties": 5,
+    "task_level_wins": 1,
+    "ties": 5,
+    "treatment_pass_rate": 0.5,
+    "treatment_passes": 3,
+    "wins": 1
+  },
+  "schema_version": 1
+}

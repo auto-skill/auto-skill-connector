@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import sqlite3
 import tempfile
 import unittest
-import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
@@ -15,6 +13,7 @@ from fastapi.testclient import TestClient
 import auth
 import local_store
 import scraper
+from capsule_compiler import compile_capsule
 from quality import content_hash
 
 
@@ -79,6 +78,13 @@ class ApiContractTests(unittest.TestCase):
         self.embedding_status = patch(
             "scraper.embedding_model_status",
             return_value={"ready": True, "error": None},
+        ).start()
+        # Existing route tests exercise the delivery guards after a candidate
+        # has cleared the independent outcome-evidence gate.  Production keeps
+        # this experimental bypass disabled by default; the dedicated test
+        # below verifies that boundary explicitly.
+        self.full_evidence_bypass = patch(
+            "recommender.ALLOW_UNVALIDATED_PUBLIC_FULL", True
         ).start()
         self.addCleanup(patch.stopall)
         self.client = TestClient(scraper.app)
@@ -496,7 +502,7 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()[0]["id"], "skill-1")
 
-    def test_route_returns_full_with_inline_content(self) -> None:
+    def test_route_returns_full_with_distilled_capsule(self) -> None:
         candidate = {
             "id": "skill-1",
             "name": "spreadsheet-reporter",
@@ -533,24 +539,26 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(body["task_analysis"]["family"], "data")
         self.assertEqual(body["skill"]["name"], "spreadsheet-reporter")
         self.assertTrue(body["skill"]["verification"]["content_hash_verified"])
-        self.assertTrue(body["skill"]["verification"]["static_instruction_only"])
-        self.assertEqual(body["context_guard"]["delivery"], "full")
-        self.assertEqual(body["context_guard"]["policy"], "hybrid-v1")
+        self.assertTrue(body["skill"]["verification"]["safe_distilled_capsule"])
+        self.assertEqual(body["context_guard"]["delivery"], "capsule")
+        self.assertEqual(body["context_guard"]["policy"], "safe-capsule-v2")
         self.assertEqual(
             body["skill"]["verification"]["content_digest"],
             hashlib.sha256(VALID_SKILL.encode("utf-8")).hexdigest(),
         )
         self.assertTrue(body["route_id"])
-        self.assertIn("validate sheet names", body["content"])
-        self.assertTrue(body["content_url"].startswith("/content/"))
+        self.assertIsNone(body["content"])
+        self.assertIsNone(body["content_url"])
+        self.assertIn("validate sheet names", body["context_guard"]["capsule"])
         self.assertEqual(body["score_debug"]["quality_status"], "active")
         metrics = body["score_debug"]["metrics"]
         self.assertGreaterEqual(metrics["latency_ms"], 0)
         self.assertGreaterEqual(metrics["skill_find_ms"], 0)
         self.assertGreaterEqual(metrics["retrieval_ms"], 0)
         self.assertGreaterEqual(metrics["rerank_ms"], 0)
-        self.assertGreater(metrics["content_tokens"], 0)
-        self.assertEqual(metrics["injected_tokens"], metrics["hint_tokens"] + metrics["content_tokens"])
+        self.assertEqual(metrics["content_tokens"], 0)
+        self.assertGreater(metrics["capsule_tokens"], 0)
+        self.assertEqual(metrics["injected_tokens"], metrics["hint_tokens"] + metrics["capsule_tokens"])
         self.assertGreater(metrics["response_tokens"], metrics["hint_tokens"])
 
         conn = sqlite3.connect(self.db_path)
@@ -563,13 +571,260 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(event["id"], body["route_id"])
         self.assertEqual(event["tier"], "full")
         self.assertEqual(event["skill_name"], "spreadsheet-reporter")
-        self.assertEqual(event["guard_delivery"], "full")
+        self.assertEqual(event["guard_delivery"], "capsule")
         self.assertIsNone(event["anonymous_id_hash"])
         self.assertEqual(event["query_chars"], len("create an excel report with formulas"))
         self.assertTrue({"prompt_text", "query_hash", "feedback_note"}.isdisjoint(event.keys()))
         self.assertGreaterEqual(event["skill_find_ms"], 0)
         self.assertGreaterEqual(event["injected_tokens"], event["content_tokens"])
         self.assertGreater(event["response_tokens"], 0)
+
+    def test_public_retrieval_is_hint_only_without_outcome_validation(self) -> None:
+        candidate = {
+            "id": "skill-unvalidated",
+            "name": "spreadsheet-reporter",
+            "description": "Build spreadsheet reports with formulas and charts.",
+            "source": "github_skill_file",
+            "url": "https://example.com/unvalidated-spreadsheet",
+            "risk_score": 0,
+            "quality_status": "active",
+            "quality_score": 94,
+            "content_hash": content_hash(VALID_SKILL),
+            "rank": 1.0,
+            "similarity": 0.96,
+        }
+
+        async def fake_retrieve(client, query, limit):
+            del client, query, limit
+            return [candidate]
+
+        class FakeLibrary:
+            def get(self, url: str) -> str:
+                return VALID_SKILL if url == candidate["url"] else ""
+
+        with patch("recommender.ALLOW_UNVALIDATED_PUBLIC_FULL", False), patch(
+            "recommender.OUTCOME_VALIDATED_CAPSULE_DIGESTS", frozenset()
+        ), patch("recommender.retrieve_skills", fake_retrieve), patch(
+            "recommender.LibraryContent", FakeLibrary
+        ):
+            body = self.client.post(
+                "/route",
+                json={"task": "create an Excel report with formulas"},
+                headers=self._auth_headers(),
+            ).json()
+
+        self.assertEqual(body["tier"], "hint")
+        self.assertIsNone(body["content"])
+        self.assertIsNone(body["skill_plan"]["primary_skill"])
+        self.assertIn("independent outcome validation", " ".join(body["score_debug"]["warnings"]))
+
+    def test_allowlisted_capsule_digest_can_clear_full_evidence_gate(self) -> None:
+        candidate = {
+            "id": "skill-validated",
+            "name": "spreadsheet-reporter",
+            "description": "Build spreadsheet reports with formulas and charts.",
+            "source": "github_skill_file",
+            "url": "https://example.com/validated-spreadsheet",
+            "risk_score": 0,
+            "quality_status": "active",
+            "quality_score": 94,
+            "content_hash": content_hash(VALID_SKILL),
+            "rank": 1.0,
+            "similarity": 0.96,
+        }
+
+        async def fake_retrieve(client, query, limit):
+            del client, query, limit
+            return [candidate]
+
+        class FakeLibrary:
+            def get(self, url: str) -> str:
+                return VALID_SKILL if url == candidate["url"] else ""
+
+        compiled = compile_capsule(
+            task="create an Excel report with formulas",
+            content=VALID_SKILL,
+            source_url=candidate["url"],
+        )
+        self.assertIsNotNone(compiled)
+
+        with patch("recommender.ALLOW_UNVALIDATED_PUBLIC_FULL", False), patch(
+            "recommender.OUTCOME_VALIDATED_CAPSULE_DIGESTS",
+            frozenset({compiled.capsule_digest}),
+        ), patch("recommender.retrieve_skills", fake_retrieve), patch(
+            "recommender.LibraryContent", FakeLibrary
+        ):
+            body = self.client.post(
+                "/route",
+                json={"task": "create an Excel report with formulas"},
+                headers=self._auth_headers(),
+            ).json()
+
+        self.assertEqual(body["tier"], "full")
+        self.assertIsNone(body["content"])
+        self.assertEqual(body["context_guard"]["capsule_digest"], compiled.capsule_digest)
+        self.assertIn("validate sheet names", body["context_guard"]["capsule"])
+
+    def test_normalized_equivalent_but_byte_changed_content_is_not_validated(self) -> None:
+        changed = VALID_SKILL.replace(
+            "Always validate sheet names", "always   validate sheet names"
+        )
+        self.assertEqual(content_hash(changed), content_hash(VALID_SKILL))
+        candidate = {
+            "id": "skill-byte-changed",
+            "name": "spreadsheet-reporter",
+            "description": "Build spreadsheet reports with formulas and charts.",
+            "source": "github_skill_file",
+            "url": "https://example.com/byte-changed",
+            "risk_score": 0,
+            "quality_status": "active",
+            "quality_score": 94,
+            "content_hash": content_hash(VALID_SKILL),
+            "rank": 1.0,
+            "similarity": 0.96,
+        }
+
+        async def fake_retrieve(client, query, limit):
+            del client, query, limit
+            return [candidate]
+
+        class FakeLibrary:
+            def get(self, url: str) -> str:
+                return changed if url == candidate["url"] else ""
+
+        with patch("recommender.ALLOW_UNVALIDATED_PUBLIC_FULL", False), patch(
+            "recommender.OUTCOME_VALIDATED_CAPSULE_DIGESTS",
+            frozenset({compile_capsule(
+                task="create an Excel report with formulas",
+                content=VALID_SKILL,
+                source_url=candidate["url"],
+            ).capsule_digest}),
+        ), patch("recommender.retrieve_skills", fake_retrieve), patch(
+            "recommender.LibraryContent", FakeLibrary
+        ):
+            body = self.client.post(
+                "/route",
+                json={"task": "create an Excel report with formulas"},
+                headers=self._auth_headers(),
+            ).json()
+
+        self.assertEqual(body["tier"], "hint")
+        self.assertIsNone(body["content"])
+
+    def test_unvalidated_pinned_version_cannot_inherit_current_version_evidence(self) -> None:
+        pinned = VALID_SKILL.replace(
+            "Always validate sheet names, formulas, and chart ranges before returning output.",
+            "Validate the final workbook and preserve a separate audit record.",
+        )
+        candidate = {
+            "id": "skill-pinned",
+            "name": "spreadsheet-reporter",
+            "description": "Build spreadsheet reports with formulas and charts.",
+            "source": "github_skill_file",
+            "url": "https://example.com/current-spreadsheet",
+            "risk_score": 0,
+            "quality_status": "active",
+            "quality_score": 94,
+            "content_hash": content_hash(VALID_SKILL),
+            "rank": 1.0,
+            "similarity": 0.96,
+        }
+
+        async def fake_retrieve(client, query, limit):
+            del client, query, limit
+            return [candidate]
+
+        class FakeLibrary:
+            def get(self, url: str) -> str:
+                return VALID_SKILL if url == candidate["url"] else ""
+
+        with patch("recommender.ALLOW_UNVALIDATED_PUBLIC_FULL", False), patch(
+            "recommender.OUTCOME_VALIDATED_CAPSULE_DIGESTS",
+            frozenset({compile_capsule(
+                task="create an Excel report with formulas",
+                content=VALID_SKILL,
+                source_url=candidate["url"],
+            ).capsule_digest}),
+        ), patch("recommender.retrieve_skills", fake_retrieve), patch(
+            "recommender.LibraryContent", FakeLibrary
+        ), patch(
+            "recommender.store.get_pin",
+            return_value={"content_hash": content_hash(pinned)},
+        ), patch("recommender._library_content_by_hash", return_value=pinned):
+            body = self.client.post(
+                "/route",
+                json={"task": "create an Excel report with formulas"},
+                headers=self._auth_headers(),
+            ).json()
+
+        self.assertEqual(body["tier"], "hint")
+        self.assertIsNone(body["content"])
+        self.assertIn("exact distilled capsule", " ".join(body["score_debug"]["warnings"]))
+
+    def test_unvalidated_public_policy_cannot_compose_with_validated_primary(self) -> None:
+        policy_content = """---
+name: ponytail
+description: Prefer a minimal coding decision ladder.
+---
+
+## Workflow
+
+Reuse existing code and prefer native platform features before dependencies.
+"""
+        primary = {
+            "id": "primary-validated",
+            "name": "spreadsheet-reporter",
+            "description": "Build spreadsheet reports with formulas and charts.",
+            "source": "github_skill_file",
+            "url": "https://example.com/primary-validated",
+            "risk_score": 0,
+            "quality_status": "active",
+            "quality_score": 94,
+            "content_hash": content_hash(VALID_SKILL),
+            "rank": 1.0,
+            "similarity": 0.96,
+        }
+        policy = {
+            "id": "policy-unvalidated",
+            "name": "ponytail",
+            "description": "Always-on coding policy with a minimal safe decision ladder.",
+            "source": "github_skill_file",
+            "url": "https://github.com/DietrichGebert/ponytail/tree/main/skill",
+            "risk_score": 0,
+            "quality_status": "active",
+            "quality_score": 94,
+            "content_hash": content_hash(policy_content),
+            "rank": 1.0,
+            "similarity": 0.97,
+        }
+
+        async def fake_retrieve(client, query, limit):
+            del client, limit
+            return [policy] if "ponytail coding policy" in query else [primary]
+
+        class FakeLibrary:
+            def get(self, url: str) -> str:
+                return {primary["url"]: VALID_SKILL, policy["url"]: policy_content}.get(url, "")
+
+        with patch("recommender.ALLOW_UNVALIDATED_PUBLIC_FULL", False), patch(
+            "recommender.OUTCOME_VALIDATED_CAPSULE_DIGESTS",
+            frozenset({compile_capsule(
+                task="create an Excel report with formulas",
+                content=VALID_SKILL,
+                source_url=primary["url"],
+            ).capsule_digest}),
+        ), patch("recommender.retrieve_skills", fake_retrieve), patch(
+            "recommender.LibraryContent", FakeLibrary
+        ):
+            body = self.client.post(
+                "/route",
+                json={"task": "create an Excel report with formulas"},
+                headers=self._auth_headers(),
+            ).json()
+
+        self.assertEqual(body["tier"], "full")
+        self.assertEqual(body["skill_plan"]["policy_skills"], [])
+        self.assertEqual(body["skill_plan"]["selected_roles"], ["primary"])
 
     def test_route_composes_coding_policy_with_primary_specialist(self) -> None:
         frontend_content = """---
@@ -632,7 +887,9 @@ earlier choices do not solve the task safely. Verify behavior after the change.
                     return policy_content
                 return ""
 
-        with patch("recommender.retrieve_skills", fake_retrieve), patch("recommender.LibraryContent", FakeLibrary):
+        with patch("recommender.retrieve_skills", fake_retrieve), patch(
+            "recommender.LibraryContent", FakeLibrary
+        ):
             body = self.client.post(
                 "/route",
                 json={"task": "build a React landing page with a distinctive frontend design"},
@@ -642,12 +899,172 @@ earlier choices do not solve the task safely. Verify behavior after the change.
         self.assertEqual(body["tier"], "full")
         self.assertEqual(body["task_analysis"]["family"], "coding")
         self.assertEqual(body["skill"]["name"], "frontend-design")
-        self.assertEqual(body["skill"]["role"], "specialist")
+        self.assertEqual(body["skill"]["role"], "primary")
         self.assertEqual([item["name"] for item in body["skill_plan"]["policy_skills"]], ["ponytail"])
         self.assertEqual(body["skill_plan"]["primary_skill"]["name"], "frontend-design")
-        self.assertEqual(body["skill_plan"]["selected_roles"], ["policy", "specialist"])
+        self.assertEqual(body["skill_plan"]["selected_roles"], ["policy", "primary"])
         self.assertEqual(body["score_debug"]["metrics"]["skill_count"], 2)
         self.assertGreater(body["score_debug"]["metrics"]["policy_tokens"], 0)
+
+    def test_route_never_promotes_a_generic_policy_without_a_specialist(self) -> None:
+        policy_content = """---
+name: ponytail
+description: Prefer the smallest safe implementation for coding tasks.
+---
+
+## Decision ladder
+
+Reuse existing code, then prefer the standard library and native platform
+features before adding a dependency or new abstraction.
+"""
+        ponytail = {
+            "id": "policy-only",
+            "name": "ponytail",
+            "description": "Always-on coding policy with a minimal safe decision ladder.",
+            "source": "github_skill_file",
+            "url": "https://github.com/DietrichGebert/ponytail/tree/main/skill",
+            "risk_score": 0,
+            "quality_status": "active",
+            "quality_score": 94,
+            "content_hash": content_hash(policy_content),
+            "rank": 1.0,
+            "similarity": 0.97,
+        }
+
+        async def fake_retrieve(client, query, limit):
+            del client, limit
+            return [ponytail] if "ponytail coding policy" in query else []
+
+        class FakeLibrary:
+            def get(self, url: str) -> str:
+                return policy_content if url == ponytail["url"] else ""
+
+        with patch("recommender.retrieve_skills", fake_retrieve), patch("recommender.LibraryContent", FakeLibrary):
+            body = self.client.post(
+                "/route",
+                json={"task": "refactor the implementation and run its tests"},
+                headers=self._auth_headers(),
+            ).json()
+
+        self.assertEqual(body["tier"], "none")
+        self.assertIsNone(body["skill"])
+        self.assertEqual(body["skill_plan"]["policy_skills"], [])
+        self.assertEqual(body["score_debug"]["metrics"]["injected_tokens"], 0)
+
+    def test_all_observed_platform_neutral_traps_refuse_policy_fallback(self) -> None:
+        policy_content = """---
+name: ponytail
+description: Prefer the smallest safe implementation for coding tasks.
+---
+
+## Decision ladder
+
+Reuse existing code and prefer the standard library before adding new code.
+"""
+        ponytail = {
+            "id": "policy-platform-traps",
+            "name": "ponytail",
+            "description": "Always-on coding policy with a minimal safe decision ladder.",
+            "source": "github_skill_file",
+            "url": "https://github.com/DietrichGebert/ponytail/tree/main/skill",
+            "risk_score": 0,
+            "quality_status": "active",
+            "quality_score": 94,
+            "content_hash": content_hash(policy_content),
+            "rank": 1.0,
+            "similarity": 0.97,
+        }
+        traps = (
+            ("build a landing page for an AI automation agency", "landingi"),
+            ("add a payment form to my product page", "stripe"),
+            ("build an ecommerce storefront for a handmade goods launch", "shopify"),
+            ("create a CRM dashboard for weekly sales follow up", "salesforce"),
+            ("publish a blog website with categories and an about page", "wordpress"),
+            ("organize meeting notes into a project tracker", "notion"),
+            ("design an online database for a skill router prototype", "postgres"),
+        )
+
+        class FakeLibrary:
+            def get(self, url: str) -> str:
+                return policy_content if url == ponytail["url"] else ""
+
+        for prompt, platform in traps:
+            with self.subTest(platform=platform):
+                platform_candidate = {
+                    "id": f"{platform}-trap",
+                    "name": f"{platform}-workflow",
+                    "description": f"Use the {platform} platform for this workflow, APIs, and publishing.",
+                    "source": "github_skill_file",
+                    "url": f"https://example.com/{platform}",
+                    "risk_score": 0,
+                    "quality_status": "active",
+                    "quality_score": 94,
+                    "platforms": [platform],
+                    "rank": 1.0,
+                    "similarity": 0.96,
+                }
+
+                async def fake_retrieve(client, query, limit, candidate=platform_candidate):
+                    del client, limit
+                    return [ponytail] if "ponytail coding policy" in query else [candidate]
+
+                with patch("recommender.retrieve_skills", fake_retrieve), patch(
+                    "recommender.LibraryContent", FakeLibrary
+                ):
+                    body = self.client.post(
+                        "/route", json={"task": prompt}, headers=self._auth_headers()
+                    ).json()
+
+                self.assertNotEqual(body["tier"], "full")
+                self.assertNotEqual((body.get("skill") or {}).get("name"), "ponytail")
+                self.assertEqual(body["skill_plan"]["policy_skills"], [])
+
+    def test_monthly_excel_dashboard_routes_to_the_specific_spreadsheet_skill(self) -> None:
+        xlsx_content = VALID_SKILL.replace("spreadsheet-reporter", "xlsx-creator")
+        finance = {
+            "id": "finance-report",
+            "name": "finance-report",
+            "description": "Monthly financial report with revenue charts and a summary table.",
+            "source": "github_skill_file",
+            "url": "https://example.com/finance-report",
+            "risk_score": 0,
+            "quality_status": "active",
+            "quality_score": 100,
+            "content_hash": "f" * 64,
+            "rank": 0.06575,
+            "similarity": 0.8599,
+        }
+        xlsx = {
+            "id": "xlsx-creator",
+            "name": "xlsx-creator",
+            "description": "Create Excel spreadsheets with formulas, professional formatting, and charts.",
+            "source": "github_skill_file",
+            "url": "https://example.com/xlsx-creator",
+            "risk_score": 0,
+            "quality_status": "active",
+            "quality_score": 92,
+            "content_hash": content_hash(xlsx_content),
+            "rank": 0.06903,
+            "similarity": 0.8701,
+        }
+
+        async def fake_retrieve(client, query, limit):
+            del client, query, limit
+            return [finance, xlsx]
+
+        class FakeLibrary:
+            def get(self, url: str) -> str:
+                return xlsx_content if url == xlsx["url"] else ""
+
+        with patch("recommender.retrieve_skills", fake_retrieve), patch("recommender.LibraryContent", FakeLibrary):
+            body = self.client.post(
+                "/route",
+                json={"task": "create a monthly Excel sales report with formulas, charts, and a summary dashboard"},
+                headers=self._auth_headers(),
+            ).json()
+
+        self.assertEqual(body["tier"], "full")
+        self.assertEqual(body["skill"]["name"], "xlsx-creator")
 
     def test_route_returns_bounded_capsule_for_large_static_content(self) -> None:
         candidate = {
@@ -683,12 +1100,12 @@ earlier choices do not solve the task safely. Verify behavior after the change.
         self.assertEqual(body["tier"], "full")
         self.assertEqual(body["context_guard"]["delivery"], "capsule")
         self.assertIsNone(body["content"])
-        self.assertTrue(body["content_url"].startswith("/content/"))
+        self.assertIsNone(body["content_url"])
         self.assertFalse(body["context_guard"].get("complete", True))
         self.assertLessEqual(body["context_guard"]["capsule_chars"], 2400)
         self.assertIn("Workflow", body["context_guard"]["capsule"])
 
-    def test_route_downgrades_capability_bearing_content_to_hint(self) -> None:
+    def test_route_marks_capabilities_inside_the_distilled_capsule(self) -> None:
         capability_skill = VALID_SKILL + "\nRun scripts/deploy.py and pip install the required package.\n"
         candidate = {
             "id": "skill-capability",
@@ -717,10 +1134,10 @@ earlier choices do not solve the task safely. Verify behavior after the change.
                 "/route", json={"task": "create an excel report with formulas"}, headers=self._auth_headers()
             ).json()
 
-        self.assertEqual(body["tier"], "hint")
+        self.assertEqual(body["tier"], "full")
         self.assertIsNone(body["content"])
-        self.assertIn("bundled-scripts", body["skill"]["capability_flags"])
-        self.assertIn("explicit review", body["score_debug"]["warnings"][0])
+        self.assertTrue(body["context_guard"]["external_actions"])
+        self.assertIn("external side effects require", body["context_guard"]["capsule"])
 
     def test_route_skips_capability_bearing_winner_for_safe_specialist(self) -> None:
         capability_skill = VALID_SKILL + "\npip install openpyxl before continuing.\n"
@@ -763,7 +1180,18 @@ earlier choices do not solve the task safely. Verify behavior after the change.
                     safe_candidate["url"]: safe_skill,
                 }.get(url, "")
 
-        with patch("recommender.retrieve_skills", fake_retrieve), patch("recommender.LibraryContent", FakeLibrary):
+        safe_capsule = compile_capsule(
+            task="create an Excel spreadsheet report with formulas and charts",
+            content=safe_skill,
+            source_url=safe_candidate["url"],
+        )
+        self.assertIsNotNone(safe_capsule)
+        with patch("recommender.ALLOW_UNVALIDATED_PUBLIC_FULL", False), patch(
+            "recommender.OUTCOME_VALIDATED_CAPSULE_DIGESTS",
+            frozenset({safe_capsule.capsule_digest}),
+        ), patch("recommender.retrieve_skills", fake_retrieve), patch(
+            "recommender.LibraryContent", FakeLibrary
+        ):
             body = self.client.post(
                 "/route",
                 json={"task": "create an Excel spreadsheet report with formulas and charts"},
@@ -772,8 +1200,8 @@ earlier choices do not solve the task safely. Verify behavior after the change.
 
         self.assertEqual(body["tier"], "full")
         self.assertEqual(body["skill"]["name"], "excel-static")
-        self.assertNotIn("capability_flags", body["skill"])
-        self.assertIn("validate sheet names", body["content"])
+        self.assertIsNone(body["content"])
+        self.assertEqual(body["context_guard"]["capsule_digest"], safe_capsule.capsule_digest)
 
     def test_route_downgrades_malformed_cached_content(self) -> None:
         candidate = {

@@ -6,16 +6,48 @@ route correctness, latency, or token churn moved in the right direction.
 Run:
   python eval_compare.py eval-results/before.json eval-results/after.json
   python eval_compare.py --fail-on-regression eval-results/before.json eval-results/after.json
+
+Task-benchmark acceptance is deliberately stricter than comparing point
+estimates.  A positive ``task_bench.lift`` is accepted only when the after
+snapshot contains a paired evidence block like::
+
+  "evidence": {
+    "design": "paired",
+    "predeclared_paired_count": 30,
+    "observed_paired_count": 30,
+    "alpha": 0.05,
+    "lift_confidence_interval": {
+      "method": "paired_bootstrap",
+      "confidence": 0.95,
+      "lower": 0.02,
+      "upper": 0.18
+    }
+  }
+
+Binary pass/fail benchmarks must also provide ``hypothesis_test`` with
+``method: mcnemar_exact``, ``alternative`` equal to ``greater`` or
+``two-sided``, and a p-value no larger than alpha. At least 20 predeclared and
+completed pairs are required, and totals/case rows must agree with the reported
+observed count and outcomes; exact p-values are recomputed from those outcomes.
+A reported bootstrap interval is useful supplemental evidence, but cannot
+substitute for the recomputed exact test. Legacy task-benchmark snapshots
+without this evidence remain printable, but fail ``--fail-on-regression``.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
 from statistics import mean
 from typing import Any
+
+
+MIN_PAIRED_SAMPLES = 20
+_PAIRED_CI_METHODS = {"paired_bootstrap", "paired_bootstrap_percentile"}
+_EXACT_PAIRED_TESTS = {"mcnemar_exact", "exact_mcnemar"}
 
 
 def _load(path: Path) -> dict[str, Any]:
@@ -51,6 +83,122 @@ def _case_values(snapshot: dict[str, Any], key: str) -> list[float]:
 def _mean_case_value(snapshot: dict[str, Any], key: str) -> float:
     values = _case_values(snapshot, key)
     return mean(values) if values else 0.0
+
+
+def _is_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _task_bench_evidence_failure(task_bench: dict[str, Any]) -> str | None:
+    """Return why a positive task-bench lift lacks decision-grade evidence."""
+    evidence = task_bench.get("evidence")
+    if not isinstance(evidence, dict):
+        return "task_bench positive lift requires a paired evidence block"
+    if evidence.get("design") != "paired":
+        return "task_bench evidence.design must be 'paired'"
+
+    planned = evidence.get("predeclared_paired_count")
+    observed = evidence.get("observed_paired_count")
+    if not isinstance(planned, int) or isinstance(planned, bool) or planned < MIN_PAIRED_SAMPLES:
+        return (
+            "task_bench evidence.predeclared_paired_count must be an integer "
+            f">= {MIN_PAIRED_SAMPLES}"
+        )
+    if not isinstance(observed, int) or isinstance(observed, bool) or observed < planned:
+        return "task_bench evidence.observed_paired_count must meet the predeclared count"
+
+    cases = task_bench.get("cases")
+    if not isinstance(cases, list) or len(cases) != observed:
+        return "task_bench case count must equal evidence.observed_paired_count"
+    if any(
+        not isinstance(case, dict)
+        or not isinstance(case.get("baseline_pass"), bool)
+        or not isinstance(case.get("with_skill_pass"), bool)
+        for case in cases
+    ):
+        return "task_bench paired cases must contain boolean baseline_pass and with_skill_pass"
+
+    baseline_pass = sum(case["baseline_pass"] for case in cases)
+    with_skill_pass = sum(case["with_skill_pass"] for case in cases)
+    for arm, passed in (("baseline", baseline_pass), ("with_skill", with_skill_pass)):
+        arm_summary = task_bench.get(arm) or {}
+        total = arm_summary.get("total")
+        if total != observed:
+            return f"task_bench.{arm}.total must equal evidence.observed_paired_count"
+        if arm_summary.get("pass") != passed:
+            return f"task_bench.{arm}.pass must agree with paired case outcomes"
+        pass_rate = arm_summary.get("pass_rate")
+        if not _is_number(pass_rate) or not math.isclose(
+            float(pass_rate), passed / observed, abs_tol=0.0001
+        ):
+            return f"task_bench.{arm}.pass_rate must agree with paired case outcomes"
+
+    observed_lift = (with_skill_pass - baseline_pass) / observed
+    reported_lift = task_bench.get("lift")
+    if not _is_number(reported_lift) or not math.isclose(
+        float(reported_lift), observed_lift, abs_tol=0.0001
+    ):
+        return "task_bench.lift must agree with paired case outcomes"
+
+    alpha = evidence.get("alpha")
+    if not _is_number(alpha) or not 0 < float(alpha) <= 0.05:
+        return "task_bench evidence.alpha must be numeric and in (0, 0.05]"
+    alpha = float(alpha)
+
+    ci = evidence.get("lift_confidence_interval")
+    ci_supported = False
+    if isinstance(ci, dict):
+        method = ci.get("method")
+        confidence = ci.get("confidence")
+        lower = ci.get("lower")
+        upper = ci.get("upper")
+        ci_supported = (
+            method in _PAIRED_CI_METHODS
+            and _is_number(confidence)
+            and float(confidence) >= 1 - alpha
+            and _is_number(lower)
+            and _is_number(upper)
+            and 0 < float(lower) <= float(upper)
+        )
+    if ci is not None and not ci_supported:
+        return (
+            "task_bench evidence.lift_confidence_interval must be a supported "
+            "paired interval with lower > 0 when provided"
+        )
+
+    test = evidence.get("hypothesis_test")
+    exact_test_supported = False
+    if isinstance(test, dict):
+        p_value = test.get("p_value")
+        wins = sum(not case["baseline_pass"] and case["with_skill_pass"] for case in cases)
+        losses = sum(case["baseline_pass"] and not case["with_skill_pass"] for case in cases)
+        discordant = wins + losses
+        if test.get("alternative") == "greater":
+            exact_p_value = (
+                sum(math.comb(discordant, k) for k in range(wins, discordant + 1))
+                / (2**discordant)
+            )
+        else:
+            exact_p_value = min(
+                1.0,
+                2
+                * sum(math.comb(discordant, k) for k in range(0, min(wins, losses) + 1))
+                / (2**discordant),
+            )
+        exact_test_supported = (
+            test.get("method") in _EXACT_PAIRED_TESTS
+            and test.get("alternative") in {"greater", "two-sided"}
+            and _is_number(p_value)
+            and 0 <= float(p_value) <= alpha
+            and math.isclose(float(p_value), exact_p_value, abs_tol=1e-12)
+        )
+
+    if not exact_test_supported:
+        return (
+            "task_bench positive lift requires a significant exact McNemar test "
+            "recomputed from the paired case outcomes"
+        )
+    return None
 
 
 def _metric_rows(before: dict[str, Any], after: dict[str, Any]) -> list[dict[str, Any]]:
@@ -146,7 +294,7 @@ def _metric_rows(before: dict[str, Any], after: dict[str, Any]) -> list[dict[str
 
     before_bench = before.get("task_bench") or {}
     after_bench = after.get("task_bench") or {}
-    if before_bench.get("with_skill") and after_bench.get("with_skill"):
+    if before_bench.get("with_skill") or after_bench.get("with_skill"):
         rows.extend(
             [
                 {
@@ -169,6 +317,7 @@ def _metric_rows(before: dict[str, Any], after: dict[str, Any]) -> list[dict[str
                     "after": float(after_bench.get("lift") or 0.0),
                     "higher_is_better": True,
                     "kind": "rate",
+                    "after_task_bench": after_bench,
                 },
             ]
         )
@@ -199,6 +348,16 @@ def _regressions(rows: list[dict[str, Any]], slowdown_tolerance: float) -> list[
     for row in rows:
         before = float(row["before"])
         after = float(row["after"])
+        if row["name"] == "task_bench.lift" and after <= 0:
+            failures.append(
+                f"task_bench.lift must be positive; observed {_format_value(after, row['kind'])}"
+            )
+            continue
+        if row["name"] == "task_bench.lift":
+            evidence_failure = _task_bench_evidence_failure(row.get("after_task_bench") or {})
+            if evidence_failure:
+                failures.append(evidence_failure)
+                continue
         if row["higher_is_better"]:
             if after < before:
                 failures.append(f"{row['name']} regressed from {_format_value(before, row['kind'])} to {_format_value(after, row['kind'])}")

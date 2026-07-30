@@ -1,0 +1,3 @@
+Use this bounded planning capsule only where applicable. Keep the benchmark task primary.
+
+Inspect the workspace to identify existing Python, build, and server tooling. Scaffold a standard `vectorops` package with distribution name `vectorops`, version `0.1.0`, and public `dotproduct` in the package-root `__init__.py`. Build with available tooling, then inspect the wheel or sdist metadata and contents to verify identity, version, layout, and import path. Configure a local pip-compatible index at `/simple` on port 8080, add the artifact, and verify its project page provides a retrievable artifact link. In a fresh virtual environment, install exactly `vectorops==0.1.0` using the required `--index-url` with caching…

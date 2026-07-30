@@ -1,0 +1,3 @@
+Use this bounded planning capsule only where applicable. Keep the benchmark task primary.
+
+Treat this as a small, pure-Python utility library and use a flat layout: `vectorops/__init__.py` beside `pyproject.toml`. Keep `__init__.py` as the public API surface. Configure a modern PEP 517/621 build backend with static versioning; hatchling or flit suits a minimal pure-Python package, while setuptools is also viable. Run `python -m build` to produce a wheel and source distribution under `dist/`; the wheel is preferred for pip installation. The skill does not explain how to create or run a local PEP 503-compatible `/simple` index, so obtain that server procedure elsewhere and verify it supports the required index URL.

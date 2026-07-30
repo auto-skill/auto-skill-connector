@@ -37,12 +37,12 @@ from context_guard import (
     DEFAULT_CAPSULE_CHARS,
     DEFAULT_INLINE_CHARS,
     POLICY_VERSION as CONTEXT_GUARD_POLICY,
-    build_capsule,
     build_context_guard,
     estimate_tokens as estimate_guard_tokens,
 )
 from embeddings import LibraryContent, build_embed_text, embed_text_hash, embed_texts
 import local_store as store
+from query_compiler import CompiledIntent, compile_intent_query
 from quality import (
     CONFIG_VERSION,
     NAME_STOPWORDS,
@@ -58,6 +58,7 @@ from quality import (
     tier_for_ranked_candidates,
     tier_for_prompt,
 )
+from routing_roles import partition_candidates
 
 # Storage moved local 2026-07-05 -- recommender.py always runs embedded inside
 # scraper.py's process (same app/port), which now serves local_api.py's
@@ -79,13 +80,27 @@ WARM_SEARCH_RUNTIME = os.getenv("AUTOSKILL_WARM_SEARCH_RUNTIME", "1").lower() no
 # that both retrievers agree on lands well above 1.6x the runner-up.
 RECOMMEND_GAP = 1.6
 ROUTE_TTL_SECONDS = int(os.getenv("ROUTE_TTL_SECONDS", "300"))
-MAX_INLINE_CONTENT_CHARS = int(os.getenv("MAX_INLINE_CONTENT_CHARS", "24000"))
 ROUTE_LATENCY_WARN_MS = int(os.getenv("ROUTE_LATENCY_WARN_MS", "750"))
 ROUTE_SKILL_FIND_WARN_MS = int(os.getenv("ROUTE_SKILL_FIND_WARN_MS", "500"))
 ROUTE_INJECTED_TOKEN_WARN = int(os.getenv("ROUTE_INJECTED_TOKEN_WARN", "1000"))
 ROUTE_RESPONSE_TOKEN_WARN = int(os.getenv("ROUTE_RESPONSE_TOKEN_WARN", "3500"))
-UPGRADE_URL = os.getenv("BACKEND_BASE_URL", "https://skills.autoskill.dev").rstrip("/") + "/account"
 CONTENT_HASH_RE = re.compile(r"^[a-f0-9]{64}$")
+# Public search is an inference, not an explicit user invocation.  The
+# controlled routing audit found that score-only full delivery could not clear
+# the precision required for silent prompt injection, even after post-hoc
+# threshold tuning.  Keep public matches hint-only unless a skill/version has
+# separately earned an outcome-validated allowlist entry.  The experimental
+# escape hatch is deliberately off by default and exists only for controlled
+# A/B runs.
+ALLOW_UNVALIDATED_PUBLIC_FULL = os.getenv(
+    "AUTOSKILL_EXPERIMENTAL_UNVALIDATED_PUBLIC_FULL", ""
+).lower() in {"1", "true", "yes"}
+OUTCOME_VALIDATED_CAPSULE_DIGESTS = frozenset(
+    value.strip().casefold()
+    for value in os.getenv("AUTOSKILL_VALIDATED_CAPSULE_DIGESTS", "").split(",")
+    if CONTENT_HASH_RE.fullmatch(value.strip().casefold())
+)
+UPGRADE_URL = os.getenv("BACKEND_BASE_URL", "https://skills.autoskill.dev").rstrip("/") + "/account"
 EMBED_INTERVAL_SECONDS = int(os.getenv("EMBED_INTERVAL_SECONDS", "300"))
 # ONNX memory grows sharply with batch size at the 512-token window.  A batch
 # of 128 exhausted the 4 GiB production droplet and put the worker into an OOM
@@ -133,21 +148,13 @@ _CODING_TERMS = frozenset(
         "nextjs", "fastapi", "django", "flask", "html", "css", "sql", "api", "endpoint",
     }
 )
-# Keep this narrow: action verbs like send/publish/deploy are common on
-# generic tasks and must not mark every integration skill as "explicit".
-# TODO(phase-3+): a 3rd supporting skill slot (verify/review) is deferred;
-# skill_plan.supporting_skills stays empty until labeled supporting-role evals exist.
 _INTEGRATION_REQUEST_TERMS = frozenset(
     {
-        "integrate",
-        "integration",
-        "connect",
-        "connector",
-        "sync",
-        "webhook",
-        "oauth",
-        "mcp",
+        "integrate", "integration", "connect", "connector", "sync", "webhook", "oauth", "mcp",
     }
+)
+_GENERIC_INTEGRATION_NAME_TERMS = frozenset(
+    {"auto", "automatic", "integration", "integrations", "skill", "mcp", "server", "tool", "agent", "workflow"}
 )
 _POLICY_MARKERS = (
     "always-on",
@@ -174,7 +181,7 @@ async def embed_missing_skills(client: httpx.AsyncClient) -> int:
         r = await client.get(
             f"{LOCAL_DB_URL}/rest/v1/skills",
             params={
-                "select": "id,url,name,source,description,tags,capability_summary",
+                "select": "id,url,name,source,description,tags,capability_summary,retrieval_text",
                 "embedding": "is.null",
                 "url": "not.is.null",
                 "quality_status": "eq.active",
@@ -434,12 +441,11 @@ def skill_role(candidate: dict) -> str:
 
 
 def _integration_is_explicit(query: str, candidate: dict) -> bool:
-    """True only when the user named this integration's platform/service.
+    """Require a named service for platform-specific integrations.
 
-    Platform-tagged skills require a platform mention in the prompt. Untagged
-    integration-shaped rows need an explicit integrate/connect-style ask, or a
-    known platform alias that appears in both the skill name and the prompt.
-    Generic name overlap (e.g. ``storefront`` / ``blog``) is not enough.
+    Broad name overlap such as "storefront" or "blog" is not an explicit
+    integration request and must not route a generic task to Shopify or
+    WordPress.
     """
     platforms = [str(p) for p in (candidate.get("platforms") or []) if p]
     if platforms:
@@ -450,11 +456,11 @@ def _integration_is_explicit(query: str, candidate: dict) -> bool:
         return True
 
     name_blob = str(candidate.get("name") or "").casefold()
-    for platform, aliases in PLATFORM_ALIASES.items():
-        if any(_contains_alias(name_blob, alias) for alias in aliases):
-            if platform_mentions(query, [platform]):
-                return True
-    return False
+    return any(
+        _contains_alias(name_blob, alias) and platform_mentions(query, [platform])
+        for platform, aliases in PLATFORM_ALIASES.items()
+        for alias in aliases
+    )
 
 
 def candidate_matches_task_contract(query: str, candidate: dict) -> bool:
@@ -507,6 +513,30 @@ async def find_default_policy_candidate(
     )
 
 
+def _rank_retrieval_lanes(
+    query_text: str,
+    results: list[dict],
+    limit: int,
+    *,
+    vector_available: bool,
+) -> list[dict]:
+    """Keep not-yet-embedded active skills visible without polluting routing.
+
+    A pending-embedding exact lexical match is useful as a reviewable hint, but
+    must not displace the evidence-backed semantic lane or inherit another
+    row's confidence. Reserve at most the final result slot for that lane.
+    """
+    if not vector_available:
+        return rerank_candidates(query_text, results)[:limit]
+    semantic = [row for row in results if row.get("similarity") is not None]
+    pending = [row for row in results if row.get("similarity") is None]
+    ranked_semantic = rerank_candidates(query_text, semantic)
+    if not pending or limit < 2:
+        return ranked_semantic[:limit]
+    ranked_pending = rerank_candidates(query_text, pending)
+    return ranked_semantic[: limit - 1] + ranked_pending[:1]
+
+
 async def retrieve_skills(client: httpx.AsyncClient, query_text: str, limit: int = 10) -> list[dict]:
     """Hybrid FTS+vector retrieval against the local DB. The frozen Supabase
     corpus was fully migrated into local_skills.db (migrate_state.json:
@@ -527,7 +557,12 @@ async def retrieve_skills(client: httpx.AsyncClient, query_text: str, limit: int
                 query_embedding,
                 fetch_limit,
             )
-            return rerank_candidates(query_text, results)[:limit]
+            return _rank_retrieval_lanes(
+                query_text,
+                results,
+                limit,
+                vector_available=query_embedding is not None,
+            )
         except Exception as exc:
             print(f"[recommender] local retrieval fast path failed: {exc}")
 
@@ -542,8 +577,61 @@ async def retrieve_skills(client: httpx.AsyncClient, query_text: str, limit: int
     if r.status_code != 200:
         return []
     results = list(r.json())
-    results = rerank_candidates(query_text, results)
-    return results[:limit]
+    return _rank_retrieval_lanes(
+        query_text,
+        results,
+        limit,
+        vector_available=query_embedding is not None,
+    )
+
+
+async def retrieve_skills_for_intent(
+    client: httpx.AsyncClient,
+    intent: CompiledIntent,
+    limit: int = 10,
+) -> list[dict]:
+    """Search original and compiled queries, then fuse their hybrid lanes."""
+    variants = list(intent.query_variants)[:2]
+    lanes = await asyncio.gather(
+        *(retrieve_skills(client, query, max(limit, 12)) for query in variants)
+    )
+    fused: dict[str, dict] = {}
+    for lane_index, (query, rows) in enumerate(zip(variants, lanes)):
+        for rank, row in enumerate(rows):
+            key = str(row.get("id") or row.get("content_hash") or row.get("url") or "")
+            if not key:
+                continue
+            current = fused.setdefault(key, dict(row))
+            current["query_rrf_score"] = float(current.get("query_rrf_score") or 0.0) + 1.0 / (60 + rank + 1)
+            current.setdefault("retrieval_queries", []).append(
+                "original" if lane_index == 0 else "compiled"
+            )
+            similarity = row.get("similarity")
+            if similarity is not None and (
+                current.get("similarity") is None or float(similarity) > float(current["similarity"])
+            ):
+                current["similarity"] = similarity
+            current["rank"] = max(float(current.get("rank") or 0.0), float(row.get("rank") or 0.0))
+            current["query_variant"] = query
+    rows = list(fused.values())
+    rows.sort(
+        key=lambda row: (
+            -float(row.get("query_rrf_score") or 0.0),
+            -float(row.get("similarity") or 0.0),
+            str(row.get("id") or row.get("url") or ""),
+        )
+    )
+    # Quality reranking remains task-centric, but query-RRF breaks otherwise
+    # equal candidates in favour of cross-query agreement.
+    ranked = rerank_candidates(intent.original_query, rows)
+    ranked.sort(
+        key=lambda row: (
+            -float(row.get("route_score") or 0.0),
+            -float(row.get("query_rrf_score") or 0.0),
+            str(row.get("id") or row.get("url") or ""),
+        )
+    )
+    return ranked[:limit]
 
 
 async def fetch_skills_by_urls(client: httpx.AsyncClient, urls: list[str]) -> list[dict]:
@@ -555,7 +643,7 @@ async def fetch_skills_by_urls(client: httpx.AsyncClient, urls: list[str]) -> li
         params={
             "select": (
                 "id,name,description,source,url,tags,risk_score,risk_flags,raw,"
-                "content_hash,quality_status,quality_score,platforms,category,capability_summary"
+                "content_hash,quality_status,quality_score,platforms,category"
             ),
             "url": f"in.({quoted})",
         },
@@ -817,11 +905,6 @@ def _public_skill(row: dict | None) -> dict | None:
         "id": row.get("id"),
         "slug": row.get("name"),
         "name": row.get("name"),
-        # capability_summary is the LLM-derived read of what the skill actually
-        # does (task/triggers/capabilities) -- prefer it over the raw registry
-        # blurb whenever indexing has produced one; fall back to description
-        # for rows that haven't been through stage 3 yet (or never will be,
-        # e.g. rejected content with no summary computed).
         "summary": row.get("capability_summary") or row.get("description"),
         "description": row.get("description"),
         "source": row.get("source"),
@@ -841,6 +924,15 @@ def _public_skill(row: dict | None) -> dict | None:
         "rank": row.get("rank"),
         "route_score": row.get("route_score"),
         "similarity": row.get("similarity"),
+        "candidate_role": row.get("candidate_role"),
+        "role_confidence": row.get("role_confidence"),
+        "role_reasons": row.get("role_reasons") or [],
+        "package_hash": row.get("package_hash"),
+        "source_commit_sha": row.get("source_commit_sha"),
+        "license_spdx": row.get("license_spdx"),
+        "package_completeness": row.get("package_completeness"),
+        "dependency_closure_status": row.get("dependency_closure_status"),
+        "retrieval_record_hash": row.get("retrieval_record_hash"),
     }
 
 
@@ -983,12 +1075,12 @@ def _empty_context_guard(reason: str = "no-route") -> dict:
         "policy": CONTEXT_GUARD_POLICY,
         "delivery": "none",
         "reason": reason,
-        "complete": False,
         "capsule": None,
         "capsule_chars": 0,
         "estimated_tokens": 0,
         "content_hash": None,
         "content_digest": None,
+        "complete": False,
         "fetch_hint": None,
     }
 
@@ -1123,6 +1215,36 @@ def _library_content_by_hash(target_hash: str) -> str:
     return LibraryContent().get_by_hash(target_hash)
 
 
+def _capsule_is_validated_for_full(capsule_digest_value: str | None) -> bool:
+    """Require outcome evidence for the exact distilled capsule bytes."""
+    return ALLOW_UNVALIDATED_PUBLIC_FULL or (
+        bool(capsule_digest_value)
+        and str(capsule_digest_value).casefold() in OUTCOME_VALIDATED_CAPSULE_DIGESTS
+    )
+
+
+def _candidate_context_guard(
+    query: str,
+    candidate: dict,
+    text: str,
+    max_capsule_chars: int = DEFAULT_CAPSULE_CHARS,
+) -> dict:
+    package_hash = str(candidate.get("package_hash") or "") or None
+    manifest = store.get_skill_package_manifest(package_hash) if package_hash else None
+    return build_context_guard(
+        task=query,
+        content=text,
+        content_hash=str(candidate.get("content_hash") or ""),
+        content_digest=content_digest(text),
+        max_capsule_chars=max_capsule_chars,
+        force_capsule=True,
+        package_manifest=manifest,
+        source_url=str(candidate.get("url") or candidate.get("source_url") or "") or None,
+        source_commit_sha=str(candidate.get("source_commit_sha") or "") or None,
+        package_hash=package_hash,
+    )
+
+
 def _public_plan_item(item: dict | None) -> dict | None:
     """Remove serving-only fields before returning a composed plan item."""
     if not item:
@@ -1159,8 +1281,9 @@ async def _build_verified_policy_item(
     ):
         return None
     capsule_budget = max(200, min(POLICY_CAPSULE_CHARS, int(max_capsule_chars or POLICY_CAPSULE_CHARS)))
-    capsule = build_capsule(task, text, capsule_budget)
-    if not capsule:
+    guard = _candidate_context_guard(task, candidate, text, capsule_budget)
+    capsule = guard.get("capsule")
+    if not capsule or not _capsule_is_validated_for_full(guard.get("capsule_digest")):
         return None
     digest = content_digest(text)
     public.update(
@@ -1176,6 +1299,7 @@ async def _build_verified_policy_item(
                 "static_instruction_only": True,
                 "hash_kind": "canonical_normalized",
                 "content_digest": digest,
+                "capsule_digest": guard.get("capsule_digest"),
                 "source": "indexed-local-copy",
                 "publisher_verified": False,
             },
@@ -1197,10 +1321,7 @@ def _policy_context_guard(policy_item: dict) -> dict:
         "estimated_tokens": policy_item["estimated_tokens"],
         "content_hash": policy_item.get("content_hash"),
         "content_digest": (policy_item.get("verification") or {}).get("content_digest"),
-        "fetch_hint": (
-            "Policy capsules are bounded by design. Fetch /content/{content_hash} "
-            "when the full policy SKILL.md is required."
-        ),
+        "capsule_digest": (policy_item.get("verification") or {}).get("capsule_digest"),
     }
 
 
@@ -1233,6 +1354,8 @@ async def find_deliverable_primary_candidate(
     prevent a slightly lower-ranked verified static specialist from becoming
     the active route.
     """
+    if not ALLOW_UNVALIDATED_PUBLIC_FULL and not OUTCOME_VALIDATED_CAPSULE_DIGESTS:
+        return None, ""
     plausible = [
         candidate
         for candidate in candidates
@@ -1244,7 +1367,8 @@ async def find_deliverable_primary_candidate(
         *(asyncio.to_thread(_verified_static_candidate_content, candidate) for candidate in plausible)
     )
     for candidate, text in zip(plausible, contents):
-        if text:
+        guard = _candidate_context_guard(query, candidate, text) if text else None
+        if guard and _capsule_is_validated_for_full(guard.get("capsule_digest")):
             return candidate, text
     return None, ""
 
@@ -1296,6 +1420,14 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
     await asyncio.to_thread(store.increment_route_usage, user["id"])
 
     limit = max(2, min(int(body.limit or 8), 20))
+    query_compile_start = time.monotonic()
+    intent = compile_intent_query(
+        query,
+        languages=body.languages,
+        frameworks=body.frameworks,
+        project_tags=body.project_tags,
+    )
+    query_compile_ms = int((time.monotonic() - query_compile_start) * 1000)
     task_analysis = analyze_task(
         query,
         requested_family=body.task_family,
@@ -1309,7 +1441,7 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
     retrieval_start = time.monotonic()
     async with httpx.AsyncClient() as client:
         primary_retrieval_start = time.monotonic()
-        results = await retrieve_skills(client, query, limit)
+        results = await retrieve_skills_for_intent(client, intent, limit)
         primary_retrieval_ms = int((time.monotonic() - primary_retrieval_start) * 1000)
         policy_lookup_start = time.monotonic()
         try:
@@ -1334,33 +1466,51 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
         if _passes_routing_filters(result, routing_filters)
         and candidate_matches_task_contract(query, result)
     ]
+    role_partition = partition_candidates(
+        intent,
+        results,
+        curated_policy_names=CODING_POLICY_NAMES,
+    )
+    results = role_partition["annotated"]
     candidate_filter_ms = int((time.monotonic() - candidate_filter_start) * 1000)
-    primary_results = results
+    primary_results = role_partition["primary_candidates"]
+    supporting_results = role_partition["supporting"] if primary_results else []
     deliverable_validation_start = time.monotonic()
     deliverable_primary, preverified_primary_text = await find_deliverable_primary_candidate(
         query, primary_results, ranked=results_are_ranked
     )
     deliverable_validation_ms = int((time.monotonic() - deliverable_validation_start) * 1000)
     tier_decision_start = time.monotonic()
+    full_evidence_gate_applied = False
     if deliverable_primary:
         primary_results = [deliverable_primary]
         primary_tier = "full"
     else:
         primary_tier = injection_tier(query, primary_results, ranked=results_are_ranked)
+        if primary_tier == "full" and primary_results and not ALLOW_UNVALIDATED_PUBLIC_FULL:
+            primary_tier = "hint"
+            full_evidence_gate_applied = True
     tier_decision_ms = int((time.monotonic() - tier_decision_start) * 1000)
     policy_build_start = time.monotonic()
-    policy_item = await _build_verified_policy_item(
-        user["id"], policy_candidate, query, body.max_capsule_chars
+    policy_item = (
+        await _build_verified_policy_item(user["id"], policy_candidate, query, body.max_capsule_chars)
+        if primary_tier == "full"
+        else None
     )
     policy_build_ms = int((time.monotonic() - policy_build_start) * 1000)
     tier = primary_tier
     rerank_ms = int((time.monotonic() - rerank_start) * 1000)
     skill_find_ms = int((time.monotonic() - retrieval_start) * 1000)
     warnings: list[str] = []
+    if full_evidence_gate_applied:
+        warnings.append(
+            "Public retrieval matches are hint-only until this skill version has "
+            "independent outcome validation for full delivery."
+        )
     content = None
     content_url = None
     skill = _public_skill(primary_results[0]) if primary_results else None
-    selected_role = skill_role(primary_results[0]) if primary_results else None
+    selected_role = "primary" if primary_results else None
     content_ms = 0
     route_id = str(uuid.uuid4())
     context_guard = _empty_context_guard("no-route")
@@ -1372,15 +1522,6 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
     # falls to the org standard rather than a personal copy.
     private_match = store.list_routable_private_skills(user["id"]) if user else []
     private_match = _best_private_skill_match(query, private_match) if private_match else None
-
-    # A verified family policy is still useful when no specialist clears the
-    # full-injection bar. It becomes the compatibility top-level selection so
-    # older clients receive useful guidance instead of an unrelated hint.
-    if not private_match and tier != "full" and policy_item:
-        skill = _public_plan_item(policy_item)
-        selected_role = "policy"
-        tier = "full"
-        results = [policy_item["_row"]]
 
     if private_match:
         policy_item = None
@@ -1434,89 +1575,38 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
         elif content_hash(text) != skill.get("content_hash"):
             tier = "hint"
             warnings.append("Matched skill content no longer matches its indexed hash; downgraded to hint.")
-        elif capability_flags := skill_capability_flags(text):
-            tier = "hint"
-            skill["capability_flags"] = capability_flags
-            warnings.append(
-                "Matched skill declares scripts, tools, network, dependencies, or dangerous commands; "
-                "downgraded to hint for explicit review."
-            )
         else:
-            chash = skill["content_hash"]
             digest = content_digest(text)
+            context_guard = (
+                _candidate_context_guard(query, primary_results[0], text, body.max_capsule_chars)
+                if CONTEXT_GUARD_ENABLED
+                else _empty_context_guard("safe-capsule-required")
+            )
+            if not _capsule_is_validated_for_full(context_guard.get("capsule_digest")):
+                tier = "hint"
+                warnings.append(
+                    "The exact distilled capsule lacks independent outcome validation; "
+                    "downgraded to hint."
+                )
+            elif context_guard.get("delivery") != "capsule":
+                tier = "hint"
+                warnings.append("Public skill could not be safely distilled; downgraded to hint.")
+            else:
+                warnings.append("Verified public skill delivered only as a bounded distilled capsule.")
             skill["verification"] = {
                 "content_hash_verified": True,
-                "static_instruction_only": True,
+                "safe_distilled_capsule": context_guard.get("delivery") == "capsule",
                 "hash_kind": "canonical_normalized",
                 "content_digest": digest,
+                "capsule_digest": context_guard.get("capsule_digest"),
                 "source": "indexed-local-copy",
                 "publisher_verified": False,
             }
-            if CONTEXT_GUARD_ENABLED:
-                if selected_role == "policy" and policy_item:
-                    context_guard = _policy_context_guard(policy_item)
-                else:
-                    context_guard = build_context_guard(
-                        task=query,
-                        content=text,
-                        content_hash=chash,
-                        content_digest=digest,
-                        supports_isolation=bool(body.supports_isolation),
-                        max_inline_chars=(0 if body.guard_mode == "capsule_only" else body.max_inline_chars),
-                        max_capsule_chars=body.max_capsule_chars,
-                        force_capsule=body.guard_mode == "capsule_only",
-                    )
-            else:
-                fits_inline = len(text) <= MAX_INLINE_CONTENT_CHARS
-                context_guard = {
-                    "policy": "disabled",
-                    "delivery": "full" if fits_inline else "hint",
-                    "reason": "feature_disabled",
-                    "complete": fits_inline,
-                    "capsule": None,
-                    "capsule_chars": 0,
-                    "estimated_tokens": 0,
-                    "content_hash": chash,
-                    "content_digest": digest,
-                    "fetch_hint": None
-                    if fits_inline
-                    else (
-                        "Context guard disabled and body exceeded inline budget; "
-                        "fetch /content/{content_hash} for the complete SKILL.md."
-                    ),
-                }
-            delivery = context_guard.get("delivery")
-            # Always expose content_url for verified static skills so non-full
-            # deliveries can honestly fetch the remainder by hash.
-            content_url = f"/content/{chash}"
-            if delivery == "full":
-                content = text
-            elif delivery == "isolation":
-                warnings.append(
-                    "Large verified skill reserved for an adapter-provided isolated context. "
-                    f"Complete SKILL.md: {content_url}"
-                )
-            elif delivery == "capsule":
-                warnings.append(
-                    "Large verified skill reduced to a bounded context capsule (not full). "
-                    f"Complete SKILL.md: {content_url}"
-                )
-            else:
-                tier = "hint"
-                warnings.append(
-                    "Verified content could not be delivered within the context guard; "
-                    f"downgraded to hint. Complete SKILL.md: {content_url}"
-                )
 
-    if not private_match and tier != "full" and policy_item and selected_role != "policy":
-        skill = _public_plan_item(policy_item)
-        selected_role = "policy"
-        tier = "full"
-        results = [policy_item["_row"]]
-        content = None
-        content_url = None
-        context_guard = _policy_context_guard(policy_item)
-        warnings.append("The specialist did not clear delivery gates; serving the verified task-family policy only.")
+    # Family policies are modifiers, never standalone task routes. If the
+    # specialist cannot remain full, discard the policy rather than promoting it.
+    if tier != "full" or selected_role in {"policy", "private"}:
+        policy_item = None
 
     if skill:
         skill["role"] = selected_role or "specialist"
@@ -1534,14 +1624,11 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
     selected_roles = ["policy"] if policy_skills else []
     if primary_plan:
         selected_roles.append(primary_plan.get("role") or "specialist")
-    # TODO(phase-3+): keep the 2-slot plan (policy + primary). A 3rd supporting
-    # slot (e.g. verify / review) is deferred — do not implement multi-specialist
-    # selection here until we have labeled supporting-role evals.
     skill_plan = {
         "task_family": task_analysis["family"],
         "policy_skills": policy_skills,
         "primary_skill": primary_plan,
-        "supporting_skills": [],  # deferred 3rd supporting slot; stays empty
+        "supporting_skills": [],
         "selected_roles": selected_roles,
         "precedence": ["user-project-team", "policy", "primary", "supporting"],
         "composition_reason": (
@@ -1555,10 +1642,37 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
         ),
     }
 
-    if tier == "hint" and context_guard.get("delivery") == "none":
+    if tier == "hint":
         context_guard = _empty_context_guard("confidence_or_safety_gate")
         context_guard["delivery"] = "hint"
     debug = _score_debug(results, tier)
+    debug["intent_compiler"] = {
+        "version": intent.compiler_version,
+        "compressed_query": intent.compressed_query,
+        "technology": list(intent.technology),
+        "operation": list(intent.operation),
+        "artifact": list(intent.artifact),
+        "constraints": list(intent.constraints),
+        "failure_mode": list(intent.failure_mode),
+        "query_count": len(intent.query_variants),
+    }
+    debug["role_classification"] = {
+        "abstained": role_partition["abstained"],
+        "harmful_count": role_partition["harmful_count"],
+        "thresholds": role_partition["thresholds"],
+        "primary": (
+            {
+                "name": role_partition["primary"].get("name"),
+                "confidence": role_partition["primary"].get("role_confidence"),
+            }
+            if role_partition["primary"]
+            else None
+        ),
+        "supporting": [
+            {"name": item.get("name"), "confidence": item.get("role_confidence")}
+            for item in supporting_results
+        ],
+    }
     debug["context_guard"] = {
         "policy": context_guard.get("policy"),
         "delivery": context_guard.get("delivery"),
@@ -1566,7 +1680,7 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
         "capsule_chars": context_guard.get("capsule_chars", 0),
         "estimated_tokens": context_guard.get("estimated_tokens", 0),
     }
-    candidates = _hint_candidates(results) if tier == "hint" else []
+    candidates = _hint_candidates([*primary_results, *supporting_results]) if tier == "hint" else []
     input_tokens = _estimate_tokens(query)
     hint_tokens = _estimate_tokens(skill)
     candidate_tokens = _estimate_candidate_tokens(candidates)
@@ -1599,6 +1713,8 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
         "retrieval_ms": retrieval_ms,
         "rerank_ms": rerank_ms,
         "routing_filters_ms": routing_filters_ms,
+        "query_compile_ms": query_compile_ms,
+        "query_variant_count": len(intent.query_variants),
         "primary_retrieval_ms": primary_retrieval_ms,
         "policy_lookup_ms": policy_lookup_ms,
         "candidate_rerank_ms": candidate_rerank_ms,
@@ -1612,6 +1728,7 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
         "hint_tokens": hint_tokens,
         "candidate_tokens": candidate_tokens,
         "content_tokens": content_tokens,
+        "capsule_tokens": guard_tokens,
         "policy_tokens": policy_tokens,
         "skill_count": len(policy_skills) + (1 if primary_plan else 0),
         "injected_tokens": injected_tokens,
@@ -1653,6 +1770,7 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
             "hint_tokens": metrics["hint_tokens"],
             "candidate_tokens": metrics["candidate_tokens"],
             "content_tokens": metrics["content_tokens"],
+            "capsule_tokens": metrics["capsule_tokens"],
             "injected_tokens": metrics["injected_tokens"],
             "response_tokens": metrics["response_tokens"],
             "config_version": CONFIG_VERSION,

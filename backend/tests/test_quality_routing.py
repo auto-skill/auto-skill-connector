@@ -7,6 +7,7 @@ from quality import (
     infer_platforms,
     is_non_task_prompt,
     rerank_candidates,
+    retrieval_record_overlap,
     tier_for_ranked_candidates,
     tier_for_prompt,
 )
@@ -168,6 +169,32 @@ class RoutingTierTests(unittest.TestCase):
         ranked = rerank_candidates(prompt, candidates)
 
         self.assertEqual(ranked[0]["name"], "xlsx-creator")
+
+    def test_normalized_retrieval_record_breaks_metadata_ties(self):
+        prompt = "parse JSON logs with a Rust command line tool"
+        generic = {
+            "name": "code-helper",
+            "description": "General coding workflow guidance.",
+            "quality_status": "active",
+            "quality_score": 90,
+            "rank": 0.52,
+            "similarity": 0.91,
+        }
+        procedure_match = {
+            "name": "log-toolkit",
+            "description": "General coding workflow guidance.",
+            "retrieval_text": "technology: rust; operation: extract parse; artifact: command line tool; parse JSON logs with serde",
+            "quality_status": "active",
+            "quality_score": 90,
+            "rank": 0.51,
+            "similarity": 0.91,
+        }
+
+        ranked = rerank_candidates(prompt, [generic, procedure_match])
+
+        self.assertEqual(ranked[0]["name"], "log-toolkit")
+        self.assertGreater(retrieval_record_overlap(prompt, procedure_match), 0)
+        self.assertEqual(retrieval_record_overlap(prompt, generic), 0)
 
     def test_platform_trap_caps_landingi_to_hint(self):
         prompt = "build a landing page for an AI automation agency"

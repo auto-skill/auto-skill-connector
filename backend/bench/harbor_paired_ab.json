@@ -1,0 +1,108 @@
+{
+  "schema_version": 1,
+  "status": "screen-rejected",
+  "screening_result": {
+    "complete_pairs": 5,
+    "wins": 0,
+    "ties": 5,
+    "losses": 0,
+    "control_pass_rate": 1.0,
+    "treatment_pass_rate": 1.0,
+    "agent_time_treatment_slower_pairs": 5,
+    "agent_time_treatment_faster_pairs": 0,
+    "mean_agent_time_delta_seconds": 47.2,
+    "agent_time_exact_sign_two_sided_p": 0.0625,
+    "decision": "Do not launch the 30-job confirmation: the one-replicate screen showed no directional pass-rate benefit and audited treatments increased latency."
+  },
+  "hypothesis": "Automatically compressed, task-relevant procedural capsules improve Terminal-Bench task success over an otherwise identical no-capsule control.",
+  "dataset": {
+    "name": "terminal-bench/terminal-bench-2-1",
+    "ref": "sha256:7d7bdc1cbedad549fc1140404bd4dc45e5fd0ea7c4186773687d177ad3a0699a"
+  },
+  "agent": {
+    "name": "codex",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "max",
+    "reasoning_summary": "none",
+    "web_search": "disabled",
+    "version": "0.145.0"
+  },
+  "replicates": 3,
+  "required_task_count": 5,
+  "random_seed": 260721,
+  "arms": [
+    "control",
+    "treatment"
+  ],
+  "capsule_generation": {
+    "function": "backend.context_guard.build_capsule",
+    "max_chars": 2400,
+    "wrapper": "Use this retrieved, task-specific procedural guidance only where it applies. Keep the benchmark task primary.",
+    "note": "Capsules are checked-in snapshots generated only after canonical source-content hash verification. Empty or capability-gated capsules are excluded."
+  },
+  "tasks": [
+    {
+      "name": "terminal-bench/mcmc-sampling-stan",
+      "skill_id": "3044cac7-d920-4e26-9489-5fedf630d786",
+      "skill_name": "bayesian-estimation",
+      "source_url": "https://raw.githubusercontent.com/brycewang-stanford/auto-empirical-research-skills/HEAD/skills/11-James-Traina-compound-science/skills/bayesian-estimation/SKILL.md",
+      "source_content_hash": "d1519530929204735e7dc09c9a3e8159bf7d278cf8129e7ef81b656c47565d43",
+      "capsule": "harbor_capsules/mcmc-sampling-stan.md",
+      "capsule_sha256": "972e2a63b3a2cb925dd097436bc23dddf42227ff992f1b162b426eb224a868a4"
+    },
+    {
+      "name": "terminal-bench/nginx-request-logging",
+      "skill_id": "5e2b81c1-f4ad-4bff-9fc2-67c4df7c76ce",
+      "skill_name": "nginx-docs",
+      "source_url": "https://raw.githubusercontent.com/cookiemonsterdev/agents-skills/HEAD/docs-skills/nginx-docs/SKILL.md",
+      "source_content_hash": "0377859db3ee80ea2a45b32278463515d727f8173633263dbec52afda9ca19fa",
+      "capsule": "harbor_capsules/nginx-request-logging.md",
+      "capsule_sha256": "578c742bfceb3563351e25f5c82036e697e907db430dda9cf49d9de15ade33b5"
+    },
+    {
+      "name": "terminal-bench/openssl-selfsigned-cert",
+      "skill_id": "ebb383a9-5fb5-4952-a03c-90715eb87391",
+      "skill_name": "configuring-certificate-authority-with-openssl",
+      "source_url": "https://raw.githubusercontent.com/26zl/cybersec-toolkit/HEAD/.claude/skills/configuring-certificate-authority-with-openssl/SKILL.md",
+      "source_content_hash": "48aa6162e688fe91ae2a999064bba1f1a905c013b071419c6cf1a0bf83a0e62d",
+      "capsule": "harbor_capsules/openssl-selfsigned-cert.md",
+      "capsule_sha256": "f714d461263bc076f99ea8fb9ebdb186e4d61d9b06d231d7e2111e55fd0a26bf"
+    },
+    {
+      "name": "terminal-bench/regex-log",
+      "skill_id": "eeda0c8a-59f1-4e47-a3a3-3d3e35cc4d45",
+      "skill_name": "Regex Master",
+      "source_url": "https://raw.githubusercontent.com/skillmedev/skills/HEAD/skills/regex-master/SKILL.md",
+      "source_content_hash": "911837a18032f680d1c3cdd630194a67131bf03cceb64053f4f00dcff0f479a8",
+      "capsule": "harbor_capsules/regex-log.md",
+      "capsule_sha256": "e487b5b37057620abca236e138b47c537b83601be80f18f56635819d8e9f29a8"
+    },
+    {
+      "name": "terminal-bench/db-wal-recovery",
+      "skill_id": "338c77e7-ec42-448f-b5aa-3f6589dfa963",
+      "skill_name": "recover-sqlite-database",
+      "source_url": "https://raw.githubusercontent.com/markmhendrickson/neotoma/HEAD/skills/recover-sqlite-database/SKILL.md",
+      "source_content_hash": "d42dc4208e44dbbaf8cb3e2f4d4ed5c02830acf0aafdf426fa770727a974191e",
+      "relevance_note": "Partial and environment-specific: Neotoma wrapper commands do not match the task, but preserve/integrity/.recover/validation guidance is directly useful.",
+      "capsule": "harbor_capsules/db-wal-recovery.md",
+      "capsule_sha256": "5304f6ce8e5424c54f7b0baf4df137ad751f4c9dfa7148634de9744091ee9223"
+    }
+  ],
+  "excluded_candidates": [
+    {
+      "name": "terminal-bench/pypi-server",
+      "skill_id": "fd4278ef-700f-4055-b99c-fcfc694e7c4e",
+      "reason": "current build_capsule safety gate rejects declared tool/dependency capabilities"
+    },
+    {
+      "name": "terminal-bench/query-optimize",
+      "skill_id": "e3508a29-7326-41e2-b42b-6ddb200332b8",
+      "reason": "current build_capsule safety gate rejects declared Bash/Write capabilities"
+    },
+    {
+      "name": "terminal-bench/regex-chess",
+      "skill_id": "eeda0c8a-59f1-4e47-a3a3-3d3e35cc4d45",
+      "reason": "duplicates the Regex Master treatment body already used by regex-log and has severe runtime; excluded to avoid pseudoreplication"
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "tasks": [
+    {
+      "name": "terminal-bench/financial-document-processor",
+      "skill_id": "67908c2f-3c0c-4bd1-8133-6ffbb2389264",
+      "skill_name": "invoice-expense-extractor",
+      "source_url": "https://raw.githubusercontent.com/uhudsavasindankacanokcu2/finance-skills-for-claude/HEAD/invoice-extractor/SKILL.md",
+      "source_content_hash": "46127ca9dac995601bbe6d295f6ae589bea3410775781dc862195ed8ef5828d0"
+    },
+    {
+      "name": "terminal-bench/git-leak-recovery",
+      "skill_id": "4ffb4b15-2bde-431d-bd2f-a62cf559f613",
+      "skill_name": "git-secret-remediation",
+      "source_url": "https://raw.githubusercontent.com/powr-data/mtx-skills/HEAD/skills/infra/git-secret-remediation/SKILL.md",
+      "source_content_hash": "3cbbfc23a25dbecf8d83a654e85decbc8df916fecf32f43d7e3684698f78a0a0"
+    }
+  ]
+}

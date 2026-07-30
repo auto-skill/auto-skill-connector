@@ -43,16 +43,16 @@ def _large_static_skill() -> str:
 
 
 class DeliveryHonestyUnitTests(unittest.TestCase):
-    def test_small_skill_is_complete_full_inline(self) -> None:
+    def test_small_skill_is_still_a_bounded_capsule(self) -> None:
         guard = build_context_guard(
             task="create an excel report with formulas",
             content=VALID_SMALL,
             content_hash="a" * 64,
             content_digest="b" * 64,
         )
-        self.assertEqual(guard["delivery"], "full")
-        self.assertTrue(guard["complete"])
-        self.assertIsNone(guard["fetch_hint"])
+        self.assertEqual(guard["delivery"], "capsule")
+        self.assertFalse(guard["complete"])
+        self.assertIn("not the complete SKILL.md", guard["fetch_hint"])
         self.assertLessEqual(len(VALID_SMALL), DEFAULT_INLINE_CHARS)
 
     def test_large_skill_capsule_is_explicitly_incomplete(self) -> None:
@@ -67,19 +67,19 @@ class DeliveryHonestyUnitTests(unittest.TestCase):
         self.assertEqual(guard["delivery"], "capsule")
         self.assertFalse(guard["complete"])
         self.assertIn("not the complete SKILL.md", guard["fetch_hint"])
-        self.assertIn("/content/{content_hash}", guard["fetch_hint"])
+        self.assertNotIn("/content/", guard["fetch_hint"])
         self.assertLessEqual(guard["capsule_chars"], 2400)
 
-    def test_large_skill_isolation_is_explicitly_incomplete(self) -> None:
+    def test_isolation_request_still_uses_a_bounded_capsule(self) -> None:
         guard = build_context_guard(
             task="create an excel report with formulas",
             content=_large_static_skill(),
             content_hash="e" * 64,
             supports_isolation=True,
         )
-        self.assertEqual(guard["delivery"], "isolation")
+        self.assertEqual(guard["delivery"], "capsule")
         self.assertFalse(guard["complete"])
-        self.assertIn("content_url", guard["fetch_hint"])
+        self.assertIn("not the complete SKILL.md", guard["fetch_hint"])
 
 
 class ContentAndRouteDeliveryTests(unittest.TestCase):
@@ -132,7 +132,7 @@ class ContentAndRouteDeliveryTests(unittest.TestCase):
         self.assertEqual(response.text, body)
         self.assertGreater(len(response.text), DEFAULT_INLINE_CHARS)
 
-    def test_route_capsule_includes_content_url_for_remainder(self) -> None:
+    def test_unvalidated_route_is_hint_without_raw_content(self) -> None:
         content = _large_static_skill()
         chash = content_hash(content)
         candidate = {
@@ -171,14 +171,13 @@ class ContentAndRouteDeliveryTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         body = response.json()
-        self.assertEqual(body["tier"], "full")
-        self.assertEqual(body["context_guard"]["delivery"], "capsule")
+        self.assertEqual(body["tier"], "hint")
+        self.assertEqual(body["context_guard"]["delivery"], "hint")
         self.assertFalse(body["context_guard"]["complete"])
         self.assertIsNone(body["content"])
-        self.assertEqual(body["content_url"], f"/content/{chash}")
+        self.assertIsNone(body["content_url"])
         warnings = body.get("score_debug", {}).get("warnings") or []
-        self.assertTrue(any("not full" in warning.lower() for warning in warnings))
-        self.assertTrue(any(f"/content/{chash}" in warning for warning in warnings))
+        self.assertTrue(any("independent outcome validation" in warning.lower() for warning in warnings))
 
 
 if __name__ == "__main__":
