@@ -67,12 +67,20 @@ def _rrf_union(original: list[dict[str, Any]], compiled: list[dict[str, Any]], l
                 continue
             item = fused.setdefault(key, dict(row))
             item["rrf_score"] = float(item.get("rrf_score") or 0.0) + 1.0 / (60 + rank + 1)
+            item["retrieval_priority"] = max(
+                int(item.get("retrieval_priority") or 0),
+                1 if lane == "original" else 0,
+            )
             queries = item.setdefault("retrieval_queries", [])
             if lane not in queries:
                 queries.append(lane)
     return sorted(
         fused.values(),
-        key=lambda row: (-float(row.get("rrf_score") or 0.0), str(row.get("id") or row.get("url") or "")),
+        key=lambda row: (
+            -float(row.get("rrf_score") or 0.0),
+            -int(row.get("retrieval_priority") or 0),
+            str(row.get("id") or row.get("url") or ""),
+        ),
     )[:limit]
 
 

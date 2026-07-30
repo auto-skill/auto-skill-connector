@@ -638,6 +638,11 @@ def rerank_candidates(prompt: str, candidates: list[dict[str, Any]]) -> list[dic
         key=lambda item: (
             item.get("route_score", item.get("rank", 0)),
             item.get("meaningfulness_score", 0),
+            # When independent query lanes produce exactly the same evidence,
+            # preserve the original user wording's candidate before allowing
+            # a compiled-only tie to displace it. A strictly stronger score
+            # still wins normally.
+            item.get("retrieval_priority", 0),
         ),
         reverse=True,
     )

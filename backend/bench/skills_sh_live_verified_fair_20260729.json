@@ -1,0 +1,282 @@
+{
+  "status": "complete",
+  "label_status": "human_verified",
+  "backend": "skills_sh",
+  "access_mode": "public_search_only",
+  "case_count": 10,
+  "labeled_case_count": 10,
+  "metrics": {
+    "original_hit_at_1": 0.8,
+    "dual_hit_at_1": 0.9,
+    "original_hit_at_5": 0.9,
+    "dual_hit_at_5": 1.0,
+    "delta_at_1_pp": 10.0,
+    "delta_at_5_pp": 10.0,
+    "paired_bootstrap_95ci_at_1_pp": [
+      0.0,
+      30.0
+    ],
+    "paired_bootstrap_95ci_at_5_pp": [
+      0.0,
+      30.0
+    ],
+    "paired_wins_at_1": 1,
+    "paired_losses_at_1": 0,
+    "paired_ties_at_1": 9,
+    "audit_unknown_rows": 50,
+    "audit_fail_rows": 0
+  },
+  "elapsed_ms": 39795.81,
+  "cases": [
+    {
+      "query": "build a Next.js app with App Router and TypeScript",
+      "compiled_query": "next.js typescript build app router",
+      "label_status": "verified",
+      "original_ids": [
+        "wsimmonds/claude-nextjs-skills/nextjs-app-router-fundamentals",
+        "sickn33/antigravity-awesome-skills/nextjs-app-router-patterns",
+        "sickn33/antigravity-awesome-skills/react-nextjs-development",
+        "aradotso/trending-skills/vinext-vite-nextjs",
+        "cap-go/capgo-skills/framework-to-capacitor"
+      ],
+      "dual_ids": [
+        "wsimmonds/claude-nextjs-skills/nextjs-app-router-fundamentals",
+        "sickn33/antigravity-awesome-skills/nextjs-app-router-patterns",
+        "sickn33/antigravity-awesome-skills/react-nextjs-development",
+        "aradotso/trending-skills/vinext-vite-nextjs",
+        "cap-go/capgo-skills/framework-to-capacitor"
+      ],
+      "original_hit_at_1": true,
+      "dual_hit_at_1": true,
+      "original_hit_at_5": true,
+      "dual_hit_at_5": true,
+      "audit_unknown": 5,
+      "audit_fail": 0
+    },
+    {
+      "query": "query Supabase tables and design RLS policies",
+      "compiled_query": "supabase database query tables design rls policies",
+      "label_status": "verified",
+      "original_ids": [
+        "yoanbernabeu/supabase-pentest-skills/supabase-audit-rls",
+        "erichowens/some_claude_skills/supabase-admin",
+        "tdimino/claude-code-minoan/supabase-skill",
+        "jmsktm/claude-settings/database-design",
+        "skills.volces.com/supabase-schema-gen"
+      ],
+      "dual_ids": [
+        "yoanbernabeu/supabase-pentest-skills/supabase-audit-rls",
+        "erichowens/some_claude_skills/supabase-admin",
+        "tdimino/claude-code-minoan/supabase-skill",
+        "jmsktm/claude-settings/database-design",
+        "skills.volces.com/supabase-schema-gen"
+      ],
+      "original_hit_at_1": true,
+      "dual_hit_at_1": true,
+      "original_hit_at_5": true,
+      "dual_hit_at_5": true,
+      "audit_unknown": 5,
+      "audit_fail": 0
+    },
+    {
+      "query": "set up Playwright end-to-end tests with CI",
+      "compiled_query": "playwright test suite set end-to-end tests",
+      "label_status": "verified",
+      "original_ids": [
+        "shipshitdev/library/playwright-e2e-init",
+        "erichowens/some_claude_skills/playwright-e2e-tester",
+        "spencerpauly/awesome-cursor-skills/adding-e2e-tests",
+        "aws-samples/sample-agent-skills-for-builders/end-to-end-testing",
+        "sickn33/antigravity-awesome-skills/e2e-testing"
+      ],
+      "dual_ids": [
+        "shipshitdev/library/playwright-e2e-init",
+        "borghei/claude-skills/playwright-pro",
+        "erichowens/some_claude_skills/playwright-e2e-tester",
+        "aws-samples/sample-agent-skills-for-builders/end-to-end-testing",
+        "wojons/skills/testing-e2e"
+      ],
+      "original_hit_at_1": true,
+      "dual_hit_at_1": true,
+      "original_hit_at_5": true,
+      "dual_hit_at_5": true,
+      "audit_unknown": 5,
+      "audit_fail": 0
+    },
+    {
+      "query": "create and format a PowerPoint deck with images and templates",
+      "compiled_query": "powerpoint create format deck images templates",
+      "label_status": "verified",
+      "original_ids": [
+        "practicalswan/agent-skills/powerpoint-ppt",
+        "autobyteus/autobyteus-skills/infographic-powerpoint-deck",
+        "leeovery/claude-technical-workflows/create-output-format",
+        "skills.volces.com/create-pptx",
+        "harness/harness-skills/create-template"
+      ],
+      "dual_ids": [
+        "practicalswan/agent-skills/powerpoint-ppt",
+        "autobyteus/autobyteus-skills/infographic-powerpoint-deck",
+        "leeovery/claude-technical-workflows/create-output-format",
+        "skills.volces.com/create-pptx",
+        "harness/harness-skills/create-template"
+      ],
+      "original_hit_at_1": true,
+      "dual_hit_at_1": true,
+      "original_hit_at_5": true,
+      "dual_hit_at_5": true,
+      "audit_unknown": 5,
+      "audit_fail": 0
+    },
+    {
+      "query": "create and analyze an Excel spreadsheet with formulas and charts",
+      "compiled_query": "excel create spreadsheet analyze formulas charts",
+      "label_status": "verified",
+      "original_ids": [
+        "composiohq/awesome-codex-skills/spreadsheet-formula-helper",
+        "fergana-labs/claude_agent_desktop/excel",
+        "vasilyu1983/ai-agents-public/document-xlsx",
+        "lawvable/awesome-legal-skills/xlsx-processing-openai",
+        "autumnsgrove/claudeskills/xlsx"
+      ],
+      "dual_ids": [
+        "composiohq/awesome-codex-skills/spreadsheet-formula-helper",
+        "fergana-labs/claude_agent_desktop/excel",
+        "vasilyu1983/ai-agents-public/document-xlsx",
+        "lawvable/awesome-legal-skills/xlsx-processing-openai",
+        "autumnsgrove/claudeskills/xlsx"
+      ],
+      "original_hit_at_1": false,
+      "dual_hit_at_1": false,
+      "original_hit_at_5": true,
+      "dual_hit_at_5": true,
+      "audit_unknown": 5,
+      "audit_fail": 0
+    },
+    {
+      "query": "generate and fill PDF forms and assemble documents",
+      "compiled_query": "pdf generate fill forms assemble documents",
+      "label_status": "verified",
+      "original_ids": [
+        "pspdfkit-labs/nutrient-agent-skill/nutrient-document-processing",
+        "erichowens/some_claude_skills/document-generation-pdf",
+        "pixel-process-ug/superkit-agents/pdf-processing",
+        "lovstudio/skills/lovstudio-fill-form",
+        "aklofas/kicad-happy/kidoc"
+      ],
+      "dual_ids": [
+        "pspdfkit-labs/nutrient-agent-skill/nutrient-document-processing",
+        "erichowens/some_claude_skills/document-generation-pdf",
+        "pixel-process-ug/superkit-agents/pdf-processing",
+        "lovstudio/skills/lovstudio-fill-form",
+        "aklofas/kicad-happy/kidoc"
+      ],
+      "original_hit_at_1": true,
+      "dual_hit_at_1": true,
+      "original_hit_at_5": true,
+      "dual_hit_at_5": true,
+      "audit_unknown": 5,
+      "audit_fail": 0
+    },
+    {
+      "query": "drive a local Electron app using browser automation and CDP",
+      "compiled_query": "drive local electron app browser automation cdp",
+      "label_status": "verified",
+      "original_ids": [
+        "cursor/plugins/control-ui",
+        "mxyhi/ok-skills/electron",
+        "lobehub/lobehub/local-testing",
+        "fcakyon/claude-codex-settings/electron",
+        "different-ai/openwork/browser-automation"
+      ],
+      "dual_ids": [
+        "cursor/plugins/control-ui",
+        "mxyhi/ok-skills/electron",
+        "lobehub/lobehub/local-testing",
+        "fcakyon/claude-codex-settings/electron",
+        "different-ai/openwork/browser-automation"
+      ],
+      "original_hit_at_1": true,
+      "dual_hit_at_1": true,
+      "original_hit_at_5": true,
+      "dual_hit_at_5": true,
+      "audit_unknown": 5,
+      "audit_fail": 0
+    },
+    {
+      "query": "review local uncommitted code changes",
+      "compiled_query": "review code local uncommitted changes",
+      "label_status": "verified",
+      "original_ids": [
+        "nangongwentian-fe/agent-skills/code-review-uncommitted",
+        "nangongwentian-fe/jay-skills/code-review-uncommitted",
+        "artyom-kalman/pre-commit-skills/review-uncommitted",
+        "maroffo/claude-forge/gemini-review",
+        "yarlson/skills/code-review"
+      ],
+      "dual_ids": [
+        "nangongwentian-fe/agent-skills/code-review-uncommitted",
+        "nangongwentian-fe/jay-skills/code-review-uncommitted",
+        "artyom-kalman/pre-commit-skills/review-uncommitted",
+        "maroffo/claude-forge/gemini-review",
+        "yarlson/skills/code-review"
+      ],
+      "original_hit_at_1": true,
+      "dual_hit_at_1": true,
+      "original_hit_at_5": true,
+      "dual_hit_at_5": true,
+      "audit_unknown": 5,
+      "audit_fail": 0
+    },
+    {
+      "query": "debug a failing program by reproducing isolating and verifying",
+      "compiled_query": "systematic-debugging debug failing program reproducing isolating verifying",
+      "label_status": "verified",
+      "original_ids": [
+        "pulumi/agent-skills/pulumi-debug-failed-operation",
+        "microsoft/power-platform-skills/debug-flow",
+        "akillness/oh-my-skills/debugging",
+        "akillness/jeo-skills/debugging",
+        "akillness/skills-template/debugging"
+      ],
+      "dual_ids": [
+        "spencerpauly/awesome-cursor-skills/systematic-debugging",
+        "pulumi/agent-skills/pulumi-debug-failed-operation",
+        "microsoft/power-platform-skills/debug-flow",
+        "akillness/oh-my-skills/debugging",
+        "jimnguyendev/jimmy-skills/backend-go-troubleshooting"
+      ],
+      "original_hit_at_1": false,
+      "dual_hit_at_1": true,
+      "original_hit_at_5": false,
+      "dual_hit_at_5": true,
+      "audit_unknown": 5,
+      "audit_fail": 0
+    },
+    {
+      "query": "design a high-converting SaaS landing page",
+      "compiled_query": "web page design high-converting saas landing",
+      "label_status": "verified",
+      "original_ids": [
+        "realjaymes/marketingagentskills/saas-landing-pages",
+        "halt-catch-fire/skills/landing-page-design",
+        "inference-sh/agent-skills/landing-page-design",
+        "qu-skills/skills/landing-page-design",
+        "aradotso/design-skills/revenue-centric-design-principles"
+      ],
+      "dual_ids": [
+        "mengto/skills/landing-page",
+        "realjaymes/marketingagentskills/saas-landing-pages",
+        "halt-catch-fire/skills/landing-page-design",
+        "inference-sh/agent-skills/landing-page-design",
+        "qu-skills/skills/landing-page-design"
+      ],
+      "original_hit_at_1": true,
+      "dual_hit_at_1": true,
+      "original_hit_at_5": true,
+      "dual_hit_at_5": true,
+      "audit_unknown": 5,
+      "audit_fail": 0
+    }
+  ]
+}

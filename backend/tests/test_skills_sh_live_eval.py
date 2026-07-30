@@ -59,3 +59,11 @@ def test_rrf_fusion_can_promote_compiled_lane() -> None:
     fused = _rrf_union(original, compiled, 3)
     assert [row["id"] for row in fused] == ["shared", "original-top", "compiled-top"]
     assert fused[0]["retrieval_queries"] == ["original", "compiled"]
+
+
+def test_rrf_tie_preserves_original_lane_priority() -> None:
+    original = [{"id": "original-top"}]
+    compiled = [{"id": "compiled-top"}]
+    fused = _rrf_union(original, compiled, 2)
+    assert fused[0]["retrieval_priority"] == 1
+    assert fused[1]["retrieval_priority"] == 0

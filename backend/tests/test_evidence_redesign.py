@@ -74,6 +74,18 @@ class QueryCompilerTests(unittest.TestCase):
         self.assertNotIn("compile", query)
         self.assertNotIn("implement", query)
 
+    def test_skills_sh_query_adds_code_review_intent_for_change_review(self) -> None:
+        intent = compile_intent_query("Review local uncommitted code changes")
+        query = skills_sh_query(intent)
+        self.assertIn("code", query)
+        self.assertIn("review", query)
+
+    def test_skills_sh_query_names_systematic_debugging_workflows(self) -> None:
+        intent = compile_intent_query(
+            "Debug a failing program by reproducing the issue, isolating the cause, and verifying the fix"
+        )
+        self.assertTrue(skills_sh_query(intent).startswith("systematic-debugging"))
+
 
 class PackageAndRecordTests(unittest.TestCase):
     def _package(self, *, source_url: str = "https://github.com/acme/tools/tree/abc/skill"):

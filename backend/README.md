@@ -203,6 +203,12 @@ bytes, paths, hashes, licenses, roles, references, and source aliases remain
 separate from the single entrypoint-first 1,500-character retrieval record, so
 package integrity does not imply all-file embedding.
 
+Conversation follow-ups carry the stable skills.sh ID, not an arbitrary source
+URL. Live mode rehydrates that ID through the skills.sh catalog (using the
+short-lived search cache for public metadata-only rows); it never reloads a
+legacy local-corpus row. A raw GitHub URL without a skills.sh ID is rejected by
+the live follow-up path rather than treated as verified discovery.
+
 When no OIDC token is available, the live gate uses the public website search
 endpoint only. Those rows are explicitly `metadata_only` hints with unknown
 audit state and no content hash; they cannot become capsules or full routes.
@@ -238,6 +244,16 @@ held-out labels; expand the set before using it as a production gate. Without
 the documented OIDC token it runs in `public_search_only` mode and keeps all
 results metadata-only; if even the public search endpoint is unavailable, it
 emits `status: skipped`.
+
+The fresh fair 10-case review split in
+`bench/skills_sh_live_verified_fair_20260729.json` measured original versus
+original-plus-compiled retrieval at 80%→90% hit@1 and 90%→100% hit@5, with one
+paired win, zero losses, and paired 95% bootstrap intervals of [0, 30]
+percentage points. This is a retrieval signal, not a task-success or
+production-safety claim: the run used public search only, so all 50 inspected
+candidate rows had unknown audit state. The next gate is authenticated
+detail/audit coverage plus replicated no-skill/raw-skill/distilled-capsule
+outcome evaluation.
 
 The first live public-search pilot is retained at
 `bench/skills_sh_live_20260729_public.json`. It recorded zero hits for the

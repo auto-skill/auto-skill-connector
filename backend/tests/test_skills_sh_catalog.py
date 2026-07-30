@@ -153,6 +153,63 @@ def test_public_search_fallback_is_metadata_only_hint() -> None:
     assert rows[0]["description"] == "Build landing pages."
 
 
+def test_public_follow_up_rehydrates_only_cached_skills_sh_listing() -> None:
+    """A conversation may carry an ID, but it must not become a local DB lookup."""
+
+    def public_transport(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/search":
+            return httpx.Response(
+                200,
+                json={
+                    "skills": [{
+                        "id": "acme/skills/landing-page",
+                        "skillId": "landing-page",
+                        "name": "landing-page",
+                        "source": "acme/skills",
+                        "installs": 42,
+                    }],
+                },
+                request=request,
+            )
+        return httpx.Response(200, text="", request=request)
+
+    catalog = SkillsShCatalog(
+        api_url="https://skills.test/api/v1",
+        public_search_url="https://skills.test/api/search",
+        transport=httpx.MockTransport(public_transport),
+    )
+
+    async def run() -> list[dict]:
+        await catalog.search("landing page", limit=2)
+        return await catalog.retrieve_ids(["acme/skills/landing-page"])
+
+    rows = asyncio.run(run())
+    assert rows[0]["id"] == "acme/skills/landing-page"
+    assert rows[0]["quality_status"] == "metadata_only"
+    assert rows[0]["registry"] == "skills_sh"
+
+
+def test_live_follow_up_rejects_arbitrary_github_url() -> None:
+    import recommender
+
+    class FakeCatalog:
+        async def retrieve_ids(self, skill_ids: list[str], limit: int) -> list[dict]:
+            assert skill_ids == ["acme/skills/landing-page"]
+            return [{"id": skill_ids[0], "name": "landing-page"}]
+
+    async def run() -> list[dict]:
+        with patch.object(recommender, "default_catalog", return_value=FakeCatalog()), patch.object(
+            recommender, "SKILLS_SH_LIVE_ROUTING", True
+        ):
+            return await recommender.fetch_skills_by_urls(
+                None,
+                ["https://github.com/acme/skills", "acme/skills/landing-page"],
+            )
+
+    rows = asyncio.run(run())
+    assert rows[0]["retrieval_backend"] == "skills_sh"
+
+
 def test_catalog_reads_rotating_token_from_environment(monkeypatch) -> None:
     monkeypatch.delenv("SKILLS_SH_OIDC_TOKEN", raising=False)
     monkeypatch.setenv("VERCEL_OIDC_TOKEN", "rotated-token")

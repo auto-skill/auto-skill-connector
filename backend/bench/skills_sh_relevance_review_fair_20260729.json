@@ -1,0 +1,19 @@
+{
+  "artifact": "skills.sh fresh multi-label relevance review",
+  "reviewed_at": "2026-07-29",
+  "label_policy": "Accept any skill whose current public skills.sh description directly covers the requested operation and artifact. This avoids treating a different valid specialist as a miss.",
+  "source": "public skills.sh skill pages",
+  "independence": "Labels were reviewed from page descriptions and task semantics; popularity and benchmark rank were not used to decide acceptance.",
+  "cases": [
+    {"query":"build a Next.js app with App Router and TypeScript","accepted_ids":["wsimmonds/claude-nextjs-skills/nextjs-app-router-fundamentals","sickn33/antigravity-awesome-skills/nextjs-app-router-patterns","thebushidocollective/han/nextjs-app-router","sickn33/antigravity-awesome-skills/react-nextjs-development"]},
+    {"query":"query Supabase tables and design RLS policies","accepted_ids":["fcakyon/claude-codex-settings/supabase-usage","yoanbernabeu/supabase-pentest-skills/supabase-audit-rls","jamescha-earley/agent-skills/supabase-auth-rls"]},
+    {"query":"set up Playwright end-to-end tests with CI","accepted_ids":["shipshitdev/library/playwright-e2e-init","erichowens/some_claude_skills/playwright-e2e-tester","spencerpauly/awesome-cursor-skills/adding-e2e-tests","aws-samples/sample-agent-skills-for-builders/end-to-end-testing","jpeetz/agent-skills/playwright-e2e-testing"]},
+    {"query":"create and format a PowerPoint deck with images and templates","accepted_ids":["practicalswan/agent-skills/powerpoint-ppt"]},
+    {"query":"create and analyze an Excel spreadsheet with formulas and charts","accepted_ids":["skillcreatorai/ai-agent-skills/xlsx","fergana-labs/claude_agent_desktop/excel","peterbamuhigire/skills-web-dev/excel-spreadsheets"]},
+    {"query":"generate and fill PDF forms and assemble documents","accepted_ids":["erichowens/some_claude_skills/document-generation-pdf","pspdfkit-labs/nutrient-agent-skill/nutrient-document-processing"]},
+    {"query":"drive a local Electron app using browser automation and CDP","accepted_ids":["different-ai/openwork/browser-automation","mxyhi/ok-skills/electron","cursor/plugins/control-ui"]},
+    {"query":"review local uncommitted code changes","accepted_ids":["neolabhq/context-engineering-kit/code-review:review-local-changes","nangongwentian-fe/agent-skills/code-review-uncommitted","nangongwentian-fe/jay-skills/code-review-uncommitted","artyom-kalman/pre-commit-skills/review-uncommitted","yarlson/skills/code-review"]},
+    {"query":"debug a failing program by reproducing isolating and verifying","accepted_ids":["spencerpauly/awesome-cursor-skills/systematic-debugging"]},
+    {"query":"design a high-converting SaaS landing page","accepted_ids":["mengto/skills/landing-page","realjaymes/marketingagentskills/saas-landing-pages","halt-catch-fire/skills/landing-page-design"]}
+  ]
+}

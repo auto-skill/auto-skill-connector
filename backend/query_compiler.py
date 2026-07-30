@@ -48,6 +48,7 @@ _TECHNOLOGIES = (
 )
 
 _OPERATION_RULES = (
+    ("systematic-debugging", ("systematically", "reproduce", "reproducing", "isolate", "isolating")),
     ("debug repair", ("debug", "fix", "repair", "diagnose", "troubleshoot")),
     ("build compile", ("build", "compile", "install from source")),
     ("create implement build", ("create", "implement", "write", "add", "develop", "build")),
@@ -75,6 +76,7 @@ _ARTIFACT_RULES = (
     ("video", ("video", "recording")),
     ("audio transcript", ("audio", "transcript", "speech")),
     ("source code", ("source code", "codebase", "repository", "repo", "function", "class", "module")),
+    ("code review", ("code review", "review code", "code change", "code changes", "uncommitted changes")),
     ("test suite", ("test suite", "tests", "verifier")),
     ("model", ("model", "checkpoint", "weights", "inference")),
     ("dataset", ("dataset", "csv", "jsonl", "parquet")),

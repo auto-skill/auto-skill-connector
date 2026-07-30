@@ -1,0 +1,63 @@
+{
+  "status": "insufficient_labels",
+  "label_status": "human_verified",
+  "backend": "skills_sh",
+  "access_mode": "public_search_only",
+  "case_count": 1,
+  "labeled_case_count": 1,
+  "metrics": {
+    "original_hit_at_1": 0.0,
+    "dual_hit_at_1": 1.0,
+    "original_hit_at_5": 0.0,
+    "dual_hit_at_5": 1.0,
+    "delta_at_1_pp": 100.0,
+    "delta_at_5_pp": 100.0,
+    "paired_bootstrap_95ci_at_1_pp": [
+      100.0,
+      100.0
+    ],
+    "paired_bootstrap_95ci_at_5_pp": [
+      100.0,
+      100.0
+    ],
+    "paired_wins_at_1": 1,
+    "paired_losses_at_1": 0,
+    "paired_ties_at_1": 0,
+    "audit_unknown_rows": 8,
+    "audit_fail_rows": 0
+  },
+  "elapsed_ms": 4075.79,
+  "cases": [
+    {
+      "query": "debug a failing program by reproducing isolating and verifying",
+      "compiled_query": "systematic-debugging debug failing program reproducing isolating verifying",
+      "label_status": "verified",
+      "original_ids": [
+        "pulumi/agent-skills/pulumi-debug-failed-operation",
+        "microsoft/power-platform-skills/debug-flow",
+        "testomatio/skills/debug-fix-failed-flaky-autotests",
+        "akillness/oh-my-skills/debugging",
+        "akillness/jeo-skills/debugging",
+        "akillness/skills-template/debugging",
+        "jcosta33/suspec-skills/debugging",
+        "jcosta33/corpus-skills/debugging"
+      ],
+      "dual_ids": [
+        "spencerpauly/awesome-cursor-skills/systematic-debugging",
+        "pulumi/agent-skills/pulumi-debug-failed-operation",
+        "microsoft/power-platform-skills/debug-flow",
+        "testomatio/skills/debug-fix-failed-flaky-autotests",
+        "akillness/oh-my-skills/debugging",
+        "jimnguyendev/jimmy-skills/backend-go-troubleshooting",
+        "rockcookies/skills/golang-troubleshooting",
+        "dnyoussef/ai-chrome-extension/functionality-audit"
+      ],
+      "original_hit_at_1": false,
+      "dual_hit_at_1": true,
+      "original_hit_at_5": false,
+      "dual_hit_at_5": true,
+      "audit_unknown": 8,
+      "audit_fail": 0
+    }
+  ]
+}

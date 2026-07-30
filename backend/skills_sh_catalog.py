@@ -216,6 +216,12 @@ class SkillsShCatalog:
         rows = [dict(item) for item in data if isinstance(item, dict)] if isinstance(data, list) else []
         if payload.get("skills") is not None:
             rows = [self._public_listing_row(item) for item in rows]
+        # Keep the last listing metadata available for a follow-up selection.
+        # This is intentionally a bounded cache; it is not a second catalog.
+        for item in rows:
+            skill_id = _stable_skill_id(item)
+            if skill_id:
+                self._put("listing", skill_id, dict(item), self.search_ttl_seconds)
         return [dict(item) for item in self._put("search", cache_key, rows, self.search_ttl_seconds)]
 
     async def _public_search(self, query: str, limit: int) -> dict[str, Any]:
@@ -355,10 +361,16 @@ class SkillsShCatalog:
         rows = [dict(item) for item in audits if isinstance(item, dict)] if isinstance(audits, list) else []
         return [dict(item) for item in self._put("audit", skill_id, rows, self.audit_ttl_seconds)]
 
-    async def retrieve(self, query: str, limit: int = 8) -> list[dict[str, Any]]:
-        """Search, hydrate, and audit a bounded skills.sh shortlist."""
-        listing = await self.search(query, limit=max(limit, 10))
-        shortlist = listing[: min(max(1, int(limit)), MAX_DETAIL_CANDIDATES)]
+    async def _materialize(
+        self,
+        shortlist: list[dict[str, Any]],
+        *,
+        details: list[dict[str, Any] | None] | None = None,
+        audits: list[list[dict[str, Any]] | None] | None = None,
+        page_metadata: list[dict[str, Any]] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Turn catalog listings into the bounded internal retrieval record."""
+        shortlist = shortlist[:MAX_DETAIL_CANDIDATES]
         detail_jobs = [
             self.detail(_stable_skill_id(item)) if not item.get("_public_search_only") else asyncio.sleep(0, result=None)
             for item in shortlist
@@ -367,13 +379,16 @@ class SkillsShCatalog:
             self.audit(_stable_skill_id(item)) if not item.get("_public_search_only") else asyncio.sleep(0, result=None)
             for item in shortlist
         ]
-        details = await asyncio.gather(*detail_jobs)
-        audits = await asyncio.gather(*audit_jobs)
-        page_ids = [
-            _stable_skill_id(item) if item.get("_public_search_only") and index < MAX_PUBLIC_PAGE_METADATA else ""
-            for index, item in enumerate(shortlist)
-        ]
-        page_metadata = await self._public_page_metadata_many(page_ids)
+        if details is None:
+            details = list(await asyncio.gather(*detail_jobs))
+        if audits is None:
+            audits = list(await asyncio.gather(*audit_jobs))
+        if page_metadata is None:
+            page_ids = [
+                _stable_skill_id(item) if item.get("_public_search_only") and index < MAX_PUBLIC_PAGE_METADATA else ""
+                for index, item in enumerate(shortlist)
+            ]
+            page_metadata = await self._public_page_metadata_many(page_ids)
         rows: list[dict[str, Any]] = []
         for rank, (listing_item, detail, partner_audits, page_meta) in enumerate(
             zip(shortlist, details, audits, page_metadata)
@@ -461,6 +476,49 @@ class SkillsShCatalog:
                 row["quality_reasons"] = sorted(set([*row.get("quality_reasons", []), "skills-sh-audit-fail"]))
             rows.append(row)
         return rows
+
+    async def retrieve(self, query: str, limit: int = 8) -> list[dict[str, Any]]:
+        """Search, hydrate, and audit a bounded skills.sh shortlist."""
+        listing = await self.search(query, limit=max(limit, 10))
+        shortlist = listing[: min(max(1, int(limit)), MAX_DETAIL_CANDIDATES)]
+        return await self._materialize(shortlist)
+
+    async def retrieve_ids(self, skill_ids: list[str], limit: int = 10) -> list[dict[str, Any]]:
+        """Rehydrate previously offered skills without consulting local storage.
+
+        Follow-up requests may carry a stable skills.sh ID instead of a fresh
+        natural-language query.  Authenticated callers get the authoritative
+        detail/audit records.  Tokenless callers can only reuse a short-lived
+        listing cache populated by public search, and therefore remain
+        metadata-only hints.
+        """
+        ids = list(dict.fromkeys(str(value or "").strip() for value in skill_ids if str(value or "").strip()))
+        ids = ids[: min(max(1, int(limit)), MAX_DETAIL_CANDIDATES)]
+        if not ids:
+            return []
+        listings: list[dict[str, Any]] = []
+        for skill_id in ids:
+            listing = self._cached("listing", skill_id)
+            if listing is not None:
+                listings.append(dict(listing))
+            else:
+                listings.append({
+                    "id": skill_id,
+                    "name": skill_id.rsplit("/", 1)[-1],
+                    "source": "/".join(skill_id.split("/")[:-1]),
+                    "url": f"https://skills.sh/{skill_id}",
+                    "_public_search_only": not self.configured,
+                })
+        if not self.configured:
+            # A public page is not an authoritative detail/audit source.  Do
+            # not turn an arbitrary user-provided ID into a trusted row.
+            listings = [item for item in listings if self._cached("listing", _stable_skill_id(item)) is not None]
+            if not listings:
+                return []
+        else:
+            for item in listings:
+                item.pop("_public_search_only", None)
+        return await self._materialize(listings)
 
 
 _DEFAULT_CATALOG: SkillsShCatalog | None = None

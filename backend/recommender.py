@@ -26,6 +26,7 @@ import uuid
 from datetime import datetime, timezone
 from math import ceil
 from typing import Literal
+from urllib.parse import urlsplit
 
 import httpx
 from fastapi import APIRouter, Header, HTTPException, Request, Response
@@ -655,6 +656,10 @@ async def retrieve_skills_for_intent(
             current.setdefault("retrieval_queries", []).append(
                 "original" if lane_index == 0 else "compiled"
             )
+            current["retrieval_priority"] = max(
+                int(current.get("retrieval_priority") or 0),
+                1 if lane_index == 0 else 0,
+            )
             similarity = row.get("similarity")
             if similarity is not None and (
                 current.get("similarity") is None or float(similarity) > float(current["similarity"])
@@ -677,6 +682,7 @@ async def retrieve_skills_for_intent(
         key=lambda row: (
             -float(row.get("route_score") or 0.0),
             -float(row.get("query_rrf_score") or 0.0),
+            -int(row.get("retrieval_priority") or 0),
             str(row.get("id") or row.get("url") or ""),
         )
     )
@@ -686,6 +692,33 @@ async def retrieve_skills_for_intent(
 async def fetch_skills_by_urls(client: httpx.AsyncClient, urls: list[str]) -> list[dict]:
     if not urls:
         return []
+    if SKILLS_SH_LIVE_ROUTING:
+        # Conversational follow-ups must not resurrect a row from the legacy
+        # local corpus.  Resolve only stable skills.sh IDs (or skills.sh page
+        # URLs) through the same remote catalog used for first-pass search.
+        skill_ids: list[str] = []
+        for value in urls[:10]:
+            candidate = str(value or "").strip()
+            if not candidate:
+                continue
+            parsed = urlsplit(candidate)
+            if parsed.netloc.casefold() in {"skills.sh", "www.skills.sh"}:
+                path = parsed.path.strip("/")
+                if path and not path.startswith("api/"):
+                    skill_ids.append(path)
+            elif "://" not in candidate and candidate.count("/") >= 2:
+                # Clients may send the stable skills.sh ID directly.
+                skill_ids.append(candidate.strip("/"))
+        if not skill_ids:
+            return []
+        try:
+            rows = await default_catalog().retrieve_ids(skill_ids, limit=10)
+        except SkillsShCatalogError as exc:
+            print(f"[recommender] skills.sh follow-up unavailable: {exc}")
+            return []
+        for row in rows:
+            row["retrieval_backend"] = "skills_sh"
+        return rows
     quoted = ",".join('"' + u.replace('"', "") + '"' for u in urls[:10])
     r = await client.get(
         f"{LOCAL_DB_URL}/rest/v1/skills",

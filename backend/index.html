@@ -309,7 +309,9 @@ function handleChatResponse(d) {
   } else if (d.type === "clarify") {
     addMsg(esc(d.message), "msg msg-bot");
     chatMessages.push({ role: "assistant", content: d.message });
-    prevOptions = (d.options || []).map(s => s.url).filter(Boolean);
+    // Prefer the stable skills.sh ID so follow-ups can rehydrate through the
+    // catalog rather than falling back to the legacy local URL lookup.
+    prevOptions = (d.options || []).map(s => s.skills_sh_id || s.url).filter(Boolean);
     const opts = document.createElement("div");
     opts.className = "msg-options";
     opts.innerHTML = d.options.map(s =>
