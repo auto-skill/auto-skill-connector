@@ -121,6 +121,15 @@ def build_embed_text(skill: dict, content: str = "") -> str:
     does (task, triggers, capabilities) and is deliberately placed ahead of
     the raw content -- it's a distilled signal of intent, where raw content
     is often front-loaded with badges/install instructions instead."""
+    # New ingestion writes an explicit compact retrieval record.  It is
+    # distinct from the immutable source package and capped at the proven
+    # flat 1,500-character baseline.  Legacy rows retain the old builder until
+    # they are rebuilt, making embedding_text_hash parity measurable rather
+    # than silently changing the whole corpus.
+    retrieval_text = str(skill.get("retrieval_text") or "").strip()
+    if retrieval_text:
+        return retrieval_text[:1500]
+
     parts = [skill.get("name") or ""]
     if skill.get("description"):
         parts.append(skill["description"])

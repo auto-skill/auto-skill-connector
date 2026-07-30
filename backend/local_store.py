@@ -55,7 +55,16 @@ CREATE TABLE IF NOT EXISTS skills (
     embedding_text_hash TEXT,
     embedded_at TEXT,
     feedback_score REAL,
-    capability_summary TEXT
+    capability_summary TEXT,
+    retrieval_text TEXT,
+    retrieval_text_hash TEXT,
+    retrieval_record_hash TEXT,
+    package_hash TEXT,
+    source_commit_sha TEXT,
+    license_spdx TEXT,
+    package_completeness TEXT,
+    dependency_closure_status TEXT,
+    entrypoint_truncated INTEGER DEFAULT 0
 );
 
 CREATE VIRTUAL TABLE IF NOT EXISTS skills_fts USING fts5(
@@ -85,6 +94,63 @@ CREATE INDEX IF NOT EXISTS skills_active_idx ON skills(id) WHERE quality_status 
 CREATE INDEX IF NOT EXISTS skills_embedded_idx ON skills(id) WHERE embedding IS NOT NULL;
 CREATE INDEX IF NOT EXISTS skills_active_embedded_idx ON skills(id)
     WHERE quality_status = 'active' AND embedding IS NOT NULL;
+CREATE TABLE IF NOT EXISTS skill_packages (
+    package_hash TEXT PRIMARY KEY,
+    source_url TEXT,
+    source_provider TEXT,
+    source_commit_sha TEXT,
+    root_path TEXT,
+    entrypoint_path TEXT,
+    tree_sha TEXT,
+    license_spdx TEXT,
+    completeness_status TEXT NOT NULL,
+    dependency_closure_status TEXT NOT NULL,
+    entrypoint_truncated INTEGER DEFAULT 0,
+    manifest_json TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS skill_package_files (
+    package_hash TEXT NOT NULL,
+    path TEXT NOT NULL,
+    raw_sha256 TEXT NOT NULL,
+    git_blob_sha TEXT,
+    size INTEGER NOT NULL,
+    role TEXT NOT NULL,
+    media_type TEXT,
+    text_indexable INTEGER DEFAULT 0,
+    in_dependency_closure INTEGER DEFAULT 0,
+    PRIMARY KEY (package_hash, path),
+    FOREIGN KEY (package_hash) REFERENCES skill_packages(package_hash)
+);
+CREATE INDEX IF NOT EXISTS skill_package_files_hash_idx ON skill_package_files(raw_sha256);
+
+CREATE TABLE IF NOT EXISTS skill_package_sources (
+    package_hash TEXT NOT NULL,
+    source_url TEXT NOT NULL,
+    source_commit_sha TEXT,
+    provenance_json TEXT NOT NULL DEFAULT '{}',
+    observed_at TEXT NOT NULL,
+    PRIMARY KEY (package_hash, source_url, source_commit_sha),
+    FOREIGN KEY (package_hash) REFERENCES skill_packages(package_hash)
+);
+
+CREATE TABLE IF NOT EXISTS skill_retrieval_records (
+    record_hash TEXT PRIMARY KEY,
+    skill_id TEXT,
+    package_hash TEXT,
+    record_version TEXT NOT NULL,
+    text TEXT NOT NULL,
+    text_hash TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'candidate',
+    dependency_closure_status TEXT,
+    source_commit_sha TEXT,
+    entrypoint_path TEXT,
+    active INTEGER DEFAULT 1,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (package_hash) REFERENCES skill_packages(package_hash)
+);
+CREATE INDEX IF NOT EXISTS skill_retrieval_records_skill_idx ON skill_retrieval_records(skill_id, active);
 
 CREATE TABLE IF NOT EXISTS scrape_runs (
     id TEXT PRIMARY KEY,
@@ -116,6 +182,7 @@ CREATE TABLE IF NOT EXISTS route_events (
     hint_tokens INTEGER,
     candidate_tokens INTEGER,
     content_tokens INTEGER,
+    capsule_tokens INTEGER,
     injected_tokens INTEGER,
     response_tokens INTEGER,
     guard_delivery TEXT,
@@ -399,6 +466,15 @@ SKILL_COLUMN_DEFAULTS = {
     "category": "TEXT",
     "feedback_score": "REAL",
     "capability_summary": "TEXT",
+    "retrieval_text": "TEXT",
+    "retrieval_text_hash": "TEXT",
+    "retrieval_record_hash": "TEXT",
+    "package_hash": "TEXT",
+    "source_commit_sha": "TEXT",
+    "license_spdx": "TEXT",
+    "package_completeness": "TEXT",
+    "dependency_closure_status": "TEXT",
+    "entrypoint_truncated": "INTEGER DEFAULT 0",
 }
 
 # Router retrieval needs metadata for quality/ranking and raw publisher
@@ -431,6 +507,15 @@ SKILL_RETRIEVAL_COLUMNS = (
     "embedded_at",
     "feedback_score",
     "capability_summary",
+    "retrieval_text",
+    "retrieval_text_hash",
+    "retrieval_record_hash",
+    "package_hash",
+    "source_commit_sha",
+    "license_spdx",
+    "package_completeness",
+    "dependency_closure_status",
+    "entrypoint_truncated",
 )
 SKILL_RETRIEVAL_SQL = ", ".join(SKILL_RETRIEVAL_COLUMNS)
 
@@ -441,6 +526,7 @@ ROUTE_EVENT_COLUMN_DEFAULTS = {
     "skill_find_ms": "INTEGER",
     "rerank_ms": "INTEGER",
     "candidate_tokens": "INTEGER",
+    "capsule_tokens": "INTEGER",
     "injected_tokens": "INTEGER",
     "guard_delivery": "TEXT",
     "capsule_chars": "INTEGER",
@@ -476,6 +562,7 @@ ROUTE_EVENT_WRITE_COLUMNS = frozenset(
         "hint_tokens",
         "candidate_tokens",
         "content_tokens",
+        "capsule_tokens",
         "injected_tokens",
         "response_tokens",
         "guard_delivery",
@@ -750,6 +837,7 @@ def init_db() -> None:
         for col, spec in SKILL_COLUMN_DEFAULTS.items():
             if col not in existing:
                 conn.execute(f"ALTER TABLE skills ADD COLUMN {col} {spec}")
+        conn.execute("CREATE INDEX IF NOT EXISTS skills_package_hash_idx ON skills(package_hash)")
         route_existing = {row["name"] for row in conn.execute("PRAGMA table_info(route_events)").fetchall()}
         for col, spec in ROUTE_EVENT_COLUMN_DEFAULTS.items():
             if col not in route_existing:
@@ -783,6 +871,164 @@ def init_db() -> None:
             "ON scrape_runs(status) WHERE status='running'"
         )
         conn.commit()
+    finally:
+        conn.close()
+
+
+def upsert_skill_package(
+    manifest: dict,
+    retrieval_record: dict | None = None,
+    *,
+    skill_id: str | None = None,
+) -> None:
+    """Persist immutable package metadata and its separate retrieval record.
+
+    Repeated package bytes from forks share one package row while every source
+    observation is retained in ``skill_package_sources``.
+    """
+    package_hash = str(manifest.get("package_hash") or "")
+    if not re.fullmatch(r"[a-f0-9]{64}", package_hash):
+        raise ValueError("invalid package hash")
+    source = manifest.get("source") if isinstance(manifest.get("source"), dict) else {}
+    source_url = str(manifest.get("source_url") or "")
+    source_commit_sha = str(source.get("commit_sha") or "") or None
+    now = str(manifest.get("created_at") or _now())
+    license_info = manifest.get("license") if isinstance(manifest.get("license"), dict) else {}
+    conn = get_conn()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO skill_packages
+            (package_hash, source_url, source_provider, source_commit_sha, root_path,
+             entrypoint_path, tree_sha, license_spdx, completeness_status,
+             dependency_closure_status, entrypoint_truncated, manifest_json, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                package_hash,
+                source_url,
+                str(source.get("provider") or ""),
+                source_commit_sha,
+                str(source.get("root_path") or ""),
+                str(manifest.get("entrypoint") or ""),
+                str(source.get("tree_sha") or ""),
+                license_info.get("spdx_id"),
+                str(manifest.get("completeness_status") or "partial"),
+                str(manifest.get("dependency_closure_status") or "unknown"),
+                int(bool(manifest.get("entrypoint_truncated"))),
+                json.dumps(manifest, sort_keys=True, separators=(",", ":")),
+                now,
+            ),
+        )
+        if source_url:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO skill_package_sources
+                (package_hash, source_url, source_commit_sha, provenance_json, observed_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    package_hash,
+                    source_url,
+                    source_commit_sha or "",
+                    json.dumps(manifest.get("provenance") or {}, sort_keys=True),
+                    now,
+                ),
+            )
+        for file_info in manifest.get("files") or []:
+            if not isinstance(file_info, dict):
+                continue
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO skill_package_files
+                (package_hash, path, raw_sha256, git_blob_sha, size, role, media_type,
+                 text_indexable, in_dependency_closure)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    package_hash,
+                    str(file_info.get("path") or ""),
+                    str(file_info.get("raw_sha256") or ""),
+                    str(file_info.get("git_blob_sha") or ""),
+                    int(file_info.get("size") or 0),
+                    str(file_info.get("role") or "other"),
+                    str(file_info.get("media_type") or "application/octet-stream"),
+                    int(bool(file_info.get("text_indexable"))),
+                    int(bool(file_info.get("in_dependency_closure"))),
+                ),
+            )
+        if retrieval_record:
+            record_hash = str(retrieval_record.get("record_hash") or "")
+            if not re.fullmatch(r"[a-f0-9]{64}", record_hash):
+                raise ValueError("invalid retrieval record hash")
+            if skill_id:
+                conn.execute(
+                    "UPDATE skill_retrieval_records SET active=0 WHERE skill_id=?",
+                    (skill_id,),
+                )
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO skill_retrieval_records
+                (record_hash, skill_id, package_hash, record_version, text, text_hash,
+                 role, dependency_closure_status, source_commit_sha, entrypoint_path,
+                 active, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+                """,
+                (
+                    record_hash,
+                    skill_id,
+                    package_hash,
+                    str(retrieval_record.get("record_version") or ""),
+                    str(retrieval_record.get("text") or ""),
+                    str(retrieval_record.get("text_hash") or ""),
+                    str(retrieval_record.get("role") or "candidate"),
+                    str(retrieval_record.get("dependency_closure_status") or "unknown"),
+                    retrieval_record.get("source_commit_sha"),
+                    retrieval_record.get("entrypoint_path"),
+                    now,
+                ),
+            )
+        if skill_id:
+            conn.execute(
+                """
+                UPDATE skills SET package_hash=?, source_commit_sha=?, license_spdx=?,
+                    package_completeness=?, dependency_closure_status=?,
+                    entrypoint_truncated=?, retrieval_text=COALESCE(?, retrieval_text),
+                    retrieval_text_hash=COALESCE(?, retrieval_text_hash),
+                    retrieval_record_hash=COALESCE(?, retrieval_record_hash)
+                WHERE id=?
+                """,
+                (
+                    package_hash,
+                    source_commit_sha,
+                    license_info.get("spdx_id"),
+                    str(manifest.get("completeness_status") or "partial"),
+                    str(manifest.get("dependency_closure_status") or "unknown"),
+                    int(bool(manifest.get("entrypoint_truncated"))),
+                    retrieval_record.get("text") if retrieval_record else None,
+                    retrieval_record.get("text_hash") if retrieval_record else None,
+                    retrieval_record.get("record_hash") if retrieval_record else None,
+                    skill_id,
+                ),
+            )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def get_skill_package_manifest(package_hash: str) -> dict | None:
+    if not re.fullmatch(r"[a-f0-9]{64}", str(package_hash or "")):
+        return None
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT manifest_json FROM skill_packages WHERE package_hash=?", (package_hash,)
+        ).fetchone()
+        return json.loads(row["manifest_json"]) if row else None
     finally:
         conn.close()
 
@@ -1395,7 +1641,7 @@ def warm_lexical_index() -> dict:
         postings: dict[str, list[str]] = defaultdict(list)
         rows = conn.execute(
             """
-            SELECT id, name, description, tags
+            SELECT id, name, description, tags, capability_summary, retrieval_text
             FROM skills
             WHERE risk_score < 3
               AND COALESCE(quality_status, 'pending') IN ('active', 'metadata_only')
@@ -1410,6 +1656,8 @@ def warm_lexical_index() -> dict:
                     str(row["name"] or ""),
                     str(row["description"] or ""),
                     str(row["tags"] or ""),
+                    str(row["capability_summary"] or ""),
+                    str(row["retrieval_text"] or ""),
                 ]
             )
             for token in set(_lexical_tokens(text)):
@@ -2574,7 +2822,7 @@ def list_route_events_for_user(user_id: str, limit: int = 100) -> list[dict]:
             SELECT id, created_at, client, client_version, query_chars, tier,
                    skill_id, skill_name, skill_url, latency_ms, skill_find_ms,
                    retrieval_ms, rerank_ms, content_ms, result_count,
-                   input_tokens, hint_tokens, candidate_tokens, content_tokens,
+                   input_tokens, hint_tokens, candidate_tokens, content_tokens, capsule_tokens,
                    injected_tokens, response_tokens, guard_delivery, capsule_chars,
                    meaningfulness_score, config_version, outcome,
                    outcome_at, feedback_source, warnings, skip_reason
@@ -2792,7 +3040,7 @@ def admin_recent_events(limit: int = 100) -> list[dict]:
                    r.skill_url, r.latency_ms, r.skill_find_ms,
                    r.retrieval_ms, r.rerank_ms, r.content_ms,
                    r.result_count, r.input_tokens, r.hint_tokens,
-                   r.candidate_tokens, r.content_tokens, r.injected_tokens,
+                   r.candidate_tokens, r.content_tokens, r.capsule_tokens, r.injected_tokens,
                    r.response_tokens, r.guard_delivery, r.capsule_chars,
                    r.meaningfulness_score, r.config_version, r.outcome,
                    r.outcome_at, r.feedback_source, r.warnings,

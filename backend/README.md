@@ -147,8 +147,8 @@ may include:
 - client and client version;
 - selected skill, tier, result count, and outcome;
 - route, retrieval, rerank, and content latency;
-- estimated input, candidate, content, injected, and response tokens; and
-- context delivery (`full`, `capsule`, or `isolation`) and capsule size; and
+- estimated input, candidate, raw-content, capsule, injected, and response tokens; and
+- context delivery (public routes use `capsule` or `hint`) and capsule size; and
 - router configuration version.
 
 Skipped client prompts are not sent to a separate analytics endpoint. Legacy
@@ -169,20 +169,28 @@ content, bearer tokens, or token hashes.
 Default warning budgets are 750 ms total latency, 500 ms skill-find time,
 1000 injected tokens, and 3500 response tokens.
 
-`/route` accepts `guard_mode` (`hybrid` by default), `supports_isolation`,
-`max_inline_chars` (default 4000), and `max_capsule_chars` (default 2400).
-Large verified static skills are returned as deterministic capsules when the
-client cannot provide an isolated context. Routing never installs a skill or
-writes one to disk. Set `AUTOSKILL_CONTEXT_GUARD=0` only for a temporary
-compatibility rollback.
+`/route` retains the legacy `guard_mode`, `supports_isolation`, and
+`max_inline_chars` fields for wire compatibility, but public scraped content is
+never returned raw or as an isolation payload. `max_capsule_chars` is bounded
+at 2400. Routing never installs a skill or writes one to disk.
 
 Public search matches are hint-only by default. Full delivery requires the
-exact served-byte SHA-256 digest to appear in the comma-separated
-`AUTOSKILL_VALIDATED_FULL_CONTENT_DIGESTS` allowlist after independent task
-outcome validation; using the served-byte digest prevents an upstream update from
-silently inheriting an older version's evidence. The
+exact safe-capsule SHA-256 digest to appear in the comma-separated
+`AUTOSKILL_VALIDATED_CAPSULE_DIGESTS` allowlist after replicated task outcome
+validation. The capsule digest is task- and provenance-bound and never
+authorizes delivery of the underlying raw `SKILL.md`. The
 `AUTOSKILL_EXPERIMENTAL_UNVALIDATED_PUBLIC_FULL=1` bypass is for controlled A/B
 runs only, not production routing.
+
+New GitHub and marketplace ingestion is package-first. GitHub tree URLs are
+resolved to a commit and complete bounded subtree; the optional official
+`skills.sh` curated API capture stores its complete file snapshot and registry
+hash when `SKILLS_SH_OIDC_TOKEN` is configured. SkillsMP discovery is capped at
+100 unique URLs per run by default. Unpinned GitHub content is retained for
+triage with `pending_package` status and is not embedded. Package bytes, paths,
+hashes, licenses, roles, references, and source aliases are stored separately
+from the single entrypoint-first 1,500-character retrieval record, so package
+integrity does not imply all-file embedding.
 
 ## Evals
 
@@ -191,7 +199,19 @@ Track retrieval quality, route latency, and token churn across changes:
 ```powershell
 python eval_search.py --json-out eval-results/latest.json
 python eval_compare.py eval-results/before.json eval-results/latest.json
+python bench/evidence_eval.py query --output eval-results/query-heldout.json
+python bench/evidence_eval.py outcomes eval-results/agent-outcomes.jsonl `
+  --output eval-results/outcome-gate.json
+python bench/evidence_eval.py parity data/local_skills.db `
+  --output eval-results/v6-parity.json
 ```
+
+The outcome input requires at least two replicates for each of `no-skill`,
+`raw-skill`, and `distilled-capsule`. Tasks with a perfect no-skill control are
+excluded. The report includes paired wins/losses, bootstrap confidence
+intervals, cost, latency, tokens, safety failures, and strategy displacement.
+The parity gate must pass before a hosted result can be attributed to this
+router/corpus version.
 
 Route benchmark cases live in `evals/routes.jsonl`. Add false positives,
 direct hits, ambiguous matches, and conversation/meta negatives so behavior

@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import sqlite3
 import tempfile
 import unittest
-import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
@@ -15,6 +13,7 @@ from fastapi.testclient import TestClient
 import auth
 import local_store
 import scraper
+from capsule_compiler import compile_capsule
 from quality import content_hash
 
 
@@ -503,7 +502,7 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()[0]["id"], "skill-1")
 
-    def test_route_returns_full_with_inline_content(self) -> None:
+    def test_route_returns_full_with_distilled_capsule(self) -> None:
         candidate = {
             "id": "skill-1",
             "name": "spreadsheet-reporter",
@@ -540,24 +539,26 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(body["task_analysis"]["family"], "data")
         self.assertEqual(body["skill"]["name"], "spreadsheet-reporter")
         self.assertTrue(body["skill"]["verification"]["content_hash_verified"])
-        self.assertTrue(body["skill"]["verification"]["static_instruction_only"])
-        self.assertEqual(body["context_guard"]["delivery"], "full")
-        self.assertEqual(body["context_guard"]["policy"], "hybrid-v1")
+        self.assertTrue(body["skill"]["verification"]["safe_distilled_capsule"])
+        self.assertEqual(body["context_guard"]["delivery"], "capsule")
+        self.assertEqual(body["context_guard"]["policy"], "safe-capsule-v2")
         self.assertEqual(
             body["skill"]["verification"]["content_digest"],
             hashlib.sha256(VALID_SKILL.encode("utf-8")).hexdigest(),
         )
         self.assertTrue(body["route_id"])
-        self.assertIn("validate sheet names", body["content"])
-        self.assertTrue(body["content_url"].startswith("/content/"))
+        self.assertIsNone(body["content"])
+        self.assertIsNone(body["content_url"])
+        self.assertIn("validate sheet names", body["context_guard"]["capsule"])
         self.assertEqual(body["score_debug"]["quality_status"], "active")
         metrics = body["score_debug"]["metrics"]
         self.assertGreaterEqual(metrics["latency_ms"], 0)
         self.assertGreaterEqual(metrics["skill_find_ms"], 0)
         self.assertGreaterEqual(metrics["retrieval_ms"], 0)
         self.assertGreaterEqual(metrics["rerank_ms"], 0)
-        self.assertGreater(metrics["content_tokens"], 0)
-        self.assertEqual(metrics["injected_tokens"], metrics["hint_tokens"] + metrics["content_tokens"])
+        self.assertEqual(metrics["content_tokens"], 0)
+        self.assertGreater(metrics["capsule_tokens"], 0)
+        self.assertEqual(metrics["injected_tokens"], metrics["hint_tokens"] + metrics["capsule_tokens"])
         self.assertGreater(metrics["response_tokens"], metrics["hint_tokens"])
 
         conn = sqlite3.connect(self.db_path)
@@ -570,7 +571,7 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(event["id"], body["route_id"])
         self.assertEqual(event["tier"], "full")
         self.assertEqual(event["skill_name"], "spreadsheet-reporter")
-        self.assertEqual(event["guard_delivery"], "full")
+        self.assertEqual(event["guard_delivery"], "capsule")
         self.assertIsNone(event["anonymous_id_hash"])
         self.assertEqual(event["query_chars"], len("create an excel report with formulas"))
         self.assertTrue({"prompt_text", "query_hash", "feedback_note"}.isdisjoint(event.keys()))
@@ -602,7 +603,7 @@ class ApiContractTests(unittest.TestCase):
                 return VALID_SKILL if url == candidate["url"] else ""
 
         with patch("recommender.ALLOW_UNVALIDATED_PUBLIC_FULL", False), patch(
-            "recommender.OUTCOME_VALIDATED_FULL_CONTENT_DIGESTS", frozenset()
+            "recommender.OUTCOME_VALIDATED_CAPSULE_DIGESTS", frozenset()
         ), patch("recommender.retrieve_skills", fake_retrieve), patch(
             "recommender.LibraryContent", FakeLibrary
         ):
@@ -617,7 +618,7 @@ class ApiContractTests(unittest.TestCase):
         self.assertIsNone(body["skill_plan"]["primary_skill"])
         self.assertIn("independent outcome validation", " ".join(body["score_debug"]["warnings"]))
 
-    def test_allowlisted_content_digest_can_clear_full_evidence_gate(self) -> None:
+    def test_allowlisted_capsule_digest_can_clear_full_evidence_gate(self) -> None:
         candidate = {
             "id": "skill-validated",
             "name": "spreadsheet-reporter",
@@ -640,9 +641,16 @@ class ApiContractTests(unittest.TestCase):
             def get(self, url: str) -> str:
                 return VALID_SKILL if url == candidate["url"] else ""
 
+        compiled = compile_capsule(
+            task="create an Excel report with formulas",
+            content=VALID_SKILL,
+            source_url=candidate["url"],
+        )
+        self.assertIsNotNone(compiled)
+
         with patch("recommender.ALLOW_UNVALIDATED_PUBLIC_FULL", False), patch(
-            "recommender.OUTCOME_VALIDATED_FULL_CONTENT_DIGESTS",
-            frozenset({hashlib.sha256(VALID_SKILL.encode("utf-8")).hexdigest()}),
+            "recommender.OUTCOME_VALIDATED_CAPSULE_DIGESTS",
+            frozenset({compiled.capsule_digest}),
         ), patch("recommender.retrieve_skills", fake_retrieve), patch(
             "recommender.LibraryContent", FakeLibrary
         ):
@@ -653,7 +661,9 @@ class ApiContractTests(unittest.TestCase):
             ).json()
 
         self.assertEqual(body["tier"], "full")
-        self.assertIn("validate sheet names", body["content"])
+        self.assertIsNone(body["content"])
+        self.assertEqual(body["context_guard"]["capsule_digest"], compiled.capsule_digest)
+        self.assertIn("validate sheet names", body["context_guard"]["capsule"])
 
     def test_normalized_equivalent_but_byte_changed_content_is_not_validated(self) -> None:
         changed = VALID_SKILL.replace(
@@ -683,8 +693,12 @@ class ApiContractTests(unittest.TestCase):
                 return changed if url == candidate["url"] else ""
 
         with patch("recommender.ALLOW_UNVALIDATED_PUBLIC_FULL", False), patch(
-            "recommender.OUTCOME_VALIDATED_FULL_CONTENT_DIGESTS",
-            frozenset({hashlib.sha256(VALID_SKILL.encode("utf-8")).hexdigest()}),
+            "recommender.OUTCOME_VALIDATED_CAPSULE_DIGESTS",
+            frozenset({compile_capsule(
+                task="create an Excel report with formulas",
+                content=VALID_SKILL,
+                source_url=candidate["url"],
+            ).capsule_digest}),
         ), patch("recommender.retrieve_skills", fake_retrieve), patch(
             "recommender.LibraryContent", FakeLibrary
         ):
@@ -725,8 +739,12 @@ class ApiContractTests(unittest.TestCase):
                 return VALID_SKILL if url == candidate["url"] else ""
 
         with patch("recommender.ALLOW_UNVALIDATED_PUBLIC_FULL", False), patch(
-            "recommender.OUTCOME_VALIDATED_FULL_CONTENT_DIGESTS",
-            frozenset({hashlib.sha256(VALID_SKILL.encode("utf-8")).hexdigest()}),
+            "recommender.OUTCOME_VALIDATED_CAPSULE_DIGESTS",
+            frozenset({compile_capsule(
+                task="create an Excel report with formulas",
+                content=VALID_SKILL,
+                source_url=candidate["url"],
+            ).capsule_digest}),
         ), patch("recommender.retrieve_skills", fake_retrieve), patch(
             "recommender.LibraryContent", FakeLibrary
         ), patch(
@@ -741,7 +759,7 @@ class ApiContractTests(unittest.TestCase):
 
         self.assertEqual(body["tier"], "hint")
         self.assertIsNone(body["content"])
-        self.assertIn("exact served skill bytes", " ".join(body["score_debug"]["warnings"]))
+        self.assertIn("exact distilled capsule", " ".join(body["score_debug"]["warnings"]))
 
     def test_unvalidated_public_policy_cannot_compose_with_validated_primary(self) -> None:
         policy_content = """---
@@ -789,8 +807,12 @@ Reuse existing code and prefer native platform features before dependencies.
                 return {primary["url"]: VALID_SKILL, policy["url"]: policy_content}.get(url, "")
 
         with patch("recommender.ALLOW_UNVALIDATED_PUBLIC_FULL", False), patch(
-            "recommender.OUTCOME_VALIDATED_FULL_CONTENT_DIGESTS",
-            frozenset({hashlib.sha256(VALID_SKILL.encode("utf-8")).hexdigest()}),
+            "recommender.OUTCOME_VALIDATED_CAPSULE_DIGESTS",
+            frozenset({compile_capsule(
+                task="create an Excel report with formulas",
+                content=VALID_SKILL,
+                source_url=primary["url"],
+            ).capsule_digest}),
         ), patch("recommender.retrieve_skills", fake_retrieve), patch(
             "recommender.LibraryContent", FakeLibrary
         ):
@@ -802,7 +824,7 @@ Reuse existing code and prefer native platform features before dependencies.
 
         self.assertEqual(body["tier"], "full")
         self.assertEqual(body["skill_plan"]["policy_skills"], [])
-        self.assertEqual(body["skill_plan"]["selected_roles"], ["specialist"])
+        self.assertEqual(body["skill_plan"]["selected_roles"], ["primary"])
 
     def test_route_composes_coding_policy_with_primary_specialist(self) -> None:
         frontend_content = """---
@@ -865,7 +887,9 @@ earlier choices do not solve the task safely. Verify behavior after the change.
                     return policy_content
                 return ""
 
-        with patch("recommender.retrieve_skills", fake_retrieve), patch("recommender.LibraryContent", FakeLibrary):
+        with patch("recommender.retrieve_skills", fake_retrieve), patch(
+            "recommender.LibraryContent", FakeLibrary
+        ):
             body = self.client.post(
                 "/route",
                 json={"task": "build a React landing page with a distinctive frontend design"},
@@ -875,10 +899,10 @@ earlier choices do not solve the task safely. Verify behavior after the change.
         self.assertEqual(body["tier"], "full")
         self.assertEqual(body["task_analysis"]["family"], "coding")
         self.assertEqual(body["skill"]["name"], "frontend-design")
-        self.assertEqual(body["skill"]["role"], "specialist")
+        self.assertEqual(body["skill"]["role"], "primary")
         self.assertEqual([item["name"] for item in body["skill_plan"]["policy_skills"]], ["ponytail"])
         self.assertEqual(body["skill_plan"]["primary_skill"]["name"], "frontend-design")
-        self.assertEqual(body["skill_plan"]["selected_roles"], ["policy", "specialist"])
+        self.assertEqual(body["skill_plan"]["selected_roles"], ["policy", "primary"])
         self.assertEqual(body["score_debug"]["metrics"]["skill_count"], 2)
         self.assertGreater(body["score_debug"]["metrics"]["policy_tokens"], 0)
 
@@ -1079,7 +1103,7 @@ Reuse existing code and prefer the standard library before adding new code.
         self.assertLessEqual(body["context_guard"]["capsule_chars"], 2400)
         self.assertIn("Workflow", body["context_guard"]["capsule"])
 
-    def test_route_downgrades_capability_bearing_content_to_hint(self) -> None:
+    def test_route_marks_capabilities_inside_the_distilled_capsule(self) -> None:
         capability_skill = VALID_SKILL + "\nRun scripts/deploy.py and pip install the required package.\n"
         candidate = {
             "id": "skill-capability",
@@ -1108,10 +1132,10 @@ Reuse existing code and prefer the standard library before adding new code.
                 "/route", json={"task": "create an excel report with formulas"}, headers=self._auth_headers()
             ).json()
 
-        self.assertEqual(body["tier"], "hint")
+        self.assertEqual(body["tier"], "full")
         self.assertIsNone(body["content"])
-        self.assertIn("bundled-scripts", body["skill"]["capability_flags"])
-        self.assertIn("explicit review", body["score_debug"]["warnings"][0])
+        self.assertTrue(body["context_guard"]["external_actions"])
+        self.assertIn("external side effects require", body["context_guard"]["capsule"])
 
     def test_route_skips_capability_bearing_winner_for_safe_specialist(self) -> None:
         capability_skill = VALID_SKILL + "\npip install openpyxl before continuing.\n"
@@ -1154,7 +1178,18 @@ Reuse existing code and prefer the standard library before adding new code.
                     safe_candidate["url"]: safe_skill,
                 }.get(url, "")
 
-        with patch("recommender.retrieve_skills", fake_retrieve), patch("recommender.LibraryContent", FakeLibrary):
+        safe_capsule = compile_capsule(
+            task="create an Excel spreadsheet report with formulas and charts",
+            content=safe_skill,
+            source_url=safe_candidate["url"],
+        )
+        self.assertIsNotNone(safe_capsule)
+        with patch("recommender.ALLOW_UNVALIDATED_PUBLIC_FULL", False), patch(
+            "recommender.OUTCOME_VALIDATED_CAPSULE_DIGESTS",
+            frozenset({safe_capsule.capsule_digest}),
+        ), patch("recommender.retrieve_skills", fake_retrieve), patch(
+            "recommender.LibraryContent", FakeLibrary
+        ):
             body = self.client.post(
                 "/route",
                 json={"task": "create an Excel spreadsheet report with formulas and charts"},
@@ -1163,8 +1198,8 @@ Reuse existing code and prefer the standard library before adding new code.
 
         self.assertEqual(body["tier"], "full")
         self.assertEqual(body["skill"]["name"], "excel-static")
-        self.assertNotIn("capability_flags", body["skill"])
-        self.assertIn("validate sheet names", body["content"])
+        self.assertIsNone(body["content"])
+        self.assertEqual(body["context_guard"]["capsule_digest"], safe_capsule.capsule_digest)
 
     def test_route_downgrades_malformed_cached_content(self) -> None:
         candidate = {

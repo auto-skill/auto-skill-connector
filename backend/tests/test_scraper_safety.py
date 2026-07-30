@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import unittest
+from unittest.mock import patch
 
-from scraper import RunBudget, scan_skill
+from scraper import RunBudget, scan_skill, scrape_skills_sh
 
 
 VALID_CONTENT = """---
@@ -32,7 +33,7 @@ class ScraperSafetyTests(unittest.TestCase):
         self.assertFalse(budget.take("search"))
         self.assertFalse(budget.take("code_search"))
 
-    def test_rescan_invalidates_embedding_when_content_changes(self) -> None:
+    def test_unpinned_github_content_is_quarantined_and_embedding_invalidated(self) -> None:
         skill = {
             "name": "spreadsheet-reporter",
             "description": "Build spreadsheet reports with formulas and charts.",
@@ -47,10 +48,65 @@ class ScraperSafetyTests(unittest.TestCase):
 
         asyncio.run(scan_skill(None, skill))
 
-        self.assertEqual(skill["quality_status"], "active")
+        self.assertEqual(skill["quality_status"], "pending_package")
+        self.assertEqual(skill["package_completeness"], "missing")
         self.assertIsNone(skill["embedding"])
         self.assertIsNone(skill["embedding_text_hash"])
         self.assertIsNone(skill["embedded_at"])
+
+    def test_skills_sh_curated_capture_keeps_full_package_separate_from_record(self) -> None:
+        class Response:
+            def __init__(self, payload):
+                self.status_code = 200
+                self._payload = payload
+
+            def json(self):
+                return self._payload
+
+        class Client:
+            async def get(self, url, **_kwargs):
+                if url.endswith("/curated"):
+                    return Response(
+                        {
+                            "data": [
+                                {
+                                    "skills": [
+                                        {
+                                            "id": "acme/skills/report",
+                                            "name": "report",
+                                            "sourceType": "github",
+                                            "installUrl": "https://github.com/acme/skills",
+                                            "url": "https://skills.sh/acme/skills/report",
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    )
+                return Response(
+                    {
+                        "id": "acme/skills/report",
+                        "slug": "report",
+                        "hash": "registry-snapshot",
+                        "files": [
+                            {"path": "SKILL.md", "contents": VALID_CONTENT},
+                            {"path": "references/checks.md", "contents": "Verify every total."},
+                        ],
+                    }
+                )
+
+        skills = []
+        with patch("scraper.SKILLS_SH_OIDC_TOKEN", "test-oidc"), patch(
+            "scraper.ImmutablePackageStore.put", return_value=None
+        ):
+            asyncio.run(scrape_skills_sh(Client(), skills))
+
+        self.assertEqual(len(skills), 1)
+        skill = skills[0]
+        self.assertEqual(skill["source"], "skills_sh")
+        self.assertEqual(skill["_package_manifest"]["stored_files"], 2)
+        self.assertNotIn("Verify every total", skill["retrieval_text"])
+        self.assertEqual(skill["_package_manifest"]["source"]["registry_snapshot_hash"], "registry-snapshot")
 
 
 if __name__ == "__main__":
