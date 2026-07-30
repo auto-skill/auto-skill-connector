@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import stat
 import time
 from pathlib import Path
@@ -19,6 +20,8 @@ _TRUTHY = {"1", "true", "yes", "on"}
 _MAX_SESSIONS = 32
 _MAX_ACTIVATIONS_PER_SESSION = 12
 _SESSION_TTL_SECONDS = 24 * 60 * 60
+_SKILL_NAME_RE = re.compile(r"^[\w .-]{1,200}$", re.UNICODE)
+_SOURCE_RE = re.compile(r"^[^\r\n]{1,500}$")
 
 
 def session_state_enabled() -> bool:
@@ -96,6 +99,7 @@ def record_session_activation(session_id: str, activation: dict[str, Any]) -> No
         "skill": skill[:200],
         "agent": str(activation.get("agent") or "codex")[:40],
         "snapshot_hash": str(activation.get("snapshot_hash") or "")[:128],
+        "command": _safe_command(activation),
         "activated_at": time.time(),
     }
     path = get_session_state_path()
@@ -131,3 +135,23 @@ def clear_session_activations(session_id: str) -> None:
     data = _prune(_load(path))
     data.get("sessions", {}).pop(str(session_id)[:160], None)
     _write(path, data)
+
+
+def _safe_command(activation: dict[str, Any]) -> list[str] | None:
+    """Return the exact non-installing skills CLI command for an adapter.
+
+    This is data, not execution permission. The caller still decides whether
+    to run it, and the command is constrained to the selected source/skill.
+    """
+    source = str(activation.get("source") or "").strip()
+    skill = str(activation.get("skill") or "").strip()
+    if not source or not skill or not _SOURCE_RE.fullmatch(source) or not _SKILL_NAME_RE.fullmatch(skill):
+        return None
+    if not (source.startswith(("https://", "http://", "git@")) or "/" in source):
+        return None
+    return ["npx", "skills", "use", source, "--skill", skill, "--agent", "codex"]
+
+
+def skills_use_command(activation: dict[str, Any]) -> list[str] | None:
+    """Build a bounded temporary-use command without invoking a subprocess."""
+    return _safe_command(activation)

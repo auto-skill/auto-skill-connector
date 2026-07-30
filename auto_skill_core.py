@@ -661,6 +661,10 @@ def _public_backend_skill(skill: dict[str, Any] | None, task: str, tier: str) ->
             "skill": public["name"],
             "agent": "codex",
             "snapshot_hash": skill.get("source_snapshot_hash"),
+            "command": [
+                "npx", "skills", "use", skill.get("install_url") or url,
+                "--skill", str(public["name"] or ""), "--agent", "codex",
+            ],
         }
     score = skill.get("route_score") or skill.get("routing_score")
     if score is None:

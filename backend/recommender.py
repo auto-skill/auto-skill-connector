@@ -938,6 +938,10 @@ def _public_skill(row: dict | None) -> dict | None:
             "skill": skill_name,
             "agent": "codex",
             "snapshot_hash": row.get("source_snapshot_hash"),
+            "command": [
+                "npx", "skills", "use", install_url, "--skill", str(skill_name or ""),
+                "--agent", "codex",
+            ],
         }
     return {
         "id": row.get("id"),

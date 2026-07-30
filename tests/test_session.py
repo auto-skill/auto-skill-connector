@@ -26,6 +26,10 @@ def test_session_manifest_is_bounded_metadata_only(tmp_path, monkeypatch) -> Non
     assert "must never be persisted" not in serialized
     assert "prompt" not in serialized
     assert raw["version"] == 1
+    assert raw["sessions"]["session-1"]["activations"][0]["command"] == [
+        "npx", "skills", "use", "https://github.com/acme/skills",
+        "--skill", "Reporting", "--agent", "codex",
+    ]
 
 
 def test_session_manifest_replaces_duplicate_snapshot(tmp_path, monkeypatch) -> None:
@@ -36,6 +40,16 @@ def test_session_manifest_replaces_duplicate_snapshot(tmp_path, monkeypatch) -> 
     assert len(session.get_session_activations("session-1")) == 1
     session.clear_session_activations("session-1")
     assert session.get_session_activations("session-1") == []
+
+
+def test_skills_use_command_is_bounded_and_not_executed() -> None:
+    assert session.skills_use_command(
+        {"source": "https://github.com/acme/skills", "skill": "Reporting", "agent": "codex"}
+    ) == [
+        "npx", "skills", "use", "https://github.com/acme/skills",
+        "--skill", "Reporting", "--agent", "codex",
+    ]
+    assert session.skills_use_command({"source": "https://github.com/acme/skills", "skill": "a; rm -rf /"}) is None
 
 
 def test_live_public_skill_contains_session_use_plan() -> None:
