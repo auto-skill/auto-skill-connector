@@ -13,6 +13,7 @@ import httpx
 from auto_skill_auth import auth_headers
 from auto_skill_identity import get_anonymous_installation_id
 from auto_skill_personalize import apply_personalization, record_outcome, record_route
+from auto_skill_session import record_session_activation
 
 DEFAULT_AUTOSKILL_URL = "https://skills.autoskill.dev"
 CLIENT_NAME = "auto-skill-connector"
@@ -640,12 +641,27 @@ def _public_backend_skill(skill: dict[str, Any] | None, task: str, tier: str) ->
         "description": skill.get("description") or skill.get("summary"),
         "url": url,
         "source": skill.get("source"),
+        "registry": skill.get("registry"),
+        "slug": skill.get("slug"),
         "stars": skill.get("stars"),
         "risk_score": skill.get("risk_score"),
         "similarity": skill.get("similarity"),
         "rank": skill.get("rank"),
         "routing_tier": tier,
     }
+    if (
+        not skill.get("session_activation")
+        and skill.get("retrieval_backend") == "skills_sh"
+        and (skill.get("install_url") or url)
+    ):
+        public["session_activation"] = {
+            "mode": "skills_sh_use",
+            "scope": "session",
+            "source": skill.get("install_url") or url,
+            "skill": public["name"],
+            "agent": "codex",
+            "snapshot_hash": skill.get("source_snapshot_hash"),
+        }
     score = skill.get("route_score") or skill.get("routing_score")
     if score is None:
         score = _routing_score({"similarity": skill.get("similarity"), **skill, "url": url}, task)
@@ -664,6 +680,16 @@ def _public_backend_skill(skill: dict[str, Any] | None, task: str, tier: str) ->
         "verification",
         "role",
         "activation",
+        "skills_sh_id",
+        "skills_sh_url",
+        "install_url",
+        "source_snapshot_hash",
+        "audit_status",
+        "audit_risk_level",
+        "audit_count",
+        "is_duplicate",
+        "retrieval_backend",
+        "session_activation",
     ):
         if skill.get(key) is not None:
             public[key] = skill.get(key)
@@ -787,6 +813,7 @@ async def _route_selfhosted(
     task: str,
     autoskill_url: str | None = None,
     auth_header: dict[str, str] | None = None,
+    session_id: str | None = None,
 ) -> dict[str, Any] | None:
     """Use the backend-owned deterministic route contract when available.
 
@@ -822,6 +849,8 @@ async def _route_selfhosted(
         anonymous_id = get_anonymous_installation_id()
         if anonymous_id:
             route_body["anonymous_id"] = anonymous_id
+    if session_id:
+        route_body["session_id"] = session_id[:160]
     try:
         r = await client.post(
             f"{url}/route",
@@ -1227,16 +1256,25 @@ def _local_personalization_pass(route: dict[str, Any]) -> dict[str, Any]:
 
 
 async def route_task_payload(
-    task: str, client: httpx.AsyncClient | None = None, auth_header: dict[str, str] | None = None
+    task: str,
+    client: httpx.AsyncClient | None = None,
+    auth_header: dict[str, str] | None = None,
+    session_id: str | None = None,
 ) -> dict[str, Any]:
     """Return a universal routing decision for an agent task."""
     if client is None:
         async with httpx.AsyncClient() as owned:
-            return await route_task_payload(task, client=owned, auth_header=auth_header)
+            return await route_task_payload(task, client=owned, auth_header=auth_header, session_id=session_id)
 
-    route = await _route_selfhosted(client, task, auth_header=auth_header)
+    route = await _route_selfhosted(client, task, auth_header=auth_header, session_id=session_id)
     if route is not None:
-        return _with_route_summary(_local_personalization_pass(route))
+        route = _local_personalization_pass(route)
+        selected = route.get("selected_skill") if isinstance(route.get("selected_skill"), dict) else {}
+        activation = selected.get("session_activation") if isinstance(selected, dict) else None
+        activation_session = session_id or activation.get("session_id") if isinstance(activation, dict) else None
+        if isinstance(activation, dict) and activation_session:
+            record_session_activation(str(activation_session), activation)
+        return _with_route_summary(route)
     return _with_route_summary({
         "routed": False,
         "route_type": "none",

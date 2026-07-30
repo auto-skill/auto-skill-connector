@@ -56,6 +56,7 @@ from quality import (
     tier_for_prompt,
 )
 from routing_roles import partition_candidates
+from skills_sh_catalog import SkillsShCatalogError, default_catalog
 
 # Storage moved local 2026-07-05 -- recommender.py always runs embedded inside
 # scraper.py's process (same app/port), which now serves local_api.py's
@@ -72,6 +73,12 @@ ENABLE_OLLAMA_CHAT = os.getenv("ENABLE_OLLAMA_CHAT", "").lower() in {"1", "true"
 AUTO_START_EMBEDDER = os.getenv("AUTO_START_EMBEDDER", "1").lower() not in {"0", "false", "no"}
 CONTEXT_GUARD_ENABLED = os.getenv("AUTOSKILL_CONTEXT_GUARD", "1").lower() not in {"0", "false", "no"}
 WARM_SEARCH_RUNTIME = os.getenv("AUTOSKILL_WARM_SEARCH_RUNTIME", "1").lower() not in {"0", "false", "no"}
+SKILLS_SH_LIVE_ROUTING = os.getenv("AUTOSKILL_SKILLS_SH_ROUTING", "1").lower() not in {
+    "0",
+    "false",
+    "no",
+}
+SKILLS_SH_SEARCH_LIMIT = min(50, max(2, int(os.getenv("AUTOSKILL_SKILLS_SH_SEARCH_LIMIT", "12"))))
 
 # RRF scores cluster near 1/(rrf_k + ix), so near-ties sit ~1.0x apart; a top hit
 # that both retrievers agree on lands well above 1.6x the runner-up.
@@ -527,7 +534,7 @@ def _rank_retrieval_lanes(
     return ranked_semantic[: limit - 1] + ranked_pending[:1]
 
 
-async def retrieve_skills(client: httpx.AsyncClient, query_text: str, limit: int = 10) -> list[dict]:
+async def _retrieve_local_skills(client: httpx.AsyncClient, query_text: str, limit: int = 10) -> list[dict]:
     """Hybrid FTS+vector retrieval against the local DB. The frozen Supabase
     corpus was fully migrated into local_skills.db (migrate_state.json:
     202,367 rows on 2026-07-05), so local is the single source of truth.
@@ -575,16 +582,44 @@ async def retrieve_skills(client: httpx.AsyncClient, query_text: str, limit: int
     )
 
 
+async def retrieve_skills(client: httpx.AsyncClient, query_text: str, limit: int = 10) -> list[dict]:
+    """Retrieve from skills.sh first, then fall back to the local corpus."""
+    if SKILLS_SH_LIVE_ROUTING:
+        catalog = default_catalog()
+        if catalog.configured:
+            try:
+                rows = await catalog.retrieve(query_text, min(max(limit, 10), SKILLS_SH_SEARCH_LIMIT))
+                if rows:
+                    for row in rows:
+                        row["retrieval_backend"] = "skills_sh"
+                    return rows[:limit]
+            except SkillsShCatalogError as exc:
+                print(f"[recommender] skills.sh live retrieval unavailable: {exc}")
+    rows = await _retrieve_local_skills(client, query_text, limit)
+    for row in rows:
+        row.setdefault("retrieval_backend", "local")
+    return rows
+
+
 async def retrieve_skills_for_intent(
     client: httpx.AsyncClient,
     intent: CompiledIntent,
     limit: int = 10,
 ) -> list[dict]:
-    """Search original and compiled queries, then fuse their hybrid lanes."""
+    """Search original and compiled queries, then fuse their lanes.
+
+    When the documented skills.sh OIDC token is configured, the live catalog
+    is the primary data gate. The local corpus remains a bounded availability
+    fallback for development, outages, and legacy/private rows; it is never
+    silently blended with live candidates because the two stores have
+    different freshness and provenance guarantees.
+    """
     variants = list(intent.query_variants)[:2]
-    lanes = await asyncio.gather(
-        *(retrieve_skills(client, query, max(limit, 12)) for query in variants)
-    )
+
+    async def _lane(query: str) -> list[dict]:
+        return await retrieve_skills(client, query, max(limit, 12))
+
+    lanes = await asyncio.gather(*(_lane(query) for query in variants))
     fused: dict[str, dict] = {}
     for lane_index, (query, rows) in enumerate(zip(variants, lanes)):
         for rank, row in enumerate(rows):
@@ -752,6 +787,7 @@ class RouteRequest(BaseModel):
     max_inline_chars: int = DEFAULT_INLINE_CHARS
     max_capsule_chars: int = DEFAULT_CAPSULE_CHARS
     anonymous_id: str | None = None
+    session_id: str | None = None
     task_family: str = ""
     languages: list[str] = []
     frameworks: list[str] = []
@@ -891,16 +927,41 @@ async def chat_recommend(body: ChatRequest):
 def _public_skill(row: dict | None) -> dict | None:
     if not row:
         return None
+    install_url = row.get("install_url") or row.get("url")
+    skill_name = row.get("name")
+    session_activation = None
+    if row.get("retrieval_backend") == "skills_sh" and install_url:
+        session_activation = {
+            "mode": "skills_sh_use",
+            "scope": "session",
+            "source": install_url,
+            "skill": skill_name,
+            "agent": "codex",
+            "snapshot_hash": row.get("source_snapshot_hash"),
+        }
     return {
         "id": row.get("id"),
-        "slug": row.get("name"),
-        "name": row.get("name"),
+        "slug": row.get("slug") or row.get("name"),
+        "name": skill_name,
         "summary": row.get("description"),
         "description": row.get("description"),
         "source": row.get("source"),
+        "registry": row.get("registry"),
         "source_url": row.get("url"),
         "url": row.get("url"),
+        "skills_sh_id": row.get("skills_sh_id"),
+        "skills_sh_url": row.get("skills_sh_url"),
+        "install_url": row.get("install_url"),
+        "source_snapshot_hash": row.get("source_snapshot_hash"),
+        "audit_status": row.get("audit_status"),
+        "audit_risk_level": row.get("audit_risk_level"),
+        "audit_count": row.get("audit_count"),
+        "is_duplicate": bool(row.get("is_duplicate")),
+        "retrieval_backend": row.get("retrieval_backend"),
+        "session_activation": session_activation,
         "stars": row.get("stars") or 0,
+        "installs": row.get("installs"),
+        "source_type": row.get("source_type"),
         "content_hash": row.get("content_hash"),
         "quality_status": row.get("quality_status"),
         "quality_score": row.get("quality_score"),
@@ -1317,7 +1378,7 @@ def _verified_static_candidate_content(candidate: dict) -> str:
     public = _public_skill(candidate)
     if not public or not public.get("content_hash"):
         return ""
-    text = LibraryContent().get(public.get("url") or "")
+    text = str(candidate.get("_content") or "") or LibraryContent().get(public.get("url") or "")
     if (
         not text
         or not has_valid_skill_frontmatter(text)
@@ -1527,7 +1588,9 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
         text = (
             policy_item["_content"]
             if selected_role == "policy" and policy_item
-            else preverified_primary_text or library.get(skill.get("url") or "")
+            else preverified_primary_text
+            or str(primary_results[0].get("_content") or "")
+            or library.get(skill.get("url") or "")
         )
         # Version pinning: a pinned skill serves the pinned hash's content, so
         # an upstream update never changes what this account gets until they
@@ -1600,6 +1663,9 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
             "private-hint" if selected_role == "private" else "primary"
         )
         skill["routing_tier"] = tier
+        activation = skill.get("session_activation")
+        if isinstance(activation, dict):
+            activation["session_id"] = (body.session_id or route_id).strip()[:160]
 
     policy_skills = [_public_plan_item(policy_item)] if policy_item else []
     primary_plan = None
@@ -1666,6 +1732,9 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
         "capsule_chars": context_guard.get("capsule_chars", 0),
         "estimated_tokens": context_guard.get("estimated_tokens", 0),
     }
+    debug["retrieval_backend"] = sorted(
+        {str(row.get("retrieval_backend") or "local") for row in results}
+    )
     candidates = _hint_candidates([*primary_results, *supporting_results]) if tier == "hint" else []
     input_tokens = _estimate_tokens(query)
     hint_tokens = _estimate_tokens(skill)
@@ -1776,6 +1845,7 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
         "task_analysis": task_analysis,
         "skill_plan": skill_plan,
         "route_id": route_id,
+        "session_id": (body.session_id or route_id).strip()[:160],
         "score_debug": debug,
         "config_version": CONFIG_VERSION,
         "ttl": ROUTE_TTL_SECONDS,

@@ -12,7 +12,7 @@ import math
 import re
 from typing import Any
 
-CONFIG_VERSION = "quality-routing-v8-record-rerank"
+CONFIG_VERSION = "quality-routing-v9-skills-sh-live-gate"
 MEANINGFULNESS_VERSION = "meaningfulness-v1"
 MIN_CONTENT_CHARS = 180
 MIN_BODY_WORDS = 35
@@ -341,6 +341,13 @@ def provenance_score(skill: dict[str, Any]) -> float:
     if any(bool(raw.get(key)) for key in ("publisher_verified", "verified_publisher", "official")):
         return 1.0
     source = str(skill.get("source") or "").strip().lower()
+    if source == "skills_sh" or skill.get("registry") == "skills_sh" or skill.get("retrieval_backend") == "skills_sh":
+        # skills.sh is a useful discovery/indexing prior, not a blanket
+        # execution trust grant. Well-known publisher metadata is a little
+        # stronger than an arbitrary GitHub package, but both still require
+        # the normal audit, relevance, and outcome gates.
+        source_type = str(raw.get("source_type") or "").strip().lower()
+        return 0.60 if source_type == "well-known" else 0.45
     if source in PROVENANCE_SCORES:
         return PROVENANCE_SCORES[source]
     if "official" in source or "verified" in source:

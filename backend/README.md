@@ -185,12 +185,19 @@ runs only, not production routing.
 New GitHub and marketplace ingestion is package-first. GitHub tree URLs are
 resolved to a commit and complete bounded subtree; the optional official
 `skills.sh` curated API capture stores its complete file snapshot and registry
-hash when `SKILLS_SH_OIDC_TOKEN` is configured. SkillsMP discovery is capped at
-100 unique URLs per run by default. Unpinned GitHub content is retained for
-triage with `pending_package` status and is not embedded. Package bytes, paths,
-hashes, licenses, roles, references, and source aliases are stored separately
-from the single entrypoint-first 1,500-character retrieval record, so package
-integrity does not imply all-file embedding.
+hash when `SKILLS_SH_OIDC_TOKEN` is configured. At route time, the same token
+enables the live skills.sh data gate: Auto-Skill sends the original and
+compiled multi-word queries to `/api/v1/skills/search`, hydrates only a bounded
+shortlist through the detail endpoint, and fetches audit metadata before
+ranking. The live rows carry the stable skills.sh ID, snapshot hash, audit
+state, and a session-scoped `npx skills use` activation plan. If the remote
+catalog is unavailable, routing falls back to the local package-backed corpus;
+it never silently blends stale local and live rows. SkillsMP discovery remains
+capped at 100 unique URLs per run by default. Unpinned GitHub content is
+retained for triage with `pending_package` status and is not embedded. Package
+bytes, paths, hashes, licenses, roles, references, and source aliases remain
+separate from the single entrypoint-first 1,500-character retrieval record, so
+package integrity does not imply all-file embedding.
 
 ## Evals
 
@@ -204,6 +211,9 @@ python bench/evidence_eval.py outcomes eval-results/agent-outcomes.jsonl `
   --output eval-results/outcome-gate.json
 python bench/evidence_eval.py parity data/local_skills.db `
   --output eval-results/v6-parity.json
+# Live skills.sh gate (requires SKILLS_SH_OIDC_TOKEN or VERCEL_OIDC_TOKEN)
+python -m bench.skills_sh_live_eval --cases bench/skills_sh_cases.jsonl `
+  --output eval-results/skills-sh-live.json
 ```
 
 The outcome input requires at least two replicates for each of `no-skill`,
@@ -212,6 +222,11 @@ excluded. The report includes paired wins/losses, bootstrap confidence
 intervals, cost, latency, tokens, safety failures, and strategy displacement.
 The parity gate must pass before a hosted result can be attributed to this
 router/corpus version.
+
+`bench.skills_sh_live_eval` reports original-query versus structured-query
+hit@1/hit@5, paired wins/losses, audit coverage, and latency. Without the
+documented skills.sh OIDC token it emits `status: skipped`; that is a missing
+measurement, not a routing improvement.
 
 Route benchmark cases live in `evals/routes.jsonl`. Add false positives,
 direct hits, ambiguous matches, and conversation/meta negatives so behavior
