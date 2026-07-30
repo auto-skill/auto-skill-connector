@@ -6,7 +6,7 @@ numpy
 onnxruntime
 tokenizers
 huggingface_hub
-mcp>=1.0
+mcp>=1.0,<2.0
 stripe
 PyJWT[crypto]>=2.8,<3
 pytest
