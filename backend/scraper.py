@@ -616,6 +616,7 @@ SKILL_COLUMNS = (
     "category",
     "capability_summary",
     "triggers",
+    "tools_hash",
     "embedding",
     "embedding_text_hash",
     "embedded_at",
@@ -675,7 +676,11 @@ async def db_get(client: httpx.AsyncClient, table: str, params: str = ""):
     return r.json()
 
 async def db_delete(client: httpx.AsyncClient, table: str, match: dict):
-    params = "&".join(f"{k}=eq.{v}" for k, v in match.items())
+    # Values weren't URL-encoded here before -- harmless while every caller's
+    # match value was a plain UUID, but a skill url (://, ?, &, =) as a match
+    # value would otherwise corrupt the query string before the server ever
+    # gets to decode it.
+    params = urlencode({k: f"eq.{v}" for k, v in match.items()})
     return await client.delete(f"{LOCAL_DB_URL}/rest/v1/{table}?{params}", headers=HEADERS)
 
 
@@ -1860,16 +1865,34 @@ def _format_mcp_tools(tools: list) -> str:
     return "Tools:\n" + "\n".join(lines) if lines else ""
 
 
-async def fetch_smithery_tools(client: httpx.AsyncClient, qualified_name: str) -> str:
+def _named_tools(tools: list) -> list:
+    return [t for t in (tools or []) if isinstance(t, dict) and str(t.get("name") or "").strip()]
+
+
+def _tools_signature(tools: list) -> str:
+    """Stable hash of a tool list's identity (name+description pairs), used
+    to skip re-embedding a skill's tools on /rescan when nothing changed."""
+    pairs = sorted(
+        (str(t.get("name") or "").strip(), str(t.get("description") or "").strip())
+        for t in _named_tools(tools)
+    )
+    return hashlib.sha1(json.dumps(pairs, ensure_ascii=False).encode("utf-8")).hexdigest()
+
+
+async def fetch_smithery_tool_list(client: httpx.AsyncClient, qualified_name: str) -> list:
     """The Smithery registry's list endpoint is a one-line blurb; the
-    per-server detail endpoint carries the actual tools[] array."""
+    per-server detail endpoint carries the actual tools[] array. Returns the
+    parsed list (name/description/inputSchema per tool) -- callers decide
+    whether to flatten it to text (_format_mcp_tools) or embed it per-tool
+    (scan_skill stage 3, skill_tools)."""
     try:
         r = await client.get(f"https://registry.smithery.ai/servers/{qualified_name}", timeout=10)
         if r.status_code == 200:
-            return _format_mcp_tools(r.json().get("tools"))
+            tools = r.json().get("tools")
+            return tools if isinstance(tools, list) else []
     except Exception:
         pass
-    return ""
+    return []
 
 
 async def fetch_npm_readme(client: httpx.AsyncClient, package_name: str) -> str:
@@ -2095,6 +2118,18 @@ async def save_to_library(skill: dict, content: str):
             _library_last_flush = now
 
 
+async def refresh_skill_tools(client: httpx.AsyncClient, skill_url: str, tool_rows: list) -> None:
+    """Idempotent full replace of a skill's skill_tools rows, keyed by url
+    (see local_store's skill_tools schema comment on why not id). Only called
+    when scan_skill actually re-embedded the tool list (tools_hash changed),
+    so this is cheap on a routine /rescan."""
+    if not skill_url:
+        return
+    await db_delete(client, "skill_tools", {"skill_url": skill_url})
+    if tool_rows:
+        await db_post(client, "skill_tools", tool_rows)
+
+
 async def save_raw_to_library(skill: dict, raw_content: str):
     """Audit copy of the stage-1 fetch, before stage-2 curation. Not indexed
     (index.json already points at the curated file for this skill) -- just a
@@ -2115,6 +2150,7 @@ async def scan_skill(client: httpx.AsyncClient, skill: dict):
         content = canonicalize_skill_content(skill.pop("_content", "") or "")
         source = skill.get("source") or ""
         raw = skill.get("raw") or {}
+        mcp_tools: list = []
         try:
             url = skill.get("url") or ""
             repo_url = raw.get("repo_url") or "" if source == "glama_registry" else url
@@ -2122,9 +2158,11 @@ async def scan_skill(client: httpx.AsyncClient, skill: dict):
             extra = ""
 
             if source == "smithery_registry" and raw.get("qualified_name"):
-                extra = await fetch_smithery_tools(client, raw["qualified_name"])
+                mcp_tools = await fetch_smithery_tool_list(client, raw["qualified_name"])
             elif source == "glama_registry" and raw.get("tools"):
-                extra = _format_mcp_tools(raw["tools"])
+                mcp_tools = raw["tools"] if isinstance(raw["tools"], list) else []
+            if mcp_tools:
+                extra = _format_mcp_tools(mcp_tools)
 
             if content:
                 pass
@@ -2208,6 +2246,37 @@ async def scan_skill(client: httpx.AsyncClient, skill: dict):
                     skill["embedded_at"] = datetime.now(timezone.utc).isoformat()
                 except Exception:
                     pass
+
+            # Per-tool embeddings: a multi-tool MCP server's one blended
+            # skill-level embedding above dilutes a query matching one
+            # specific tool among many. Embed each tool separately (stored in
+            # skill_tools, keyed by this skill's url -- see local_store's
+            # schema comment on why not id) so it can be found by its best
+            # tool individually. Skip if the tool list hasn't changed since
+            # the last scan (tools_hash match) -- same redundant-call guard
+            # as capability_summary above.
+            named_tools = _named_tools(mcp_tools)
+            if named_tools:
+                tools_hash = _tools_signature(named_tools)
+                if tools_hash != skill.get("tools_hash"):
+                    try:
+                        tool_texts = [f"{t['name']}: {t.get('description') or ''}" for t in named_tools]
+                        tool_vectors = await asyncio.to_thread(embed_texts, tool_texts)
+                        now_iso = datetime.now(timezone.utc).isoformat()
+                        skill["_tool_rows"] = [
+                            {
+                                "skill_url": skill.get("url") or "",
+                                "tool_name": t["name"],
+                                "tool_description": t.get("description") or "",
+                                "embedding": vec,
+                                "embedding_text_hash": embed_text_hash(text),
+                                "created_at": now_iso,
+                            }
+                            for t, text, vec in zip(named_tools, tool_texts, tool_vectors)
+                        ]
+                        skill["tools_hash"] = tools_hash
+                    except Exception:
+                        pass
 
 
 async def get_scanned_urls(client: httpx.AsyncClient) -> set:
@@ -2331,6 +2400,11 @@ async def run_scrape(run_id: str) -> bool:
                 save_raw_to_library(s, s.pop("_raw_bundle"))
                 for s in skills
                 if s.get("_raw_bundle")
+            ))
+            await asyncio.gather(*(
+                refresh_skill_tools(client, s["url"], s.pop("_tool_rows"))
+                for s in skills
+                if s.get("_tool_rows")
             ))
             await flush_library_index()
             state.save()
@@ -2456,7 +2530,7 @@ async def run_rescan():
             while True:
                 r = await client.get(
                     f"{LOCAL_DB_URL}/rest/v1/skills",
-                    params={"select": "id,url,name,description,source,tags,raw,content_hash,capability_summary,triggers"},
+                    params={"select": "id,url,name,description,source,tags,raw,content_hash,capability_summary,triggers,tools_hash"},
                     headers={**HEADERS, "Range": f"{offset}-{offset + page_size - 1}"},
                     timeout=15,
                 )
@@ -2475,6 +2549,11 @@ async def run_rescan():
                     for row in rows
                     if row.get("_raw_bundle")
                 ))
+                await asyncio.gather(*(
+                    refresh_skill_tools(client, row["url"], row.pop("_tool_rows"))
+                    for row in rows
+                    if row.get("_tool_rows")
+                ))
                 async def patch_row(row: dict) -> None:
                     data = {
                         "risk_score": row.get("risk_score", 0),
@@ -2488,6 +2567,7 @@ async def run_rescan():
                         "category": row.get("category"),
                         "capability_summary": row.get("capability_summary"),
                         "triggers": row.get("triggers") or [],
+                        "tools_hash": row.get("tools_hash"),
                     }
                     for field in ("embedding", "embedding_text_hash", "embedded_at"):
                         if field in row:

@@ -12,7 +12,7 @@ from scraper import (
     _skill_bundle_sibling_paths,
     curate_skill_bundle,
     fetch_github_raw_content,
-    fetch_smithery_tools,
+    fetch_smithery_tool_list,
     scan_skill,
 )
 
@@ -169,7 +169,7 @@ class ScraperSafetyTests(unittest.TestCase):
 
         self.assertEqual(content, "")
 
-    def test_fetch_smithery_tools_parses_detail_endpoint(self) -> None:
+    def test_fetch_smithery_tool_list_parses_detail_endpoint(self) -> None:
         client = _FakeClient({
             "https://registry.smithery.ai/servers/acme-tool": _FakeResponse(
                 200,
@@ -177,9 +177,10 @@ class ScraperSafetyTests(unittest.TestCase):
             ),
         })
 
-        text = asyncio.run(fetch_smithery_tools(client, "acme-tool"))
+        tools = asyncio.run(fetch_smithery_tool_list(client, "acme-tool"))
 
-        self.assertIn("- search: Search the web.", text)
+        self.assertEqual(tools, [{"name": "search", "description": "Search the web."}])
+        self.assertIn("- search: Search the web.", _format_mcp_tools(tools))
 
     def test_scan_skill_smithery_registry_fetches_tools(self) -> None:
         client = _FakeClient({
@@ -379,14 +380,21 @@ class ScraperSafetyTests(unittest.TestCase):
         }
 
         fake_vector = [0.0] * 384
-        with patch.object(scraper, "embed_texts", return_value=[fake_vector]) as mock_embed:
+        with patch.object(scraper, "embed_texts", side_effect=lambda texts, *a, **k: [fake_vector] * len(texts)) as mock_embed:
             asyncio.run(scan_skill(client, skill))
 
         self.assertEqual(skill["quality_status"], "metadata_only")
         self.assertEqual(skill["capability_summary"], "Lets agents query survey results over HTTP.")
         self.assertEqual(skill["embedding"], fake_vector)
         self.assertIsNotNone(skill["embedded_at"])
-        mock_embed.assert_called_once()
+        # One call for the skill-level embedding, one for the per-tool batch
+        # (skill_tools) -- see refresh_skill_tools/vector_search_tools.
+        self.assertEqual(mock_embed.call_count, 2)
+        tool_rows = skill.get("_tool_rows")
+        self.assertEqual(len(tool_rows), 2)
+        self.assertEqual({r["tool_name"] for r in tool_rows}, {"get_results", "list_surveys"})
+        self.assertTrue(all(r["skill_url"] == skill["url"] for r in tool_rows))
+        self.assertIsNotNone(skill.get("tools_hash"))
 
     def test_mark_content_duplicates_covers_metadata_only(self) -> None:
         a = {"content_hash": "same-hash", "quality_status": "metadata_only", "quality_score": 40}

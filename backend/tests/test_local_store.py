@@ -495,6 +495,89 @@ class RecomputeFeedbackScoresTests(unittest.TestCase):
 
         self.assertEqual([r["id"] for r in results], ["mcp-server"])
 
+    def test_vector_search_tools_rolls_up_to_best_tool_per_skill(self) -> None:
+        conn = local_store.get_conn()
+        try:
+            _insert_skill(conn, "multi-tool-server", "hash-multi-tool")
+            conn.execute(
+                "UPDATE skills SET quality_status='metadata_only' WHERE id='multi-tool-server'"
+            )
+            tools = [
+                ("get_weather", [1.0, 0.0, 0.0] + [0.0] * 381),
+                ("send_email", [0.0, 1.0, 0.0] + [0.0] * 381),
+                ("list_files", [0.0, 0.0, 1.0] + [0.0] * 381),
+            ]
+            for name, vec in tools:
+                conn.execute(
+                    "INSERT INTO skill_tools (id, skill_url, tool_name, tool_description, embedding, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (
+                        str(uuid.uuid4()),
+                        "https://example.com/multi-tool-server",
+                        name,
+                        f"Tool: {name}",
+                        local_store.pack_embedding(vec),
+                        local_store._now(),
+                    ),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+
+        query = [0.0, 1.0, 0.0] + [0.0] * 381  # matches send_email exactly
+        results = local_store.vector_search_tools(query, match_count=5)
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["id"], "multi-tool-server")
+        self.assertEqual(results[0]["matched_tool"], "send_email")
+        self.assertAlmostEqual(results[0]["rank"], 1.0, places=5)
+
+    def test_hybrid_search_surfaces_skill_via_tool_only_match(self) -> None:
+        """A skill with no matching keywords/skill-level embedding should
+        still surface if one of its tools matches the query well -- this is
+        the whole point of the per-tool channel."""
+        conn = local_store.get_conn()
+        try:
+            conn.execute(
+                "INSERT INTO skills (id, name, description, source, url, content_hash, quality_status, quality_score, risk_score) "
+                "VALUES ('tool-only-skill', 'zzz-unrelated-name', 'completely unrelated filler text', 'test', "
+                "'https://example.com/tool-only-skill', 'hash-tool-only', 'metadata_only', 80, 0)"
+            )
+            conn.execute(
+                "INSERT INTO skill_tools (id, skill_url, tool_name, tool_description, embedding, created_at) "
+                "VALUES (?, 'https://example.com/tool-only-skill', 'exact_match_tool', 'does the exact thing', ?, ?)",
+                (str(uuid.uuid4()), local_store.pack_embedding([1.0] + [0.0] * 383), local_store._now()),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        query = [1.0] + [0.0] * 383
+        results = local_store.hybrid_search_skills("unrelated query text with no overlap", query, match_count=10)
+
+        self.assertIn("tool-only-skill", [r["id"] for r in results])
+
+    def test_fast_path_forces_inclusion_of_trigger_match_missed_by_fts_and_vector(self) -> None:
+        conn = local_store.get_conn()
+        try:
+            conn.execute(
+                "INSERT INTO skills (id, name, description, source, url, content_hash, quality_status, quality_score, risk_score, triggers) "
+                "VALUES ('trigger-only-skill', 'zzz-unrelated', 'nothing in common with the query text', 'test', "
+                "'https://example.com/trigger-only-skill', 'hash-trigger-only', 'active', 80, 0, ?)",
+                (json.dumps(["flibbertigibbet widget telemetry export"]),),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        local_store.warm_lexical_index()  # also warms the fast-path index
+
+        results = local_store.hybrid_search_skills(
+            "please export the flibbertigibbet widget telemetry", None, match_count=10
+        )
+
+        self.assertIn("trigger-only-skill", [r["id"] for r in results])
+
     def test_hybrid_search_vector_channel_is_not_restricted_to_fts_hits(self) -> None:
         """Regression test for the FTS-gates-vector bug: hybrid_search_skills
         used to restrict the vector channel to FTS's candidate set whenever

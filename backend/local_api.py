@@ -100,7 +100,7 @@ async def rest_post(table: str, request: Request):
         out = await asyncio.to_thread(store.upsert_rows, table, rows, on_conflict)
     except sqlite3.IntegrityError as exc:
         return Response(content=_dumps({"error": str(exc)}), media_type="application/json", status_code=409)
-    if table == "skills" and out:
+    if table in ("skills", "skill_tools") and out:
         _schedule_vector_warm()
     return Response(content=_dumps(out), media_type="application/json")
 
@@ -112,7 +112,7 @@ async def rest_patch(table: str, request: Request):
     filters = _parse_filters(dict(request.query_params))
     data = await request.json()
     updated = await asyncio.to_thread(store.update_rows, table, filters, data)
-    if table == "skills" and updated:
+    if table in ("skills", "skill_tools") and updated:
         _schedule_vector_warm()
     return Response(status_code=204)
 
@@ -123,7 +123,7 @@ async def rest_delete(table: str, request: Request):
         return Response(status_code=404)
     filters = _parse_filters(dict(request.query_params))
     deleted = await asyncio.to_thread(store.delete_rows, table, filters)
-    if table == "skills" and deleted:
+    if table in ("skills", "skill_tools") and deleted:
         _schedule_vector_warm()
     return Response(status_code=204)
 
