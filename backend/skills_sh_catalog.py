@@ -37,6 +37,7 @@ MAX_DETAIL_CANDIDATES = 12
 MAX_CONTENT_CHARS = 300_000
 MAX_RETRIEVAL_CHARS = 1_500
 MAX_PUBLIC_DESCRIPTION_CHARS = 800
+MAX_PUBLIC_PAGE_METADATA = min(3, max(0, int(os.getenv("SKILLS_SH_PUBLIC_PAGE_METADATA", "1"))))
 
 _FRONTMATTER_RE = re.compile(r"\A\ufeff?---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\Z)", re.S)
 _FIELD_RE = re.compile(r"^(name|description):[ \t]*(.*)$", re.I)
@@ -176,7 +177,7 @@ class SkillsShCatalog:
             async with httpx.AsyncClient(
                 transport=self.transport,
                 timeout=self.timeout_seconds,
-                follow_redirects=False,
+                follow_redirects=True,
             ) as client:
                 response = await client.get(f"{self.api_url}/{path.lstrip('/')}", params=params, headers=headers)
         except (httpx.HTTPError, OSError) as exc:
@@ -222,7 +223,7 @@ class SkillsShCatalog:
             async with httpx.AsyncClient(
                 transport=self.transport,
                 timeout=self.timeout_seconds,
-                follow_redirects=False,
+                follow_redirects=True,
             ) as client:
                 response = await client.get(
                     self.public_search_url,
@@ -240,41 +241,70 @@ class SkillsShCatalog:
         return payload if isinstance(payload, dict) else {}
 
     async def _public_page_metadata(self, skill_id: str) -> dict[str, Any]:
-        if not skill_id or not self.public_page_base_url:
-            return {}
-        cached = self._cached("page", skill_id)
-        if cached is not None:
-            return dict(cached)
-        url = f"{self.public_page_base_url.rstrip('/')}/{quote(skill_id, safe='/')}"
-        try:
-            async with httpx.AsyncClient(
-                transport=self.transport,
-                timeout=self.timeout_seconds,
-                follow_redirects=False,
-            ) as client:
-                response = await client.get(url, headers={"Accept": "text/html"})
-        except (httpx.HTTPError, OSError):
-            return {}
-        if response.status_code >= 400:
-            return {}
+        values = await self._public_page_metadata_many([skill_id])
+        return values[0] if values else {}
+
+    @staticmethod
+    def _parse_public_page_metadata(text: str) -> dict[str, Any]:
         matches = re.findall(
             r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',
-            response.text,
+            text,
             flags=re.I | re.S,
         )
-        metadata: dict[str, Any] = {}
         for raw in matches:
             try:
                 value = json.loads(raw)
             except (TypeError, ValueError):
                 continue
             if isinstance(value, dict) and value.get("@type") == "SoftwareApplication":
-                metadata = {
+                return {
                     "description": str(value.get("description") or "")[:MAX_PUBLIC_DESCRIPTION_CHARS],
                     "installs": (value.get("interactionStatistic") or {}).get("userInteractionCount"),
                 }
-                break
-        return dict(self._put("page", skill_id, metadata, self.detail_ttl_seconds)) if metadata else {}
+        return {}
+
+    async def _public_page_metadata_many(self, skill_ids: list[str]) -> list[dict[str, Any]]:
+        if not self.public_page_base_url:
+            return [{} for _ in skill_ids]
+        pending: list[str] = []
+        values: dict[str, dict[str, Any]] = {}
+        for skill_id in dict.fromkeys(skill_ids):
+            if not skill_id:
+                continue
+            cached = self._cached("page", skill_id)
+            if cached is not None:
+                values[skill_id] = dict(cached)
+            else:
+                pending.append(skill_id)
+        if pending:
+            try:
+                async with httpx.AsyncClient(
+                    transport=self.transport,
+                    timeout=self.timeout_seconds,
+                    follow_redirects=True,
+                ) as client:
+                    responses = await asyncio.gather(
+                        *(
+                            client.get(
+                                f"{self.public_page_base_url.rstrip('/')}/{quote(skill_id, safe='/')}",
+                                headers={"Accept": "text/html"},
+                            )
+                            for skill_id in pending
+                        ),
+                        return_exceptions=True,
+                    )
+            except (httpx.HTTPError, OSError):
+                responses = []
+            for skill_id, response in zip(pending, responses):
+                metadata = (
+                    self._parse_public_page_metadata(response.text)
+                    if isinstance(response, httpx.Response) and response.status_code < 400
+                    else {}
+                )
+                values[skill_id] = dict(
+                    self._put("page", skill_id, metadata, self.detail_ttl_seconds)
+                ) if metadata else {}
+        return [values.get(skill_id, {}) for skill_id in skill_ids]
 
     @staticmethod
     def _public_listing_row(item: dict[str, Any]) -> dict[str, Any]:
@@ -339,14 +369,11 @@ class SkillsShCatalog:
         ]
         details = await asyncio.gather(*detail_jobs)
         audits = await asyncio.gather(*audit_jobs)
-        page_metadata = await asyncio.gather(
-            *(
-                self._public_page_metadata(_stable_skill_id(item))
-                if item.get("_public_search_only")
-                else asyncio.sleep(0, result={})
-                for item in shortlist
-            )
-        )
+        page_ids = [
+            _stable_skill_id(item) if item.get("_public_search_only") and index < MAX_PUBLIC_PAGE_METADATA else ""
+            for index, item in enumerate(shortlist)
+        ]
+        page_metadata = await self._public_page_metadata_many(page_ids)
         rows: list[dict[str, Any]] = []
         for rank, (listing_item, detail, partner_audits, page_meta) in enumerate(
             zip(shortlist, details, audits, page_metadata)
