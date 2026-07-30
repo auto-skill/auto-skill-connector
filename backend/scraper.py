@@ -15,8 +15,16 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from datetime import datetime, timezone, date, timedelta
 import os
-from embeddings import embedding_model_status
+from embeddings import (
+    build_embed_text,
+    embed_text_hash,
+    embed_texts,
+    embedding_model_status,
+    generate_capability_summary,
+)
 from quality import (
+    ACTIVE_STATUSES,
+    FRONTMATTER_BLOCK_RE,
     MAX_SKILL_CONTENT_CHARS,
     canonicalize_skill_content,
     content_hash as quality_content_hash,
@@ -606,6 +614,8 @@ SKILL_COLUMNS = (
     "quality_score",
     "platforms",
     "category",
+    "capability_summary",
+    "triggers",
     "embedding",
     "embedding_text_hash",
     "embedded_at",
@@ -1096,24 +1106,49 @@ def _should_skip_crawl(owner_repo: str, meta: dict, state: "CrawlState") -> bool
     return False
 
 
-MAX_SKILL_BUNDLE_FILES = 6  # cap sibling-file fetch so one repo's asset dump can't balloon a single skill
-
-
 def _skill_bundle_sibling_paths(dir_path: str, skill_md_path: str, all_paths: list) -> list:
     """Claude Skills are often multi-file: SKILL.md is just the entry point,
-    with bundled reference docs/scripts/resources living alongside it. Find
-    those siblings in the repo's full tree listing so they get fetched too."""
+    with bundled reference docs/scripts/resources living alongside it. Every
+    file under the skill's directory is part of "the whole skill" -- no
+    extension/folder filter here; the size backstop lives in _fetch_text_bundle."""
     if not dir_path:
         return []
     prefix = dir_path + "/"
-    siblings = []
-    for p in all_paths:
-        if p == skill_md_path or not p.startswith(prefix):
-            continue
-        rest = p[len(prefix):]
-        if rest.lower().endswith(".md") or rest.split("/", 1)[0] in ("scripts", "references", "resources"):
-            siblings.append(p)
-    return siblings[:MAX_SKILL_BUNDLE_FILES]
+    return [p for p in all_paths if p != skill_md_path and p.startswith(prefix)]
+
+
+# Pure safety valves, not relevance filters: a real skill should never come
+# close to either of these in practice. They exist so one pathological repo
+# (a monorepo with thousands of files, or a single huge generated file) can't
+# stall or balloon a single skill's ingestion.
+MAX_BUNDLE_FILES = 200
+MAX_RAW_BUNDLE_CHARS = 300_000
+
+# Extensions that raw.githubusercontent.com would return as garbled bytes if
+# decoded as text -- content is never dropped for these, just not decoded;
+# the file's existence is still recorded by path (see _fetch_bundle_entry).
+_BINARY_EXTENSIONS = {
+    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico", ".svg",
+    ".pdf", ".zip", ".tar", ".gz", ".7z", ".rar",
+    ".xlsx", ".xls", ".docx", ".doc", ".pptx", ".ppt",
+    ".woff", ".woff2", ".ttf", ".otf", ".eot",
+    ".mp3", ".mp4", ".mov", ".avi", ".wav", ".ogg",
+    ".wasm", ".so", ".dll", ".dylib", ".exe", ".bin", ".class", ".jar", ".pyc",
+}
+
+
+def _is_probably_binary(path: str, raw_bytes: bytes) -> bool:
+    filename = path.rsplit("/", 1)[-1]
+    if "." in filename and f".{filename.rsplit('.', 1)[-1].lower()}" in _BINARY_EXTENSIONS:
+        return True
+    sample = raw_bytes[:8000]
+    if b"\x00" in sample:
+        return True
+    try:
+        sample.decode("utf-8")
+        return False
+    except UnicodeDecodeError:
+        return True
 
 
 async def _fetch_raw_file(client: httpx.AsyncClient, owner: str, repo: str, path: str) -> str:
@@ -1125,6 +1160,42 @@ async def _fetch_raw_file(client: httpx.AsyncClient, owner: str, repo: str, path
         except Exception:
             pass
     return ""
+
+
+async def _fetch_bundle_entry(client: httpx.AsyncClient, owner: str, repo: str, path: str, branch: str = "HEAD") -> str:
+    """Fetch one file for a skill bundle. Binary files are recorded by path,
+    never decoded as garbled text -- an LLM/embedder can't use the bytes
+    anyway, but the skill's dependency on that asset shouldn't disappear."""
+    async with RAW_FETCH_SEMAPHORE:
+        try:
+            r = await client.get(f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{path}", timeout=10)
+        except Exception:
+            return ""
+        if r.status_code != 200 or not r.content:
+            return ""
+        if _is_probably_binary(path, r.content):
+            return f"\n\n## {path}\n\n[binary file, not indexed]"
+        text = _accepted_fetched_text(r.content.decode("utf-8", errors="replace"))
+        return f"\n\n## {path}\n\n{text}" if text else ""
+
+
+async def _fetch_text_bundle(client: httpx.AsyncClient, owner: str, repo: str, paths: list, branch: str = "HEAD") -> str:
+    """Fetch every path (up to the safety-valve caps) and concatenate,
+    delimited by a '## path' header per file, stopping once the raw-bundle
+    size backstop is hit."""
+    entries = await asyncio.gather(
+        *(_fetch_bundle_entry(client, owner, repo, p, branch) for p in paths[:MAX_BUNDLE_FILES])
+    )
+    parts = []
+    total = 0
+    for entry in entries:
+        if not entry:
+            continue
+        if total + len(entry) > MAX_RAW_BUNDLE_CHARS:
+            break
+        parts.append(entry)
+        total += len(entry)
+    return "".join(parts)
 
 
 def _accepted_fetched_text(text: str) -> str:
@@ -1243,12 +1314,8 @@ async def tree_crawl_repo(client: httpx.AsyncClient, gh_headers: dict, owner_rep
         sibling_paths = _skill_bundle_sibling_paths(dir_path, skill_path, paths)
         if not sibling_paths:
             return skill_content
-        sibling_contents = await asyncio.gather(*(_fetch_raw_file(client, owner, repo, p) for p in sibling_paths))
-        parts = [skill_content]
-        for sib_path, sib_content in zip(sibling_paths, sibling_contents):
-            if sib_content:
-                parts.append(f"\n\n## {sib_path}\n\n{sib_content}")
-        return "".join(parts)
+        bundle = await _fetch_text_bundle(client, owner, repo, sibling_paths)
+        return skill_content + bundle if bundle else skill_content
 
     bundled_contents = await asyncio.gather(*(_with_bundle(p, c) for p, c in zip(skill_paths, contents)))
     found = [
@@ -1728,46 +1795,49 @@ def heuristic_scan(text: str):
 GITHUB_TREE_URL_RE = re.compile(r"github\.com/([^/]+)/([^/]+)/tree/([^/]+)/(.+)")
 
 
-async def _fetch_raw_candidate(client: httpx.AsyncClient, owner: str, repo: str, branch: str, path: str) -> str:
+async def _fetch_repo_tree(client: httpx.AsyncClient, owner: str, repo: str, branch: str = "HEAD") -> list:
+    headers = {"Accept": "application/vnd.github+json"}
+    if GITHUB_TOKEN:
+        headers["Authorization"] = f"Bearer {GITHUB_TOKEN}"
     try:
-        r = await client.get(f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{path}", timeout=6)
-        if r.status_code == 200 and r.text:
-            return _accepted_fetched_text(r.text)
+        r = await github_get(
+            client,
+            f"https://api.github.com/repos/{owner}/{repo}/git/trees/{branch}",
+            {"recursive": "1"},
+            headers,
+            github_core_limiter,
+        )
     except Exception:
-        pass
-    return ""
+        return []
+    if r is None or r.status_code != 200:
+        return []
+    try:
+        data = r.json()
+    except Exception:
+        return []
+    return [t.get("path", "") for t in data.get("tree", []) if t.get("type") == "blob"]
 
 
 async def fetch_github_raw_content(client: httpx.AsyncClient, owner: str, repo: str, url: str = "") -> str:
-    # If the URL points at a specific path (e.g. skillsmp's githubUrl =
-    # .../tree/main/skills/foo), fetch SKILL.md from that exact directory
-    # first — it's precise, whereas guessing top-level paths on a big repo
-    # would usually miss a skill that lives in a subdirectory.
+    """A repo that IS the skill (a plain GitHub result, or an MCP server's own
+    repo) gets the same "everything" treatment as a SKILL.md bundle: list the
+    full tree and fetch every file, bounded only by the safety-valve caps in
+    _fetch_text_bundle. If the URL points at a specific subdirectory (e.g.
+    skillsmp's githubUrl = .../tree/main/skills/foo), scope to that
+    subdirectory instead of the whole repo -- it's the actual skill boundary,
+    not an unrelated monorepo around it."""
     tree_match = GITHUB_TREE_URL_RE.search(url) if url else None
-    lead_candidates = []
+    branch = "HEAD"
+    prefix = None
     if tree_match:
-        t_owner, t_repo, branch, subpath = tree_match.groups()
-        lead_candidates.append((t_owner, t_repo, branch, f"{subpath.rstrip('/')}/SKILL.md"))
-    lead_candidates += [
-        (owner, repo, "HEAD", "SKILL.md"),
-        (owner, repo, "HEAD", ".claude/skills/SKILL.md"),
-        (owner, repo, "HEAD", "package.json"),
-    ]
-    lead = ""
-    lead_path = ""
-    for c_owner, c_repo, branch, path in lead_candidates:
-        lead = await _fetch_raw_candidate(client, c_owner, c_repo, branch, path)
-        if lead:
-            lead_path = path
-            break
+        owner, repo, branch, subpath = tree_match.groups()
+        prefix = subpath.rstrip("/") + "/"
 
-    # Always also try the top-level README — a repo's manifest/SKILL.md is
-    # often just an entry point, and the real usage docs live in the README.
-    # Concatenate rather than stop at the first hit so neither is lost.
-    readme = "" if lead_path == "README.md" else await _fetch_raw_candidate(client, owner, repo, "HEAD", "README.md")
-
-    parts = [p for p in (lead, readme) if p]
-    return "\n\n".join(parts)
+    all_paths = await _fetch_repo_tree(client, owner, repo, branch)
+    if not all_paths:
+        return ""
+    paths = [p for p in all_paths if p.startswith(prefix)] if prefix else all_paths
+    return await _fetch_text_bundle(client, owner, repo, paths, branch)
 
 
 def _format_mcp_tools(tools: list) -> str:
@@ -1812,6 +1882,130 @@ async def fetch_npm_readme(client: httpx.AsyncClient, package_name: str) -> str:
     return ""
 
 
+# --- Stage 2: LLM curation of the raw fetch --------------------------------
+# Stage 1 fetches everything for a skill without judging relevance; a real
+# skill bundle can include LICENSE files, CI config, changelogs, and other
+# noise alongside the material that actually matters. This pass hands the
+# complete raw bundle to a local model and asks it to keep only what's
+# relevant, verbatim -- it curates, it does not summarize (stage 3 still
+# needs the detail). Both the raw and curated bodies are persisted to the
+# local library so this step is auditable, not a black box.
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434").rstrip("/")
+CURATION_MODEL = os.getenv("AUTOSKILL_CURATION_MODEL", "qwen3.6:35b")
+# A 30B+ local model can't serve the same concurrency as cheap network
+# fetches -- this deliberately serializes curation more than RISK_SCAN_CONCURRENCY.
+CURATION_CONCURRENCY = asyncio.Semaphore(2)
+
+CURATION_SYSTEM = (
+    "You curate a raw file bundle gathered for a developer tool/skill listing. "
+    "You will be given the skill's name, description, and the complete raw "
+    "contents of every file gathered for it, each preceded by a '## path' "
+    "header. Identify the subset of this material that is actually relevant to "
+    "understanding and using the skill: real instructions, tool "
+    "definitions/schemas, usage/reference docs, examples, and scripts that "
+    "are part of how the skill works. Drop boilerplate that doesn't help "
+    "understand or use the skill: license text, CI/build config, changelogs, "
+    "contributor guidelines, and generic repository scaffolding. Keep the "
+    "relevant material verbatim -- do not summarize or shorten it, only "
+    "remove what's irrelevant and merge near-duplicate sections. Preserve "
+    "the '## path' headers for whatever you keep.\n\n"
+    "Your entire reply must be ONLY the curated file contents, starting "
+    "immediately with the first '## path' header you keep. Never reply "
+    "conversationally (no greeting, no acknowledgement like 'I have reviewed...', "
+    "no summary of what you did, no closing remarks) -- any text that is not "
+    "part of a kept file's actual content is an error."
+)
+
+# gte roughly 1 token per 3.3 chars for this kind of text; pad generously for
+# the output budget and round up to context sizes Ollama has pre-allocated
+# KV-cache buffers for, so a too-small window doesn't silently truncate the
+# prompt (see: silently dropped curation output when this was a flat 4096).
+_CTX_BUCKETS = (8192, 16384, 32768, 65536, 131072, 200000)
+
+
+def _num_ctx_for(text: str) -> int:
+    needed = int(len(text) / 3.0) + 2000
+    for bucket in _CTX_BUCKETS:
+        if needed <= bucket:
+            return bucket
+    return _CTX_BUCKETS[-1]
+
+
+async def curate_skill_bundle(client: httpx.AsyncClient, name: str, description: str, raw_bundle: str) -> str:
+    """Falls back to the unmodified raw bundle on any failure -- curation is
+    strictly a quality improvement, never a reason to lose stage-1 content."""
+    if not raw_bundle.strip():
+        return raw_bundle
+    user = f"Name: {name or ''}\nDescription: {description or ''}\n\n{raw_bundle}"
+    async with CURATION_CONCURRENCY:
+        try:
+            r = await client.post(
+                f"{OLLAMA_URL}/api/chat",
+                json={
+                    "model": CURATION_MODEL,
+                    "messages": [
+                        {"role": "system", "content": CURATION_SYSTEM},
+                        {"role": "user", "content": user},
+                    ],
+                    "stream": False,
+                    "think": False,
+                    "options": {"temperature": 0, "num_ctx": _num_ctx_for(user)},
+                },
+                # A 35B model at a large context window is genuinely slow on
+                # local hardware (measured 2+ minutes for a ~15K-token prompt)
+                # -- that cost is accepted deliberately so curation runs on a
+                # model worth auditing, rather than timing out and silently
+                # falling back to the uncurated bundle.
+                timeout=900,
+            )
+            if r.status_code == 200:
+                curated = (r.json().get("message") or {}).get("content", "").strip()
+                if curated:
+                    return curated
+        except Exception:
+            pass
+    return raw_bundle
+
+
+def _split_frontmatter(text: str) -> tuple[str, str]:
+    """(frontmatter_block, rest). Empty frontmatter_block if there is none."""
+    match = FRONTMATTER_BLOCK_RE.match(text or "")
+    if not match:
+        return "", text
+    return match.group(0), text[match.end():]
+
+
+async def curate_skill_content(client: httpx.AsyncClient, name: str, description: str, raw_bundle: str) -> str:
+    """Wraps curate_skill_bundle with two correctness fixes an actual audit
+    caught, not just a passing test suite:
+
+    1. A SKILL.md's YAML frontmatter must stay at position 0 for
+       quality.has_valid_skill_frontmatter to recognize it -- that's never
+       sent through the model at all, and is spliced back on verbatim after
+       curation, so curation cannot corrupt or drop it no matter how it
+       reformats the body.
+    2. Every sibling file in a bundle carries a '## path' header, but the
+       skill's own primary content did not -- the model used '## path' as its
+       only file-boundary signal and, observed on a real multi-file skill,
+       discarded the un-marked primary content (the most important part)
+       while keeping files it was explicitly told to drop. A generic leading
+       header fixes the ambiguity.
+    """
+    frontmatter, body = _split_frontmatter(raw_bundle)
+    if not body.strip():
+        return frontmatter + body
+    marked_body = body if body.lstrip().startswith("## ") else f"## SKILL.md\n\n{body}"
+    curated_body = await curate_skill_bundle(client, name, description, marked_body)
+    if curated_body == marked_body:
+        # Curation didn't actually change anything (network/model failure, or
+        # a genuine no-op) -- curate_skill_bundle's own fallback returns its
+        # input unchanged, so this equality is exactly that signal. Don't let
+        # the synthetic disambiguation marker leak into stored content when
+        # nothing was actually curated.
+        curated_body = body
+    return frontmatter + curated_body
+
+
 # --- Local skill library ------------------------------------------------
 # Persists every scanned skill's actual markdown/readme content to disk, so
 # it's browsable/greppable at all times without the scraper running or
@@ -1819,6 +2013,10 @@ async def fetch_npm_readme(client: httpx.AsyncClient, package_name: str) -> str:
 # content itself, so this is the only durable local copy of the real files.
 LIBRARY_DIR = Path(__file__).parent / "skills_library"
 LIBRARY_FILES_DIR = LIBRARY_DIR / "files"
+# The stage-1 raw fetch, before stage-2 curation trims it -- kept alongside
+# the curated body under the same filename so the curation step is auditable:
+# open both files for a skill and see exactly what was kept versus cut.
+LIBRARY_RAW_DIR = LIBRARY_DIR / "raw"
 LIBRARY_INDEX_PATH = LIBRARY_DIR / "index.json"
 library_lock = asyncio.Lock()
 
@@ -1897,10 +2095,23 @@ async def save_to_library(skill: dict, content: str):
             _library_last_flush = now
 
 
+async def save_raw_to_library(skill: dict, raw_content: str):
+    """Audit copy of the stage-1 fetch, before stage-2 curation. Not indexed
+    (index.json already points at the curated file for this skill) -- just a
+    same-filename mirror so the two are easy to diff by hand."""
+    raw_content = canonicalize_skill_content(raw_content or "")
+    if not raw_content or len(raw_content) > MAX_SKILL_CONTENT_CHARS:
+        return
+    filename = _library_filename(skill)
+    async with library_lock:
+        LIBRARY_RAW_DIR.mkdir(parents=True, exist_ok=True)
+        (LIBRARY_RAW_DIR / filename).write_text(raw_content, encoding="utf-8", newline="\n")
+
+
 async def scan_skill(client: httpx.AsyncClient, skill: dict):
     async with RISK_SCAN_CONCURRENCY:
-        # Tree-crawled skills arrive with their SKILL.md already fetched — scan
-        # that exact content instead of re-guessing paths.
+        # Stage 1: fetch everything. Tree-crawled skills arrive with their
+        # SKILL.md bundle already fetched — scan that instead of re-fetching.
         content = canonicalize_skill_content(skill.pop("_content", "") or "")
         source = skill.get("source") or ""
         raw = skill.get("raw") or {}
@@ -1926,8 +2137,26 @@ async def scan_skill(client: httpx.AsyncClient, skill: dict):
         except Exception:
             content = ""
 
-        content = canonicalize_skill_content(content or "")
+        raw_bundle = canonicalize_skill_content(content or "")
         previous_content_hash = skill.get("content_hash")
+
+        # Stage 2: curate. Falls back to the unfiltered raw bundle on any
+        # failure -- curation only trims, it's never the reason a skill loses
+        # stage-1 content.
+        content = raw_bundle
+        if raw_bundle:
+            try:
+                curated = await curate_skill_content(
+                    client, skill.get("name") or "", skill.get("description") or "", raw_bundle
+                )
+                content = canonicalize_skill_content(curated) or raw_bundle
+            except Exception:
+                content = raw_bundle
+        if content != raw_bundle:
+            # Kept for audit persistence in run_scrape/run_rescan -- lets the
+            # curated body be diffed against exactly what was fetched.
+            skill["_raw_bundle"] = raw_bundle
+
         blob = f"{skill.get('name', '')} {skill.get('description', '')} {content}"
         score, flags = heuristic_scan(blob)
         skill["risk_score"] = score
@@ -1935,24 +2164,50 @@ async def scan_skill(client: httpx.AsyncClient, skill: dict):
         skill["scanned_at"] = datetime.now(timezone.utc).isoformat()
         skill.update(evaluate_quality(skill, content))
 
-        # The embedding text includes saved content. A re-scan that changes a
-        # body (or makes it ineligible) must force the worker to re-embed it;
-        # otherwise the old vector can rank a completely different document.
-        if (
-            skill.get("quality_status") != "active"
-            or (content and skill.get("content_hash") != previous_content_hash)
-        ):
+        # The embedding/summary reflect this exact body. A re-scan that
+        # changes it (or makes it ineligible) must force a redo; otherwise a
+        # stale vector/summary can describe a completely different document.
+        # ACTIVE_STATUSES (active + metadata_only) governs discovery/indexing
+        # eligibility here -- separate from FULL_ROUTE_STATUS ("active" only),
+        # which gates auto-injection in quality.tier_for_ranked_candidates and
+        # is untouched. A metadata_only skill (real content, no SKILL.md
+        # frontmatter -- most MCP servers) can now be found and understood; it
+        # is still never injected as verbatim instructions.
+        content_changed = bool(content) and skill.get("content_hash") != previous_content_hash
+        if skill.get("quality_status") not in ACTIVE_STATUSES or content_changed:
             skill["embedding"] = None
             skill["embedding_text_hash"] = None
             skill["embedded_at"] = None
+            skill["capability_summary"] = None
+            skill["triggers"] = None
 
         # Only attach complete, accepted bodies for library persistence.
         if (
             content
             and len(content) <= MAX_SKILL_CONTENT_CHARS
-            and skill.get("quality_status") == "active"
+            and skill.get("quality_status") in ACTIVE_STATUSES
         ):
             skill["_library_content"] = content
+
+            # Stage 3: inline capability summary + embedding, so a freshly
+            # discovered skill is fully indexed without waiting on the
+            # separate generate_capability_summaries.py/reindex.py batch
+            # jobs. Skip if a previous scan already summarized this exact
+            # body -- avoids a redundant local-LLM call on every /rescan.
+            if not skill.get("capability_summary") or content_changed:
+                try:
+                    understanding = await generate_capability_summary(
+                        client, skill.get("name") or "", skill.get("description") or "", content
+                    )
+                    skill["capability_summary"] = understanding.get("summary") or ""
+                    skill["triggers"] = understanding.get("triggers") or []
+                    embed_text = build_embed_text(skill, content)
+                    vectors = await asyncio.to_thread(embed_texts, [embed_text])
+                    skill["embedding"] = vectors[0]
+                    skill["embedding_text_hash"] = embed_text_hash(embed_text)
+                    skill["embedded_at"] = datetime.now(timezone.utc).isoformat()
+                except Exception:
+                    pass
 
 
 async def get_scanned_urls(client: httpx.AsyncClient) -> set:
@@ -2022,7 +2277,7 @@ def mark_content_duplicates(skills: list) -> None:
     by_hash: dict[str, list[dict]] = {}
     for skill in skills:
         chash = skill.get("content_hash")
-        if chash and skill.get("quality_status") == "active":
+        if chash and skill.get("quality_status") in ACTIVE_STATUSES:
             by_hash.setdefault(chash, []).append(skill)
 
     for group in by_hash.values():
@@ -2070,7 +2325,12 @@ async def run_scrape(run_id: str) -> bool:
             await asyncio.gather(*(
                 save_to_library(s, s.pop("_library_content"))
                 for s in skills
-                if s.get("_library_content") and s.get("quality_status") == "active"
+                if s.get("_library_content") and s.get("quality_status") in ACTIVE_STATUSES
+            ))
+            await asyncio.gather(*(
+                save_raw_to_library(s, s.pop("_raw_bundle"))
+                for s in skills
+                if s.get("_raw_bundle")
             ))
             await flush_library_index()
             state.save()
@@ -2196,7 +2456,7 @@ async def run_rescan():
             while True:
                 r = await client.get(
                     f"{LOCAL_DB_URL}/rest/v1/skills",
-                    params={"select": "id,url,name,description,source,tags,raw,content_hash"},
+                    params={"select": "id,url,name,description,source,tags,raw,content_hash,capability_summary,triggers"},
                     headers={**HEADERS, "Range": f"{offset}-{offset + page_size - 1}"},
                     timeout=15,
                 )
@@ -2208,7 +2468,12 @@ async def run_rescan():
                 await asyncio.gather(*(
                     save_to_library(row, row.pop("_library_content"))
                     for row in rows
-                    if row.get("_library_content") and row.get("quality_status") == "active"
+                    if row.get("_library_content") and row.get("quality_status") in ACTIVE_STATUSES
+                ))
+                await asyncio.gather(*(
+                    save_raw_to_library(row, row.pop("_raw_bundle"))
+                    for row in rows
+                    if row.get("_raw_bundle")
                 ))
                 async def patch_row(row: dict) -> None:
                     data = {
@@ -2221,6 +2486,8 @@ async def run_rescan():
                         "quality_score": row.get("quality_score", 0),
                         "platforms": row.get("platforms", []),
                         "category": row.get("category"),
+                        "capability_summary": row.get("capability_summary"),
+                        "triggers": row.get("triggers") or [],
                     }
                     for field in ("embedding", "embedding_text_hash", "embedded_at"):
                         if field in row:

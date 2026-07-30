@@ -2,14 +2,34 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 import unittest
 
 from embeddings import (
     MAX_CONTENT_CHARS,
     MAX_EMBED_CHARS,
     build_embed_text,
+    generate_capability_summary,
     sample_content_for_embed,
 )
+
+
+class _FakeResponse:
+    def __init__(self, status_code: int, json_data=None):
+        self.status_code = status_code
+        self._json = json_data
+
+    def json(self):
+        return self._json
+
+
+class _FakeClient:
+    def __init__(self, response: "_FakeResponse"):
+        self._response = response
+
+    async def post(self, url: str, **kwargs):
+        return self._response
 
 
 def _multi_section_skill() -> str:
@@ -78,6 +98,47 @@ class EmbedTextSamplingTests(unittest.TestCase):
         self.assertIn("workbook-ops", text)
         self.assertIn("TAIL_MARKER_UNIQUE_END", text)
         self.assertLessEqual(MAX_CONTENT_CHARS, MAX_EMBED_CHARS)
+
+    def test_build_embed_text_includes_triggers(self) -> None:
+        skill = {
+            "name": "workbook-ops",
+            "triggers": ["merging two spreadsheets", "auditing formula totals"],
+        }
+        text = build_embed_text(skill, "")
+        self.assertIn("merging two spreadsheets", text)
+        self.assertIn("auditing formula totals", text)
+
+
+class GenerateCapabilitySummaryTests(unittest.TestCase):
+    def test_returns_summary_and_triggers_on_success(self) -> None:
+        client = _FakeClient(_FakeResponse(200, {
+            "message": {"content": json.dumps({
+                "summary": "Does the thing.",
+                "triggers": ["doing the thing", "doing the thing", "doing another thing"],
+            })}
+        }))
+
+        result = asyncio.run(generate_capability_summary(client, "thing-tool", "A tool.", "content"))
+
+        self.assertEqual(result["summary"], "Does the thing.")
+        # Exact duplicate trigger deduplicated, distinct one kept.
+        self.assertEqual(result["triggers"], ["doing the thing", "doing another thing"])
+
+    def test_empty_input_short_circuits_without_a_call(self) -> None:
+        class ExplodingClient:
+            async def post(self, *a, **k):
+                raise AssertionError("should not be called for empty input")
+
+        result = asyncio.run(generate_capability_summary(ExplodingClient(), "", "", ""))
+
+        self.assertEqual(result, {"summary": "", "triggers": []})
+
+    def test_failure_returns_empty_shape_not_a_crash(self) -> None:
+        client = _FakeClient(_FakeResponse(500))
+
+        result = asyncio.run(generate_capability_summary(client, "name", "description", "content"))
+
+        self.assertEqual(result, {"summary": "", "triggers": []})
 
 
 if __name__ == "__main__":

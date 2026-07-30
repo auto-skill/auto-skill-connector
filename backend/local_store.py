@@ -55,36 +55,50 @@ CREATE TABLE IF NOT EXISTS skills (
     embedding_text_hash TEXT,
     embedded_at TEXT,
     feedback_score REAL,
-    capability_summary TEXT
+    capability_summary TEXT,
+    triggers TEXT DEFAULT '[]'
 );
 
+-- capability_summary/triggers are indexed here too: they're the distilled,
+-- LLM-derived read of what a skill does and when to use it, and a
+-- metadata_only skill (most MCP servers -- real content, no SKILL.md
+-- frontmatter) often has far richer capability_summary/triggers text than
+-- its raw name/description ever will. Keyword search must be able to find
+-- that, not just the registry blurb. (See init_db()'s migration below for
+-- upgrading an already-initialized database's stale 3-column definition.)
 CREATE VIRTUAL TABLE IF NOT EXISTS skills_fts USING fts5(
-    name, description, tags, content='skills', content_rowid='rowid', tokenize='porter unicode61'
+    name, description, tags, capability_summary, triggers,
+    content='skills', content_rowid='rowid', tokenize='porter unicode61'
 );
 
 CREATE TRIGGER IF NOT EXISTS skills_ai AFTER INSERT ON skills BEGIN
-    INSERT INTO skills_fts(rowid, name, description, tags)
-    VALUES (new.rowid, new.name, new.description, new.tags);
+    INSERT INTO skills_fts(rowid, name, description, tags, capability_summary, triggers)
+    VALUES (new.rowid, new.name, new.description, new.tags, new.capability_summary, new.triggers);
 END;
 
 CREATE TRIGGER IF NOT EXISTS skills_ad AFTER DELETE ON skills BEGIN
-    INSERT INTO skills_fts(skills_fts, rowid, name, description, tags)
-    VALUES ('delete', old.rowid, old.name, old.description, old.tags);
+    INSERT INTO skills_fts(skills_fts, rowid, name, description, tags, capability_summary, triggers)
+    VALUES ('delete', old.rowid, old.name, old.description, old.tags, old.capability_summary, old.triggers);
 END;
 
 CREATE TRIGGER IF NOT EXISTS skills_au AFTER UPDATE ON skills BEGIN
-    INSERT INTO skills_fts(skills_fts, rowid, name, description, tags)
-    VALUES ('delete', old.rowid, old.name, old.description, old.tags);
-    INSERT INTO skills_fts(rowid, name, description, tags)
-    VALUES (new.rowid, new.name, new.description, new.tags);
+    INSERT INTO skills_fts(skills_fts, rowid, name, description, tags, capability_summary, triggers)
+    VALUES ('delete', old.rowid, old.name, old.description, old.tags, old.capability_summary, old.triggers);
+    INSERT INTO skills_fts(rowid, name, description, tags, capability_summary, triggers)
+    VALUES (new.rowid, new.name, new.description, new.tags, new.capability_summary, new.triggers);
 END;
 
 -- These are deliberately partial indexes: readiness and semantic retrieval
 -- need small metadata indexes, not a second copy of every embedding BLOB.
 CREATE INDEX IF NOT EXISTS skills_active_idx ON skills(id) WHERE quality_status = 'active';
 CREATE INDEX IF NOT EXISTS skills_embedded_idx ON skills(id) WHERE embedding IS NOT NULL;
-CREATE INDEX IF NOT EXISTS skills_active_embedded_idx ON skills(id)
-    WHERE quality_status = 'active' AND embedding IS NOT NULL;
+-- Replaces the old active-only skills_active_embedded_idx (dropped below):
+-- _embedding_matrix()'s WHERE clause now covers active + metadata_only, and
+-- CREATE INDEX IF NOT EXISTS alone would never update an already-initialized
+-- database's stale index definition.
+DROP INDEX IF EXISTS skills_active_embedded_idx;
+CREATE INDEX IF NOT EXISTS skills_route_embedded_idx ON skills(id)
+    WHERE quality_status IN ('active', 'metadata_only') AND embedding IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS scrape_runs (
     id TEXT PRIMARY KEY,
@@ -370,7 +384,7 @@ CREATE TABLE IF NOT EXISTS mcp_auth_codes (
 """
 
 TABLES = {
-    "skills": {"unique": "url", "json_cols": {"tags", "raw", "risk_flags", "quality_reasons", "platforms"}},
+    "skills": {"unique": "url", "json_cols": {"tags", "raw", "risk_flags", "quality_reasons", "platforms", "triggers"}},
     "scrape_runs": {"unique": None, "json_cols": set()},
     "route_events": {"unique": None, "json_cols": {"warnings"}},
     "users": {"unique": "email", "json_cols": set()},
@@ -399,6 +413,7 @@ SKILL_COLUMN_DEFAULTS = {
     "category": "TEXT",
     "feedback_score": "REAL",
     "capability_summary": "TEXT",
+    "triggers": "TEXT DEFAULT '[]'",
 }
 
 # Router retrieval needs metadata for quality/ranking and raw publisher
@@ -431,6 +446,7 @@ SKILL_RETRIEVAL_COLUMNS = (
     "embedded_at",
     "feedback_score",
     "capability_summary",
+    "triggers",
 )
 SKILL_RETRIEVAL_SQL = ", ".join(SKILL_RETRIEVAL_COLUMNS)
 
@@ -750,6 +766,25 @@ def init_db() -> None:
         for col, spec in SKILL_COLUMN_DEFAULTS.items():
             if col not in existing:
                 conn.execute(f"ALTER TABLE skills ADD COLUMN {col} {spec}")
+
+        # skills_fts migration: CREATE VIRTUAL TABLE IF NOT EXISTS above never
+        # updates an already-initialized database's stale column list, so an
+        # existing skills_fts with the old 3-column (name/description/tags)
+        # definition would otherwise silently never index capability_summary
+        # or triggers. Detect it via the stored column list, not row count.
+        fts_row = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='skills_fts'"
+        ).fetchone()
+        if fts_row and "capability_summary" not in (fts_row["sql"] or ""):
+            conn.execute("DROP TRIGGER IF EXISTS skills_ai")
+            conn.execute("DROP TRIGGER IF EXISTS skills_ad")
+            conn.execute("DROP TRIGGER IF EXISTS skills_au")
+            conn.execute("DROP TABLE skills_fts")
+            conn.executescript(_SCHEMA)  # recreates skills_fts + triggers with the new column list
+            conn.execute(
+                "INSERT INTO skills_fts(rowid, name, description, tags, capability_summary, triggers) "
+                "SELECT rowid, name, description, tags, capability_summary, triggers FROM skills"
+            )
         route_existing = {row["name"] for row in conn.execute("PRAGMA table_info(route_events)").fetchall()}
         for col, spec in ROUTE_EVENT_COLUMN_DEFAULTS.items():
             if col not in route_existing:
@@ -1395,7 +1430,7 @@ def warm_lexical_index() -> dict:
         postings: dict[str, list[str]] = defaultdict(list)
         rows = conn.execute(
             """
-            SELECT id, name, description, tags
+            SELECT id, name, description, tags, capability_summary, triggers
             FROM skills
             WHERE risk_score < 3
               AND COALESCE(quality_status, 'pending') IN ('active', 'metadata_only')
@@ -1410,6 +1445,8 @@ def warm_lexical_index() -> dict:
                     str(row["name"] or ""),
                     str(row["description"] or ""),
                     str(row["tags"] or ""),
+                    str(row["capability_summary"] or ""),
+                    str(row["triggers"] or ""),
                 ]
             )
             for token in set(_lexical_tokens(text)):
@@ -1733,7 +1770,13 @@ def _embedding_matrix(conn: sqlite3.Connection, *, refresh: bool = False) -> tup
                 "SELECT id, embedding FROM skills "
                 "WHERE embedding IS NOT NULL "
                 "AND risk_score < 3 "
-                "AND COALESCE(quality_status, 'pending') = 'active'"
+                # active + metadata_only: same discovery-eligibility set as
+                # quality.ACTIVE_STATUSES. Auto-injection safety is enforced
+                # separately in quality.tier_for_ranked_candidates (FULL_ROUTE_STATUS
+                # = 'active' only) -- being semantically findable here does not
+                # make a metadata_only skill (e.g. an MCP server with no SKILL.md
+                # frontmatter) eligible to be injected as verbatim instructions.
+                "AND COALESCE(quality_status, 'pending') IN ('active', 'metadata_only')"
             ).fetchall()
             ids = [r["id"] for r in rows if len(r["embedding"]) == _EMB_BLOB_LEN]
             blobs = [bytes(r["embedding"]) for r in rows if len(r["embedding"]) == _EMB_BLOB_LEN]
@@ -1820,19 +1863,16 @@ def hybrid_search_skills(
     rrf_k: int = 20,
 ) -> list[dict]:
     fts = search_skills_fts(query_text, 60)
-    lexical_ids = [str(row.get("id")) for row in fts if row.get("id")]
-    # Once the lexical cache has produced a useful candidate set, compare the
-    # query vector only against those rows. This preserves semantic ordering
-    # without scanning the entire 60k-vector matrix on every route.
-    vec = (
-        vector_search_skills(
-            query_embedding,
-            60,
-            candidate_ids=lexical_ids if len(lexical_ids) >= 10 else None,
-        )
-        if query_embedding
-        else []
-    )
+    # Always rank the query vector against the full embedding matrix, not just
+    # rows FTS already found by keyword. Restricting to FTS candidates whenever
+    # FTS found >=10 hits (the previous behavior) defeated the point of hybrid
+    # search: a semantically on-target skill sharing no keywords with the query
+    # could never surface through the vector channel if FTS was "confident" on
+    # an unrelated set of >=10 keyword matches. Measured cost of a full scan
+    # against the real ~150k-row matrix: ~4ms (numpy matvec, BLAS-backed) --
+    # the "scanning the entire matrix" concern this restriction was written
+    # for does not hold up at this corpus size.
+    vec = vector_search_skills(query_embedding, 60) if query_embedding else []
 
     by_id: dict[str, dict] = {}
     scores: dict[str, float] = {}

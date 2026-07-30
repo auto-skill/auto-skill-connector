@@ -8,10 +8,12 @@ L2-normalized, matching session.run(text, {mean_pool: true, normalize: true}).
 """
 import hashlib
 import json
+import os
 import re
 import threading
 from pathlib import Path
 
+import httpx
 import numpy as np
 import onnxruntime
 from huggingface_hub import hf_hub_download
@@ -256,6 +258,9 @@ def build_embed_text(skill: dict, content: str = "") -> str:
     tags = skill.get("tags") or []
     if tags:
         parts.append(" ".join(str(t) for t in tags))
+    triggers = skill.get("triggers") or []
+    if triggers:
+        parts.append(" ".join(str(t) for t in triggers))
     if skill.get("capability_summary"):
         parts.append(skill["capability_summary"])
     meta = _WS_RE.sub(" ", ". ".join(p for p in parts if p).strip())
@@ -270,6 +275,94 @@ def build_embed_text(skill: dict, content: str = "") -> str:
 
 def embed_text_hash(text: str) -> str:
     return hashlib.sha1(text.encode("utf-8")).hexdigest()
+
+
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434").rstrip("/")
+SUMMARY_MODEL = os.getenv("AUTOSKILL_SUMMARY_MODEL", "llama3.2:3b")
+SUMMARY_MAX_CONTENT_CHARS = 4000
+SUMMARY_MAX_CHARS = 2000
+
+MAX_TRIGGERS = 6
+MAX_TRIGGER_CHARS = 140
+
+SUMMARY_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "summary": {"type": "string"},
+        "triggers": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": ["summary", "triggers"],
+}
+
+SUMMARY_SYSTEM = (
+    "You analyze developer tool/skill listings for a search index. Given a name, "
+    "short description, and (if available) file content, write JSON: "
+    "{\"summary\": \"...\", \"triggers\": [\"...\"]}. "
+    "summary: 1-3 plain factual sentences stating what the skill/tool actually does "
+    "and what task or workflow it helps with. Third person, no marketing language, no "
+    "meta-commentary ('this skill', 'in summary'), no preamble. "
+    "triggers: up to 6 short, concrete phrases describing situations where THIS SPECIFIC "
+    "skill should be recommended -- the kind of user request or task that should match "
+    "it. Every trigger must be derived only from the name/description/content given "
+    "below in this request, in this skill's own domain -- never reuse or adapt phrasing "
+    "from these instructions, and never produce a trigger about a different kind of tool "
+    "than the one described. Phrase each trigger as the task/request itself (a gerund "
+    "phrase, e.g. starting with a verb+ing), never as an instruction sentence directed at "
+    "the skill (never start a trigger with 'use when' or 'when the user'). Deduplicate "
+    "near-identical triggers. If the material is too sparse to say anything concrete, "
+    "summarize plainly what little is known and return an empty triggers list instead of "
+    "inventing detail."
+)
+
+
+async def generate_capability_summary(client: httpx.AsyncClient, name: str, description: str, content: str) -> dict:
+    """One local-Ollama call distilling a skill's task/capabilities (summary)
+    and the concrete situations that should match it (triggers) -- both are
+    prioritized ahead of raw content in build_embed_text (see above), and
+    triggers separately feed FTS/structured matching (see local_store.py).
+
+    Returns {"summary": str, "triggers": list[str]}, both possibly empty.
+    """
+    description = (description or "").strip()
+    body = (content or "")[:SUMMARY_MAX_CONTENT_CHARS].strip()
+    empty = {"summary": "", "triggers": []}
+    if not description and not body:
+        return empty
+    user = (
+        f"Name: {name or ''}\n"
+        f"Description: {description or '(none)'}\n"
+        f"Content:\n{body or '(no file content available)'}"
+    )
+    for attempt in range(2):
+        try:
+            r = await client.post(
+                f"{OLLAMA_URL}/api/chat",
+                json={
+                    "model": SUMMARY_MODEL,
+                    "messages": [
+                        {"role": "system", "content": SUMMARY_SYSTEM},
+                        {"role": "user", "content": user},
+                    ],
+                    "stream": False,
+                    "format": SUMMARY_SCHEMA,
+                    "options": {"temperature": 0, "num_predict": 400},
+                },
+                timeout=60,
+            )
+            if r.status_code != 200:
+                continue
+            content_json = r.json().get("message", {}).get("content", "")
+            parsed = json.loads(content_json)
+            summary = str(parsed.get("summary") or "").strip()[:SUMMARY_MAX_CHARS]
+            triggers = []
+            for t in (parsed.get("triggers") or [])[:MAX_TRIGGERS]:
+                t = str(t or "").strip()[:MAX_TRIGGER_CHARS]
+                if t and t not in triggers:
+                    triggers.append(t)
+            return {"summary": summary, "triggers": triggers}
+        except (json.JSONDecodeError, httpx.HTTPError):
+            continue
+    return empty
 
 
 class LibraryContent:

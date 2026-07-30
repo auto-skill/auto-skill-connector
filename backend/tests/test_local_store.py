@@ -464,6 +464,68 @@ class RecomputeFeedbackScoresTests(unittest.TestCase):
         self.assertEqual(len(results), 1)
         self.assertIn(results[0]["id"], {"spreadsheet-a", "spreadsheet-b"})
 
+    def test_fts_finds_skills_by_capability_summary_and_triggers_alone(self) -> None:
+        """A metadata_only MCP server's name/description is often a thin
+        registry blurb; the real signal lives in capability_summary/triggers
+        (see scraper.scan_skill stage 3). FTS must index those columns too,
+        not just name/description/tags."""
+        conn = local_store.get_conn()
+        try:
+            conn.execute(
+                """
+                INSERT INTO skills
+                    (id, name, description, source, url, content_hash, quality_status, quality_score,
+                     capability_summary, triggers)
+                VALUES (?, ?, ?, 'test', ?, 'hash-mcp', 'metadata_only', 40, ?, ?)
+                """,
+                (
+                    "mcp-server",
+                    "acme-mcp",
+                    "A remote MCP server.",
+                    "https://example.com/mcp-server",
+                    "Lets an agent query flibbertigibbet widget telemetry over a websocket.",
+                    json.dumps(["querying flibbertigibbet widget telemetry"]),
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        results = local_store.search_skills_fts("flibbertigibbet widget telemetry", max_results=5)
+
+        self.assertEqual([r["id"] for r in results], ["mcp-server"])
+
+    def test_hybrid_search_vector_channel_is_not_restricted_to_fts_hits(self) -> None:
+        """Regression test for the FTS-gates-vector bug: hybrid_search_skills
+        used to restrict the vector channel to FTS's candidate set whenever
+        FTS found >=10 hits, so a semantically on-target skill sharing no
+        keywords with the query could never surface via the vector channel.
+        vector_search_skills must be called without candidate_ids."""
+        conn = local_store.get_conn()
+        try:
+            for i in range(12):
+                _insert_skill(conn, f"keyword-match-{i}", f"hash-kw-{i}")
+                conn.execute(
+                    "UPDATE skills SET description=? WHERE id=?",
+                    ("banana banana banana banana", f"keyword-match-{i}"),
+                )
+            _insert_skill(conn, "semantic-only-match", "hash-semantic")
+            conn.commit()
+        finally:
+            conn.close()
+
+        captured = {}
+        real_vector_search = local_store.vector_search_skills
+
+        def spy(query_embedding, match_count=10, candidate_ids=None):
+            captured["candidate_ids"] = candidate_ids
+            return real_vector_search(query_embedding, match_count, candidate_ids=candidate_ids)
+
+        with patch.object(local_store, "vector_search_skills", side_effect=spy):
+            local_store.hybrid_search_skills("banana", [0.1] * 384, match_count=5)
+
+        self.assertIsNone(captured["candidate_ids"])
+
     def test_top_scored_skill_ids_matches_legacy_score_then_id_order(self) -> None:
         scores = {
             "skill-a": 2.0,

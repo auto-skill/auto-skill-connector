@@ -71,26 +71,6 @@ PLATFORM_SPECIFIC_MARKERS = (
     "use when your",
 )
 
-BODY_CUES = (
-    "use when",
-    "when the user",
-    "you should",
-    "must",
-    "do not",
-    "workflow",
-    "steps",
-    "instructions",
-    "create",
-    "generate",
-    "analyze",
-    "edit",
-    "build",
-    "write",
-    "run",
-    "verify",
-    "output",
-)
-
 NAME_STOPWORDS = {
     "agent",
     "agents",
@@ -311,14 +291,17 @@ def skill_content_rejection_reasons(text: str) -> list[str]:
     if len(words) < MIN_BODY_WORDS:
         reasons.append("too-few-body-words")
 
-    body_lower = body.lower()
     has_structure = "##" in body or re.search(r"^\s*[-*]\s+\S+", body, re.MULTILINE)
     has_name = bool(FRONTMATTER_NAME_RE.search(normalized))
-    has_cue = any(cue in body_lower for cue in BODY_CUES)
     if not (has_name or has_structure):
         reasons.append("no-skill-structure")
-    if not has_cue:
-        reasons.append("no-instruction-cues")
+    # Deliberately no check for self-declared "use when"/imperative phrasing
+    # (formerly BODY_CUES/no-instruction-cues) here. Whether and when a skill
+    # gets recommended is a call the indexing pipeline makes -- via
+    # capability_summary, which is explicitly prompted to name triggers/tasks
+    # -- not a requirement that the skill's own prose already contains the
+    # right verbs. Plenty of legitimate skills (service docs, MCP manifests)
+    # describe what they are without ever writing "use when the user...".
     return reasons
 
 

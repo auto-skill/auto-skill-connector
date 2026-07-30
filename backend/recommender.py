@@ -555,7 +555,7 @@ async def fetch_skills_by_urls(client: httpx.AsyncClient, urls: list[str]) -> li
         params={
             "select": (
                 "id,name,description,source,url,tags,risk_score,risk_flags,raw,"
-                "content_hash,quality_status,quality_score,platforms,category"
+                "content_hash,quality_status,quality_score,platforms,category,capability_summary"
             ),
             "url": f"in.({quoted})",
         },
@@ -817,7 +817,12 @@ def _public_skill(row: dict | None) -> dict | None:
         "id": row.get("id"),
         "slug": row.get("name"),
         "name": row.get("name"),
-        "summary": row.get("description"),
+        # capability_summary is the LLM-derived read of what the skill actually
+        # does (task/triggers/capabilities) -- prefer it over the raw registry
+        # blurb whenever indexing has produced one; fall back to description
+        # for rows that haven't been through stage 3 yet (or never will be,
+        # e.g. rejected content with no summary computed).
+        "summary": row.get("capability_summary") or row.get("description"),
         "description": row.get("description"),
         "source": row.get("source"),
         "source_url": row.get("url"),

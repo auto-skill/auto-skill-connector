@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import unittest
+from unittest.mock import patch
 
+import scraper
 from scraper import (
     RunBudget,
     _format_mcp_tools,
+    _is_probably_binary,
     _skill_bundle_sibling_paths,
+    curate_skill_bundle,
     fetch_github_raw_content,
     fetch_smithery_tools,
     scan_skill,
@@ -14,23 +18,34 @@ from scraper import (
 
 
 class _FakeResponse:
-    def __init__(self, status_code: int, text: str = "", json_data=None):
+    def __init__(self, status_code: int, text: str = "", json_data=None, content: bytes | None = None, headers=None):
         self.status_code = status_code
         self.text = text
+        self.content = content if content is not None else text.encode("utf-8")
         self._json = json_data
+        self.headers = headers or {}
 
     def json(self):
         return self._json
 
 
 class _FakeClient:
-    """Maps exact URLs to canned responses; missing URLs 404."""
+    """Maps exact URLs to canned responses; missing URLs 404. A response may
+    also be a callable(kwargs) -> _FakeResponse, for endpoints (like Ollama's
+    /api/chat) where the same URL serves different models/requests."""
 
     def __init__(self, responses: dict):
         self._responses = responses
 
+    def _resolve(self, url: str, **kwargs):
+        resp = self._responses.get(url, _FakeResponse(404))
+        return resp(kwargs) if callable(resp) else resp
+
     async def get(self, url: str, **kwargs):
-        return self._responses.get(url, _FakeResponse(404))
+        return self._resolve(url, **kwargs)
+
+    async def post(self, url: str, **kwargs):
+        return self._resolve(url, **kwargs)
 
 
 VALID_CONTENT = """---
@@ -95,44 +110,64 @@ class ScraperSafetyTests(unittest.TestCase):
         self.assertEqual(_format_mcp_tools([]), "")
         self.assertEqual(_format_mcp_tools(None), "")
 
-    def test_skill_bundle_sibling_paths_picks_md_and_bundle_dirs_only(self) -> None:
+    def test_skill_bundle_sibling_paths_includes_everything_under_dir_unfiltered(self) -> None:
         all_paths = [
             "skills/foo/SKILL.md",
             "skills/foo/reference.md",
             "skills/foo/scripts/run.py",
             "skills/foo/resources/template.xlsx",
-            "skills/foo/unrelated.bin",
+            "skills/foo/anything.bin",
             "skills/bar/SKILL.md",
         ]
 
         siblings = _skill_bundle_sibling_paths("skills/foo", "skills/foo/SKILL.md", all_paths)
 
-        self.assertIn("skills/foo/reference.md", siblings)
-        self.assertIn("skills/foo/scripts/run.py", siblings)
-        self.assertIn("skills/foo/resources/template.xlsx", siblings)
-        self.assertNotIn("skills/foo/unrelated.bin", siblings)
+        self.assertEqual(
+            set(siblings),
+            {
+                "skills/foo/reference.md",
+                "skills/foo/scripts/run.py",
+                "skills/foo/resources/template.xlsx",
+                "skills/foo/anything.bin",
+            },
+        )
         self.assertNotIn("skills/foo/SKILL.md", siblings)
         self.assertNotIn("skills/bar/SKILL.md", siblings)
 
-    def test_fetch_github_raw_content_concatenates_manifest_and_readme(self) -> None:
+    def test_fetch_github_raw_content_lists_full_tree_and_fetches_everything(self) -> None:
         client = _FakeClient({
-            "https://raw.githubusercontent.com/acme/tool/HEAD/SKILL.md": _FakeResponse(200, "SKILL BODY"),
+            "https://api.github.com/repos/acme/tool/git/trees/HEAD": _FakeResponse(
+                200,
+                json_data={"tree": [
+                    {"path": "SKILL.md", "type": "blob"},
+                    {"path": "README.md", "type": "blob"},
+                    {"path": "assets/logo.png", "type": "blob"},
+                    {"path": "docs", "type": "tree"},  # directories are not blobs, must be skipped
+                ]},
+            ),
+            "https://raw.githubusercontent.com/acme/tool/HEAD/SKILL.md": _FakeResponse(200, "SKILL BODY " * 20),
             "https://raw.githubusercontent.com/acme/tool/HEAD/README.md": _FakeResponse(200, "README BODY " * 20),
+            "https://raw.githubusercontent.com/acme/tool/HEAD/assets/logo.png": _FakeResponse(
+                200, content=b"\x89PNG\r\n\x1a\n\x00\x00\x00"
+            ),
         })
 
         content = asyncio.run(fetch_github_raw_content(client, "acme", "tool"))
 
         self.assertIn("SKILL BODY", content)
         self.assertIn("README BODY", content)
+        self.assertIn("## assets/logo.png", content)
+        self.assertIn("[binary file, not indexed]", content)
+        self.assertNotIn("docs", content)
 
-    def test_fetch_github_raw_content_readme_only_when_no_manifest(self) -> None:
+    def test_fetch_github_raw_content_empty_tree_returns_empty(self) -> None:
         client = _FakeClient({
-            "https://raw.githubusercontent.com/acme/tool/HEAD/README.md": _FakeResponse(200, "README BODY " * 20),
+            "https://api.github.com/repos/acme/tool/git/trees/HEAD": _FakeResponse(404),
         })
 
         content = asyncio.run(fetch_github_raw_content(client, "acme", "tool"))
 
-        self.assertIn("README BODY", content)
+        self.assertEqual(content, "")
 
     def test_fetch_smithery_tools_parses_detail_endpoint(self) -> None:
         client = _FakeClient({
@@ -192,7 +227,9 @@ class ScraperSafetyTests(unittest.TestCase):
             "name before generating the final evidence packet for compliance review.\n"
         )
         client = _FakeClient({
-            "https://raw.githubusercontent.com/acme/tool/HEAD/SKILL.md": _FakeResponse(404),
+            "https://api.github.com/repos/acme/tool/git/trees/HEAD": _FakeResponse(
+                200, json_data={"tree": [{"path": "README.md", "type": "blob"}]},
+            ),
             "https://raw.githubusercontent.com/acme/tool/HEAD/README.md": _FakeResponse(200, readme),
         })
         skill = {
@@ -210,6 +247,158 @@ class ScraperSafetyTests(unittest.TestCase):
         # README was actually followed and fetched via repo_url, not skipped.
         self.assertNotEqual(skill["content_hash"], "")
         self.assertEqual(skill["quality_status"], "metadata_only")
+
+    def test_is_probably_binary_detects_by_extension_and_bytes(self) -> None:
+        self.assertTrue(_is_probably_binary("assets/logo.png", b"\x89PNG\r\n\x1a\n"))
+        self.assertTrue(_is_probably_binary("data.bin", b"plain text but binary extension"))
+        self.assertTrue(_is_probably_binary("weird_file", b"\x00\x01\x02\x03"))
+        self.assertFalse(_is_probably_binary("README.md", b"# Hello\n\nJust plain text."))
+
+    def test_curate_skill_bundle_returns_model_output_on_success(self) -> None:
+        ollama_chat = f"{scraper.OLLAMA_URL}/api/chat"
+        client = _FakeClient({
+            ollama_chat: _FakeResponse(
+                200, json_data={"message": {"content": "## SKILL.md\n\ncurated body"}}
+            ),
+        })
+
+        curated = asyncio.run(curate_skill_bundle(client, "Acme Tool", "desc", "## SKILL.md\n\nraw noisy body"))
+
+        self.assertEqual(curated, "## SKILL.md\n\ncurated body")
+
+    def test_curate_skill_bundle_falls_back_to_raw_on_failure(self) -> None:
+        ollama_chat = f"{scraper.OLLAMA_URL}/api/chat"
+        client = _FakeClient({ollama_chat: _FakeResponse(500)})
+        raw = "## SKILL.md\n\nraw noisy body"
+
+        curated = asyncio.run(curate_skill_bundle(client, "Acme Tool", "desc", raw))
+
+        self.assertEqual(curated, raw)
+
+    def test_curate_skill_bundle_empty_input_short_circuits(self) -> None:
+        client = _FakeClient({})
+
+        curated = asyncio.run(curate_skill_bundle(client, "Acme Tool", "desc", "   "))
+
+        self.assertEqual(curated, "   ")
+
+    def test_scan_skill_runs_curation_and_capability_summary_inline(self) -> None:
+        valid_content = VALID_CONTENT
+        ollama_chat = f"{scraper.OLLAMA_URL}/api/chat"
+
+        def respond(kwargs):
+            model = kwargs["json"]["model"]
+            if model == scraper.CURATION_MODEL:
+                return _FakeResponse(200, json_data={"message": {"content": valid_content}})
+            return _FakeResponse(
+                200,
+                json_data={"message": {"content": '{"summary": "Builds spreadsheet reports with formulas."}'}},
+            )
+
+        client = _FakeClient({ollama_chat: respond})
+        skill = {
+            "name": "spreadsheet-reporter",
+            "description": "Build spreadsheet reports with formulas and charts.",
+            "source": "github_skill_file",
+            "url": "https://github.com/example/repo/blob/main/SKILL.md",
+            "_content": valid_content,
+        }
+
+        fake_vector = [0.0] * 384
+        with patch.object(scraper, "embed_texts", return_value=[fake_vector]) as mock_embed:
+            asyncio.run(scan_skill(client, skill))
+
+        self.assertEqual(skill["quality_status"], "active")
+        self.assertEqual(skill["capability_summary"], "Builds spreadsheet reports with formulas.")
+        self.assertEqual(skill["embedding"], fake_vector)
+        self.assertIsNotNone(skill["embedded_at"])
+        mock_embed.assert_called_once()
+
+    def test_scan_skill_skips_stage3_when_summary_already_present_and_content_unchanged(self) -> None:
+        valid_content = VALID_CONTENT
+        from quality import canonicalize_skill_content, content_hash as quality_content_hash
+
+        skill = {
+            "name": "spreadsheet-reporter",
+            "description": "Build spreadsheet reports with formulas and charts.",
+            "source": "github_skill_file",
+            "url": "https://github.com/example/repo/blob/main/SKILL.md",
+            "content_hash": quality_content_hash(canonicalize_skill_content(valid_content)),
+            "capability_summary": "Already summarized.",
+            "_content": valid_content,
+        }
+
+        with patch.object(scraper, "generate_capability_summary") as mock_summary:
+            asyncio.run(scan_skill(None, skill))
+
+        mock_summary.assert_not_called()
+        self.assertEqual(skill["capability_summary"], "Already summarized.")
+
+    def test_scan_skill_indexes_metadata_only_mcp_server_stage3(self) -> None:
+        """The active gate widened to quality.ACTIVE_STATUSES: a real MCP
+        server (no SKILL.md frontmatter, so it can never be more than
+        metadata_only) must still get a capability_summary and embedding --
+        it's just never eligible for full/inject tier (see
+        test_quality_routing.test_metadata_only_never_full_routes)."""
+        ollama_chat = f"{scraper.OLLAMA_URL}/api/chat"
+
+        def respond(kwargs):
+            model = kwargs["json"]["model"]
+            if model == scraper.CURATION_MODEL:
+                return _FakeResponse(200, json_data={"message": {"content": kwargs["json"]["messages"][1]["content"]}})
+            return _FakeResponse(
+                200,
+                json_data={"message": {"content": '{"summary": "Lets agents query survey results over HTTP."}'}},
+            )
+
+        client = _FakeClient({
+            ollama_chat: respond,
+            "https://registry.smithery.ai/servers/acme-tool": _FakeResponse(
+                200,
+                json_data={"tools": [
+                    {
+                        "name": "get_results",
+                        "description": (
+                            "Fetch survey results for a project, including NPS, CSAT, CES, and "
+                            "PMF scores, individual responses, and shareable links to dashboards."
+                        ),
+                    },
+                    {
+                        "name": "list_surveys",
+                        "description": "List every survey configured for the current project, with status and response counts.",
+                    },
+                ]},
+            ),
+        })
+        skill = {
+            "name": "Acme Surveys",
+            "description": "An MCP server for surveys.",
+            "source": "smithery_registry",
+            "url": "https://smithery.ai/server/acme-tool",
+            "raw": {"qualified_name": "acme-tool"},
+        }
+
+        fake_vector = [0.0] * 384
+        with patch.object(scraper, "embed_texts", return_value=[fake_vector]) as mock_embed:
+            asyncio.run(scan_skill(client, skill))
+
+        self.assertEqual(skill["quality_status"], "metadata_only")
+        self.assertEqual(skill["capability_summary"], "Lets agents query survey results over HTTP.")
+        self.assertEqual(skill["embedding"], fake_vector)
+        self.assertIsNotNone(skill["embedded_at"])
+        mock_embed.assert_called_once()
+
+    def test_mark_content_duplicates_covers_metadata_only(self) -> None:
+        a = {"content_hash": "same-hash", "quality_status": "metadata_only", "quality_score": 40}
+        b = {"content_hash": "same-hash", "quality_status": "metadata_only", "quality_score": 80}
+
+        scraper.mark_content_duplicates([a, b])
+
+        # pick_canonical prefers the higher quality_score; the loser is marked
+        # a duplicate. Both being metadata_only must not exempt them from dedup.
+        statuses = {id(a): a.get("quality_status"), id(b): b.get("quality_status")}
+        self.assertIn("duplicate", (a.get("quality_status"), b.get("quality_status")))
+        self.assertNotEqual(a.get("quality_status"), b.get("quality_status"))
 
 
 if __name__ == "__main__":
