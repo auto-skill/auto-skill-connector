@@ -5,9 +5,11 @@ skills.sh IDs). The evaluator compares original-query retrieval with the
 Auto-Skill structured-query union, and reports retrieval quality plus audit
 coverage. It never sends benchmark IDs, labels, or solution text to skills.sh.
 
-The public skills.sh API requires a Vercel OIDC bearer token. When it is not
-configured this script emits a machine-readable ``skipped`` report and exits
-successfully; callers must not interpret that as a routing win.
+The authenticated skills.sh API requires a Vercel OIDC bearer token. Without
+one, the evaluator uses the public website search endpoint in
+``public_search_only`` mode: retrieval can be measured, but detail/audit
+coverage is expected to be unavailable. If even public search fails, it emits
+``skipped`` rather than fabricating a result.
 """
 
 from __future__ import annotations
@@ -114,6 +116,7 @@ async def _evaluate(catalog: SkillsShCatalog, cases: list[dict[str, Any]], limit
     return {
         "status": "complete" if len(labeled) >= minimum_labeled else "insufficient_labels",
         "backend": "skills_sh",
+        "access_mode": "authenticated" if catalog.configured else "public_search_only",
         "case_count": len(cases),
         "labeled_case_count": len(labeled),
         "metrics": {
@@ -139,9 +142,6 @@ async def _evaluate(catalog: SkillsShCatalog, cases: list[dict[str, Any]], limit
 async def main(args: argparse.Namespace) -> int:
     cases = _read_cases(args.cases)
     catalog = SkillsShCatalog()
-    if not catalog.configured:
-        print(json.dumps({"status": "skipped", "reason": "SKILLS_SH_OIDC_TOKEN or VERCEL_OIDC_TOKEN is not configured", "case_count": len(cases)}, indent=2))
-        return 0
     try:
         report = await _evaluate(catalog, cases, max(1, min(args.limit, 12)))
     except SkillsShCatalogError as exc:

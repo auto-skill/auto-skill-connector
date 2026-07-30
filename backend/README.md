@@ -201,6 +201,10 @@ bytes, paths, hashes, licenses, roles, references, and source aliases remain
 separate from the single entrypoint-first 1,500-character retrieval record, so
 package integrity does not imply all-file embedding.
 
+When no OIDC token is available, the live gate uses the public website search
+endpoint only. Those rows are explicitly `metadata_only` hints with unknown
+audit state and no content hash; they cannot become capsules or full routes.
+
 ## Evals
 
 Track retrieval quality, route latency, and token churn across changes:
@@ -228,9 +232,15 @@ router/corpus version.
 `bench.skills_sh_live_eval` reports original-query versus structured-query
 hit@1/hit@5, paired wins/losses, paired bootstrap confidence intervals, audit
 coverage, and latency. The checked-in cases use stable skills.sh IDs as
-held-out labels; expand the set before using it as a production gate. Without the
-documented skills.sh OIDC token it emits `status: skipped`; that is a missing
-measurement, not a routing improvement.
+held-out labels; expand the set before using it as a production gate. Without
+the documented OIDC token it runs in `public_search_only` mode and keeps all
+results metadata-only; if even the public search endpoint is unavailable, it
+emits `status: skipped`.
+
+The first live public-search pilot is retained at
+`bench/skills_sh_live_20260729_public.json`. It recorded zero hits for the
+three preselected IDs; those IDs were not human-verified against the current
+catalog, so the artifact is a diagnostic, not a success/failure claim.
 
 Route benchmark cases live in `evals/routes.jsonl`. Add false positives,
 direct hits, ambiguous matches, and conversation/meta negatives so behavior

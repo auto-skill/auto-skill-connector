@@ -3,14 +3,39 @@ from __future__ import annotations
 import asyncio
 import json
 
+from skills_sh_catalog import SkillsShCatalogError
+import bench.skills_sh_live_eval as live_eval
 from bench.skills_sh_live_eval import _read_cases, _rrf_union, main
 
 
-def test_live_eval_skips_without_oidc_token(tmp_path, monkeypatch, capsys) -> None:
+def test_live_eval_uses_public_discovery_without_oidc_token(tmp_path, monkeypatch, capsys) -> None:
     cases = tmp_path / "cases.jsonl"
     cases.write_text(json.dumps({"query": "create a spreadsheet report"}) + "\n", encoding="utf-8")
-    monkeypatch.delenv("SKILLS_SH_OIDC_TOKEN", raising=False)
-    monkeypatch.delenv("VERCEL_OIDC_TOKEN", raising=False)
+    class PublicCatalog:
+        configured = False
+
+        async def retrieve(self, query, limit):
+            return [{"id": "acme/reporting", "audit_status": "unknown"}]
+
+    monkeypatch.setattr(live_eval, "SkillsShCatalog", PublicCatalog)
+    args = type("Args", (), {"cases": cases, "limit": 5, "output": None})()
+    assert asyncio.run(main(args)) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "insufficient_labels"
+    assert result["access_mode"] == "public_search_only"
+
+
+def test_live_eval_skips_when_public_discovery_is_unavailable(tmp_path, monkeypatch, capsys) -> None:
+    cases = tmp_path / "cases.jsonl"
+    cases.write_text(json.dumps({"query": "create a spreadsheet report"}) + "\n", encoding="utf-8")
+
+    class BrokenCatalog:
+        configured = False
+
+        async def retrieve(self, query, limit):
+            raise SkillsShCatalogError("public search unavailable")
+
+    monkeypatch.setattr(live_eval, "SkillsShCatalog", BrokenCatalog)
     args = type("Args", (), {"cases": cases, "limit": 5, "output": None})()
     assert asyncio.run(main(args)) == 0
     result = json.loads(capsys.readouterr().out)

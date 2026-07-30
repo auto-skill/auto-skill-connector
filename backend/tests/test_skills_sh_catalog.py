@@ -112,6 +112,41 @@ def test_missing_audit_is_not_treated_as_safe() -> None:
     assert "audit-unavailable" in rows[0]["risk_flags"]
 
 
+def test_public_search_fallback_is_metadata_only_hint() -> None:
+    def public_transport(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/search"
+        return httpx.Response(
+            200,
+            json={
+                "query": "react landing page",
+                "searchType": "semantic",
+                "skills": [
+                    {
+                        "id": "acme/skills/landing-page",
+                        "skillId": "landing-page",
+                        "name": "landing-page",
+                        "source": "acme/skills",
+                        "installs": 42,
+                    }
+                ],
+                "count": 1,
+            },
+            request=request,
+        )
+
+    catalog = SkillsShCatalog(
+        api_url="https://skills.test/api/v1",
+        public_search_url="https://skills.test/api/search",
+        transport=httpx.MockTransport(public_transport),
+    )
+    rows = asyncio.run(catalog.retrieve("design a React landing page", limit=1))
+    assert rows[0]["id"] == "acme/skills/landing-page"
+    assert rows[0]["quality_status"] == "metadata_only"
+    assert rows[0]["audit_status"] == "unknown"
+    assert rows[0]["content_hash"] is None
+    assert rows[0]["install_url"] == "acme/skills"
+
+
 def test_catalog_reads_rotating_token_from_environment(monkeypatch) -> None:
     monkeypatch.delenv("SKILLS_SH_OIDC_TOKEN", raising=False)
     monkeypatch.setenv("VERCEL_OIDC_TOKEN", "rotated-token")

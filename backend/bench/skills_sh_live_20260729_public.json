@@ -1,0 +1,106 @@
+{
+  "report_kind": "live-public-search-pilot",
+  "label_status": "expected_ids_not_human_verified",
+  "interpretation": "This is a discovery-path pilot, not evidence of task success. Zero recall may reflect stale or overly narrow expected IDs.",
+  "status": "complete",
+  "backend": "skills_sh",
+  "access_mode": "public_search_only",
+  "case_count": 3,
+  "labeled_case_count": 3,
+  "metrics": {
+    "original_hit_at_1": 0.0,
+    "dual_hit_at_1": 0.0,
+    "original_hit_at_5": 0.0,
+    "dual_hit_at_5": 0.0,
+    "delta_at_1_pp": 0.0,
+    "delta_at_5_pp": 0.0,
+    "paired_bootstrap_95ci_at_1_pp": [
+      0.0,
+      0.0
+    ],
+    "paired_bootstrap_95ci_at_5_pp": [
+      0.0,
+      0.0
+    ],
+    "paired_wins_at_1": 0,
+    "paired_losses_at_1": 0,
+    "paired_ties_at_1": 3,
+    "audit_unknown_rows": 15,
+    "audit_fail_rows": 0
+  },
+  "elapsed_ms": 8122.44,
+  "cases": [
+    {
+      "query": "build a React Native app with Expo",
+      "compiled_query": "react build compile create implement native app expo",
+      "original_ids": [
+        "expo/skills/expo-brownfield",
+        "clerk/skills/clerk-expo",
+        "auth0/agent-skills/auth0-expo",
+        "minimax-ai/skills/react-native-dev",
+        "pproenca/dot-skills/expo-react-native-performance"
+      ],
+      "dual_ids": [
+        "clerk/skills/clerk-expo",
+        "pproenca/dot-skills/expo-react-native-performance",
+        "expo/skills/expo-brownfield",
+        "affaan-m/everything-claude-code/react-native-patterns",
+        "auth0/agent-skills/auth0-expo"
+      ],
+      "original_hit_at_1": false,
+      "dual_hit_at_1": false,
+      "original_hit_at_5": false,
+      "dual_hit_at_5": false,
+      "audit_unknown": 5,
+      "audit_fail": 0
+    },
+    {
+      "query": "find a reusable skill for an AI agent",
+      "compiled_query": "search retrieve find reusable skill agent",
+      "original_ids": [
+        "ulpi-io/skills/find-agents",
+        "letta-ai/letta-code/finding-agents",
+        "prulloac/agent-skills/reusable-commands",
+        "arthurzakirov/proofstack/context-to-capability-framework",
+        "echoleesong/claude-skills-plugin/skill-lookup"
+      ],
+      "dual_ids": [
+        "echoleesong/claude-skills-plugin/skill-lookup",
+        "google-deepmind/science-skills/literature-search-arxiv",
+        "ulpi-io/skills/find-agents",
+        "letta-ai/letta-code/finding-agents",
+        "skills.volces.com/memory-manager"
+      ],
+      "original_hit_at_1": false,
+      "dual_hit_at_1": false,
+      "original_hit_at_5": false,
+      "dual_hit_at_5": false,
+      "audit_unknown": 5,
+      "audit_fail": 0
+    },
+    {
+      "query": "design a high-converting landing page",
+      "compiled_query": "web page design high-converting landing",
+      "original_ids": [
+        "mengto/skills/landing-page",
+        "kuse-ai/kuse-skills/landing-page-creator",
+        "shipshitdev/library/funnel-architect",
+        "bear2u/my-skills/landing-page-guide",
+        "borghei/claude-skills/free-tool-strategy"
+      ],
+      "dual_ids": [
+        "mengto/skills/landing-page",
+        "kuse-ai/kuse-skills/landing-page-creator",
+        "postplusai/postplus-skills/xiaohongshu-card-notes",
+        "scalecommerce/skills/landing-page-guide",
+        "shipshitdev/library/funnel-architect"
+      ],
+      "original_hit_at_1": false,
+      "dual_hit_at_1": false,
+      "original_hit_at_5": false,
+      "dual_hit_at_5": false,
+      "audit_unknown": 5,
+      "audit_fail": 0
+    }
+  ]
+}

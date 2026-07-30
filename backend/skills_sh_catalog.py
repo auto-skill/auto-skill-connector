@@ -26,6 +26,7 @@ from quality import content_hash, evaluate_quality
 
 
 DEFAULT_API_URL = "https://skills.sh/api/v1"
+DEFAULT_PUBLIC_SEARCH_URL = "https://skills.sh/api/search"
 DEFAULT_TIMEOUT_SECONDS = 8.0
 DEFAULT_SEARCH_TTL_SECONDS = 45.0
 DEFAULT_DETAIL_TTL_SECONDS = 300.0
@@ -110,6 +111,7 @@ class SkillsShCatalog:
         self,
         *,
         api_url: str | None = None,
+        public_search_url: str | None = None,
         oidc_token: str | None = None,
         timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
         search_ttl_seconds: float = DEFAULT_SEARCH_TTL_SECONDS,
@@ -118,6 +120,9 @@ class SkillsShCatalog:
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self.api_url = (api_url or os.getenv("SKILLS_SH_API_URL", DEFAULT_API_URL)).rstrip("/")
+        self.public_search_url = public_search_url or os.getenv(
+            "SKILLS_SH_PUBLIC_SEARCH_URL", DEFAULT_PUBLIC_SEARCH_URL
+        )
         self._explicit_oidc_token = oidc_token
         self.timeout_seconds = max(1.0, float(timeout_seconds))
         self.search_ttl_seconds = max(0.0, float(search_ttl_seconds))
@@ -187,14 +192,65 @@ class SkillsShCatalog:
         if len(query) < 2:
             return []
         limit = max(1, min(int(limit), MAX_SEARCH_LIMIT))
-        cache_key = f"{query.casefold()}::{limit}"
+        cache_key = f"{query.casefold()}::{limit}::{'auth' if self.configured else 'public'}"
         cached = self._cached("search", cache_key)
         if cached is not None:
             return [dict(item) for item in cached]
-        payload = await self._get("skills/search", params={"q": query, "limit": str(limit)})
-        data = payload.get("data")
+        try:
+            payload = await self._get("skills/search", params={"q": query, "limit": str(limit)}) if self.configured else {}
+            data = payload.get("data")
+        except SkillsShCatalogError as exc:
+            if "authentication rejected" not in str(exc):
+                raise
+            data = None
+        if data is None:
+            payload = await self._public_search(query, limit)
+            data = payload.get("skills")
         rows = [dict(item) for item in data if isinstance(item, dict)] if isinstance(data, list) else []
+        if payload.get("skills") is not None:
+            rows = [self._public_listing_row(item) for item in rows]
         return [dict(item) for item in self._put("search", cache_key, rows, self.search_ttl_seconds)]
+
+    async def _public_search(self, query: str, limit: int) -> dict[str, Any]:
+        try:
+            async with httpx.AsyncClient(
+                transport=self.transport,
+                timeout=self.timeout_seconds,
+                follow_redirects=False,
+            ) as client:
+                response = await client.get(
+                    self.public_search_url,
+                    params={"q": query, "limit": str(limit)},
+                    headers={"Accept": "application/json"},
+                )
+        except (httpx.HTTPError, OSError) as exc:
+            raise SkillsShCatalogError(f"skills.sh public search failed: {type(exc).__name__}") from exc
+        if response.status_code >= 400:
+            raise SkillsShCatalogError(f"skills.sh public search returned HTTP {response.status_code}")
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise SkillsShCatalogError("skills.sh public search returned invalid JSON") from exc
+        return payload if isinstance(payload, dict) else {}
+
+    @staticmethod
+    def _public_listing_row(item: dict[str, Any]) -> dict[str, Any]:
+        skill_id = str(item.get("id") or "").strip()
+        source = str(item.get("source") or "").strip()
+        skill_name = str(item.get("name") or item.get("skillId") or skill_id.rsplit("/", 1)[-1])
+        install_url = source if (source.startswith(("http://", "https://")) or "/" in source) else ""
+        return {
+            "id": skill_id,
+            "slug": str(item.get("skillId") or skill_name),
+            "name": skill_name,
+            "source": source,
+            "installs": item.get("installs"),
+            "sourceType": "github" if "/" in source else "well-known",
+            "installUrl": install_url,
+            "url": f"https://skills.sh/{skill_id}" if skill_id else "",
+            "description": str(item.get("description") or ""),
+            "_public_search_only": True,
+        }
 
     async def detail(self, skill_id: str) -> dict[str, Any] | None:
         skill_id = _stable_skill_id({"id": skill_id})
@@ -230,12 +286,19 @@ class SkillsShCatalog:
         """Search, hydrate, and audit a bounded skills.sh shortlist."""
         listing = await self.search(query, limit=max(limit, 10))
         shortlist = listing[: min(max(1, int(limit)), MAX_DETAIL_CANDIDATES)]
-        details = await asyncio.gather(*(self.detail(_stable_skill_id(item)) for item in shortlist))
-        audits = await asyncio.gather(*(self.audit(_stable_skill_id(item)) for item in shortlist))
+        detail_jobs = [
+            self.detail(_stable_skill_id(item)) if not item.get("_public_search_only") else asyncio.sleep(0, result=None)
+            for item in shortlist
+        ]
+        audit_jobs = [
+            self.audit(_stable_skill_id(item)) if not item.get("_public_search_only") else asyncio.sleep(0, result=None)
+            for item in shortlist
+        ]
+        details = await asyncio.gather(*detail_jobs)
+        audits = await asyncio.gather(*audit_jobs)
         rows: list[dict[str, Any]] = []
         for rank, (listing_item, detail, partner_audits) in enumerate(zip(shortlist, details, audits)):
-            if not detail:
-                continue
+            detail = detail or {}
             files = detail.get("files") if isinstance(detail.get("files"), list) else []
             entrypoint, content = _entrypoint(files)
             if len(content) > MAX_CONTENT_CHARS:
@@ -296,6 +359,15 @@ class SkillsShCatalog:
             if content:
                 row["content_hash"] = content_hash(content)
             quality = evaluate_quality(row, content)
+            if not content:
+                # Public website search is a discovery-only lane. Keep the
+                # record visible as a hint even when detail/audit endpoints
+                # require OIDC, but never let missing bytes appear trusted.
+                quality["content_hash"] = None
+                quality["quality_status"] = "metadata_only"
+                quality["quality_reasons"] = sorted(
+                    set([*quality.get("quality_reasons", []), "detail-unavailable"])
+                )
             row.update(quality)
             # An audit failure is a hard reject even if the static quality
             # scorer considers the markdown well-formed.
