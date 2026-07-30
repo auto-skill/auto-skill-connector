@@ -228,6 +228,18 @@ search/detail/audit sequence. Mount the mirror on durable shared storage (or
 replace it with the deployment's shared catalog store) before scaling across
 API replicas; the normal user path should not call skills.sh per request.
 
+Warm the mirror after deployment with an authenticated, quota-bounded sync:
+
+```bash
+bash backend/deploy/sync-skills-sh.sh --view trending --pages 2 --max-skills 100
+```
+
+The job also includes the official curated set by default, skips fresh mirror
+rows on reruns, filters detected duplicates, and hydrates only a small batch
+of detail/audit records at a time. It requires `SKILLS_SH_OIDC_TOKEN` (or
+`VERCEL_OIDC_TOKEN`) in the deployment environment; tokenless public discovery
+is intentionally not treated as a trusted bulk-ingestion source.
+
 ## Evals
 
 Track retrieval quality, route latency, and token churn across changes:

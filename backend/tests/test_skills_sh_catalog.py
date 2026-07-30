@@ -202,6 +202,44 @@ def test_catalog_retries_transient_rate_limit() -> None:
     assert rows[0]["id"] == "acme/skills/reporting"
 
 
+def test_authenticated_catalog_exposes_bounded_sync_sources() -> None:
+    def sync_transport(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/skills"):
+            return httpx.Response(
+                200,
+                json={"data": [{"id": "acme/skills/reporting", "name": "Reporting"}]},
+                request=request,
+            )
+        if request.url.path.endswith("/skills/curated"):
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {
+                            "owner": "acme",
+                            "skills": [{"id": "acme/skills/official", "name": "Official"}],
+                        }
+                    ]
+                },
+                request=request,
+            )
+        return httpx.Response(404, request=request)
+
+    catalog = SkillsShCatalog(
+        api_url="https://skills.test/api/v1",
+        oidc_token="test-token",
+        mirror_enabled=False,
+        transport=httpx.MockTransport(sync_transport),
+    )
+
+    async def run() -> tuple[list[dict], list[dict]]:
+        return await catalog.leaderboard(per_page=500), await catalog.curated()
+
+    leaderboard, curated = asyncio.run(run())
+    assert leaderboard[0]["id"] == "acme/skills/reporting"
+    assert curated[0]["id"] == "acme/skills/official"
+
+
 def test_public_search_fallback_is_metadata_only_hint() -> None:
     def public_transport(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/search":

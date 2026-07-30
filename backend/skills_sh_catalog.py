@@ -389,6 +389,10 @@ class SkillsShCatalog:
             return []
         return await asyncio.to_thread(self._mirror.get_ids, ids, time.time())
 
+    async def cached_ids(self, ids: list[str]) -> list[dict[str, Any]]:
+        """Return mirror rows for a sync worker without an upstream call."""
+        return await self._mirror_ids(ids)
+
     async def _mirror_put(self, rows: list[dict[str, Any]]) -> None:
         if self._mirror is None or not rows:
             return
@@ -400,6 +404,17 @@ class SkillsShCatalog:
             expires_at=expires_at,
             stale_until=expires_at + self.mirror_stale_seconds,
         )
+
+    async def hydrate_listings(
+        self,
+        listings: list[dict[str, Any]],
+        limit: int = MAX_DETAIL_CANDIDATES,
+    ) -> list[dict[str, Any]]:
+        """Hydrate and persist a bounded listing batch for the sync worker."""
+        shortlist = [dict(item) for item in listings[: max(1, int(limit))]]
+        rows = await self._materialize(shortlist)
+        await self._mirror_put(rows)
+        return rows
 
     @property
     def configured(self) -> bool:
@@ -580,6 +595,41 @@ class SkillsShCatalog:
         except ValueError as exc:
             raise SkillsShCatalogError("skills.sh public search returned invalid JSON") from exc
         return payload if isinstance(payload, dict) else {}
+
+    async def leaderboard(
+        self,
+        *,
+        view: str = "trending",
+        page: int = 0,
+        per_page: int = 100,
+    ) -> list[dict[str, Any]]:
+        """Read one bounded page from the authenticated skills.sh catalog."""
+        if not self.configured:
+            raise SkillsShCatalogError("skills.sh sync requires an OIDC token")
+        payload = await self._get(
+            "skills",
+            params={
+                "view": str(view or "trending"),
+                "page": str(max(0, int(page))),
+                "per_page": str(max(1, min(int(per_page), 500))),
+            },
+        )
+        data = payload.get("data")
+        return [dict(item) for item in data if isinstance(item, dict)] if isinstance(data, list) else []
+
+    async def curated(self) -> list[dict[str, Any]]:
+        """Flatten the official curated owners into the common listing shape."""
+        if not self.configured:
+            raise SkillsShCatalogError("skills.sh sync requires an OIDC token")
+        payload = await self._get("skills/curated")
+        owners = payload.get("data")
+        rows: list[dict[str, Any]] = []
+        if isinstance(owners, list):
+            for owner in owners:
+                if not isinstance(owner, dict) or not isinstance(owner.get("skills"), list):
+                    continue
+                rows.extend(dict(item) for item in owner["skills"] if isinstance(item, dict))
+        return rows
 
     async def _public_page_metadata(self, skill_id: str) -> dict[str, Any]:
         values = await self._public_page_metadata_many([skill_id])
