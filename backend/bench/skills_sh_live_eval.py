@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from query_compiler import compile_intent_query, skills_sh_query
+from quality import rerank_candidates
 from skills_sh_catalog import SkillsShCatalog, SkillsShCatalogError
 
 
@@ -83,12 +84,12 @@ async def _evaluate(catalog: SkillsShCatalog, cases: list[dict[str, Any]], limit
     for case in cases:
         query = case["query"]
         intent = compile_intent_query(query)
-        original = await catalog.retrieve(query, limit=limit)
+        original = rerank_candidates(query, await catalog.retrieve(query, limit=limit))
         compiled_rows: list[dict[str, Any]] = []
         compiled_query = skills_sh_query(intent)
         if compiled_query and compiled_query != query:
             compiled_rows.extend(await catalog.retrieve(compiled_query, limit=limit))
-        dual = _rrf_union(original, compiled_rows, limit)
+        dual = rerank_candidates(query, _rrf_union(original, compiled_rows, limit))[:limit]
         expected = set(case["expected_ids"])
         details.append(
             {
