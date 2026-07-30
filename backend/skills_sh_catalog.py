@@ -18,6 +18,7 @@ import time
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import quote
+from pathlib import Path
 
 import httpx
 
@@ -117,9 +118,7 @@ class SkillsShCatalog:
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self.api_url = (api_url or os.getenv("SKILLS_SH_API_URL", DEFAULT_API_URL)).rstrip("/")
-        self.oidc_token = oidc_token if oidc_token is not None else (
-            os.getenv("SKILLS_SH_OIDC_TOKEN", "") or os.getenv("VERCEL_OIDC_TOKEN", "")
-        )
+        self._explicit_oidc_token = oidc_token
         self.timeout_seconds = max(1.0, float(timeout_seconds))
         self.search_ttl_seconds = max(0.0, float(search_ttl_seconds))
         self.detail_ttl_seconds = max(0.0, float(detail_ttl_seconds))
@@ -129,8 +128,20 @@ class SkillsShCatalog:
 
     @property
     def configured(self) -> bool:
-        """The documented API requires a Vercel OIDC bearer token."""
-        return bool(self.oidc_token)
+        """The documented API requires a current Vercel OIDC bearer token."""
+        return bool(self._current_oidc_token())
+
+    def _current_oidc_token(self) -> str:
+        if self._explicit_oidc_token is not None:
+            return str(self._explicit_oidc_token).strip()
+        token = os.getenv("SKILLS_SH_OIDC_TOKEN", "") or os.getenv("VERCEL_OIDC_TOKEN", "")
+        token_file = os.getenv("SKILLS_SH_OIDC_TOKEN_FILE", "").strip()
+        if not token and token_file:
+            try:
+                token = Path(token_file).read_text(encoding="utf-8").strip()
+            except OSError:
+                token = ""
+        return token.strip()
 
     def _cached(self, kind: str, key: str) -> Any | None:
         entry = self._cache.get((kind, key))
@@ -147,8 +158,9 @@ class SkillsShCatalog:
 
     async def _get(self, path: str, *, params: dict[str, str] | None = None) -> dict[str, Any]:
         headers = {"Accept": "application/json"}
-        if self.oidc_token:
-            headers["Authorization"] = f"Bearer {self.oidc_token}"
+        token = self._current_oidc_token()
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
         try:
             async with httpx.AsyncClient(
                 transport=self.transport,

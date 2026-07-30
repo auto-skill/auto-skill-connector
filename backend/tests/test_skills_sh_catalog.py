@@ -112,6 +112,15 @@ def test_missing_audit_is_not_treated_as_safe() -> None:
     assert "audit-unavailable" in rows[0]["risk_flags"]
 
 
+def test_catalog_reads_rotating_token_from_environment(monkeypatch) -> None:
+    monkeypatch.delenv("SKILLS_SH_OIDC_TOKEN", raising=False)
+    monkeypatch.setenv("VERCEL_OIDC_TOKEN", "rotated-token")
+    catalog = SkillsShCatalog(api_url="https://skills.test/api/v1")
+    assert catalog.configured is True
+    monkeypatch.delenv("VERCEL_OIDC_TOKEN")
+    assert catalog.configured is False
+
+
 def test_recommender_uses_live_catalog_before_local_store() -> None:
     class FakeCatalog:
         configured = True
