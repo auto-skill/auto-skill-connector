@@ -220,6 +220,14 @@ Authenticated detail and audit requests are bounded and retried on transient
 rate limit still causes the route or benchmark to abstain; it must not be
 treated as a successful safety check.
 
+Runtime routing is local-first once a skills.sh record has been hydrated. The
+record is persisted in the SQLite mirror at `SKILLS_SH_MIRROR_DB_PATH`, with a
+bounded stale window controlled by `SKILLS_SH_MIRROR_STALE_SECONDS`. Identical
+cold queries are single-flighted, so concurrent users share one upstream
+search/detail/audit sequence. Mount the mirror on durable shared storage (or
+replace it with the deployment's shared catalog store) before scaling across
+API replicas; the normal user path should not call skills.sh per request.
+
 ## Evals
 
 Track retrieval quality, route latency, and token churn across changes:

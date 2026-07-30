@@ -11,10 +11,13 @@ returned by this module as an active instruction payload.
 from __future__ import annotations
 
 import asyncio
+from contextlib import contextmanager
 import hashlib
 import json
 import os
 import re
+import sqlite3
+import threading
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -38,6 +41,9 @@ DEFAULT_RETRY_BASE_SECONDS = max(0.0, float(os.getenv("SKILLS_SH_RETRY_BASE_SECO
 DEFAULT_MIN_REQUEST_INTERVAL_SECONDS = max(
     0.0, float(os.getenv("SKILLS_SH_MIN_REQUEST_INTERVAL_SECONDS", "0.1"))
 )
+DEFAULT_MIRROR_STALE_SECONDS = max(
+    0.0, float(os.getenv("SKILLS_SH_MIRROR_STALE_SECONDS", "3600"))
+)
 MAX_RETRY_DELAY_SECONDS = 30.0
 MAX_SEARCH_LIMIT = 50
 MAX_DETAIL_CANDIDATES = 12
@@ -59,6 +65,186 @@ class SkillsShCatalogError(RuntimeError):
 class _CacheEntry:
     expires_at: float
     value: Any
+
+
+class _PersistentMirror:
+    """Small shared SQLite mirror for already-hydrated skills.sh records.
+
+    The mirror is deliberately separate from the publisher corpus: every row
+    must carry the skills.sh ID and snapshot hash, and callers can distinguish
+    a cached upstream record from an arbitrary local skill.  A mounted SQLite
+    path (or a shared database volume) makes this useful across restarts and
+    replicas; the request path never needs to query skills.sh for a warm row.
+    """
+
+    _SCHEMA = """
+    CREATE TABLE IF NOT EXISTS skills_sh_mirror (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL DEFAULT '',
+        description TEXT NOT NULL DEFAULT '',
+        retrieval_text TEXT NOT NULL DEFAULT '',
+        row_json TEXT NOT NULL,
+        snapshot_hash TEXT,
+        updated_at REAL NOT NULL,
+        expires_at REAL NOT NULL,
+        stale_until REAL NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS skills_sh_mirror_expiry_idx
+        ON skills_sh_mirror(expires_at, stale_until);
+    CREATE VIRTUAL TABLE IF NOT EXISTS skills_sh_mirror_fts USING fts5(
+        id UNINDEXED, name, description, retrieval_text,
+        content='skills_sh_mirror', content_rowid='rowid'
+    );
+    CREATE TRIGGER IF NOT EXISTS skills_sh_mirror_ai AFTER INSERT ON skills_sh_mirror BEGIN
+        INSERT INTO skills_sh_mirror_fts(rowid, id, name, description, retrieval_text)
+        VALUES (new.rowid, new.id, new.name, new.description, new.retrieval_text);
+    END;
+    CREATE TRIGGER IF NOT EXISTS skills_sh_mirror_ad AFTER DELETE ON skills_sh_mirror BEGIN
+        INSERT INTO skills_sh_mirror_fts(skills_sh_mirror_fts, rowid, id, name, description, retrieval_text)
+        VALUES ('delete', old.rowid, old.id, old.name, old.description, old.retrieval_text);
+    END;
+    CREATE TRIGGER IF NOT EXISTS skills_sh_mirror_au AFTER UPDATE ON skills_sh_mirror BEGIN
+        INSERT INTO skills_sh_mirror_fts(skills_sh_mirror_fts, rowid, id, name, description, retrieval_text)
+        VALUES ('delete', old.rowid, old.id, old.name, old.description, old.retrieval_text);
+        INSERT INTO skills_sh_mirror_fts(rowid, id, name, description, retrieval_text)
+        VALUES (new.rowid, new.id, new.name, new.description, new.retrieval_text);
+    END;
+    """
+
+    def __init__(self, path: str) -> None:
+        self.path = str(path)
+        self._lock = threading.RLock()
+        if self.path != ":memory:":
+            Path(self.path).parent.mkdir(parents=True, exist_ok=True)
+        with self._connection() as conn:
+            conn.executescript(self._SCHEMA)
+
+    def _connect(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(self.path, timeout=30)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    @contextmanager
+    def _connection(self):
+        conn = self._connect()
+        try:
+            yield conn
+            conn.commit()
+        finally:
+            conn.close()
+
+    @staticmethod
+    def _fts_query(query: str) -> str:
+        tokens = re.findall(r"[a-z0-9]+", query.casefold())
+        return " OR ".join(f'"{token}"' for token in dict.fromkeys(tokens[:24]))
+
+    def search(self, query: str, limit: int, now: float) -> list[dict[str, Any]]:
+        fts_query = self._fts_query(query)
+        if not fts_query:
+            return []
+        with self._lock, self._connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT m.row_json, m.expires_at
+                FROM skills_sh_mirror_fts f
+                JOIN skills_sh_mirror m ON m.rowid = f.rowid
+                WHERE skills_sh_mirror_fts MATCH ? AND m.stale_until >= ?
+                ORDER BY CASE WHEN m.expires_at >= ? THEN 0 ELSE 1 END,
+                         bm25(skills_sh_mirror_fts), m.updated_at DESC
+                LIMIT ?
+                """,
+                (fts_query, now, now, max(1, int(limit))),
+            ).fetchall()
+        values: list[dict[str, Any]] = []
+        for row in rows:
+            try:
+                value = json.loads(row["row_json"])
+            except (TypeError, ValueError):
+                continue
+            if isinstance(value, dict):
+                value["retrieval_backend"] = "skills_sh_mirror"
+                fresh = float(row["expires_at"]) >= now
+                value["mirror_fresh"] = fresh
+                if not fresh:
+                    value["quality_status"] = "metadata_only"
+                    value["quality_reasons"] = sorted(
+                        set([*(value.get("quality_reasons") or []), "skills-sh-mirror-stale"])
+                    )
+                values.append(value)
+        return values
+
+    def get_ids(self, ids: list[str], now: float) -> list[dict[str, Any]]:
+        if not ids:
+            return []
+        marks = ",".join("?" for _ in ids)
+        with self._lock, self._connection() as conn:
+            rows = conn.execute(
+                f"SELECT id, row_json, expires_at FROM skills_sh_mirror "
+                f"WHERE id IN ({marks}) AND stale_until >= ?",
+                (*ids, now),
+            ).fetchall()
+        by_id: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            try:
+                value = json.loads(row["row_json"])
+            except (TypeError, ValueError):
+                continue
+            if isinstance(value, dict):
+                value["retrieval_backend"] = "skills_sh_mirror"
+                fresh = float(row["expires_at"]) >= now
+                value["mirror_fresh"] = fresh
+                if not fresh:
+                    value["quality_status"] = "metadata_only"
+                    value["quality_reasons"] = sorted(
+                        set([*(value.get("quality_reasons") or []), "skills-sh-mirror-stale"])
+                    )
+                by_id[str(row["id"])] = value
+        return [by_id[item] for item in ids if item in by_id]
+
+    def put(self, rows: list[dict[str, Any]], *, expires_at: float, stale_until: float) -> None:
+        values = []
+        for row in rows:
+            skill_id = str(row.get("skills_sh_id") or row.get("id") or "").strip()
+            if not skill_id:
+                continue
+            try:
+                row_json = json.dumps(row, separators=(",", ":"), ensure_ascii=False)
+            except (TypeError, ValueError):
+                continue
+            values.append(
+                (
+                    skill_id,
+                    str(row.get("name") or ""),
+                    str(row.get("description") or ""),
+                    str(row.get("retrieval_text") or ""),
+                    row_json,
+                    str(row.get("source_snapshot_hash") or "") or None,
+                    time.time(),
+                    expires_at,
+                    stale_until,
+                )
+            )
+        if not values:
+            return
+        with self._lock, self._connection() as conn:
+            conn.executemany(
+                """
+                INSERT INTO skills_sh_mirror
+                    (id, name, description, retrieval_text, row_json, snapshot_hash,
+                     updated_at, expires_at, stale_until)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    name=excluded.name,
+                    description=excluded.description,
+                    retrieval_text=excluded.retrieval_text,
+                    row_json=excluded.row_json,
+                    snapshot_hash=excluded.snapshot_hash,
+                    updated_at=excluded.updated_at,
+                    expires_at=excluded.expires_at,
+                    stale_until=excluded.stale_until
+                """,
+                values,
+            )
 
 
 def _frontmatter_fields(text: str) -> dict[str, str]:
@@ -115,7 +301,7 @@ def _stable_skill_id(item: dict[str, Any]) -> str:
 
 
 class SkillsShCatalog:
-    """Small async client with bounded TTL caches for skills.sh."""
+    """skills.sh client with a persistent mirror and bounded upstream access."""
 
     def __init__(
         self,
@@ -132,6 +318,9 @@ class SkillsShCatalog:
         max_retries: int = DEFAULT_MAX_RETRIES,
         retry_base_seconds: float = DEFAULT_RETRY_BASE_SECONDS,
         min_request_interval_seconds: float = DEFAULT_MIN_REQUEST_INTERVAL_SECONDS,
+        mirror_db_path: str | None = None,
+        mirror_enabled: bool | None = None,
+        mirror_stale_seconds: float = DEFAULT_MIRROR_STALE_SECONDS,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self.api_url = (api_url or os.getenv("SKILLS_SH_API_URL", DEFAULT_API_URL)).rstrip("/")
@@ -150,8 +339,26 @@ class SkillsShCatalog:
         self.max_retries = max(0, int(max_retries))
         self.retry_base_seconds = max(0.0, float(retry_base_seconds))
         self.min_request_interval_seconds = max(0.0, float(min_request_interval_seconds))
+        self.mirror_stale_seconds = max(0.0, float(mirror_stale_seconds))
         self.transport = transport
         self._cache: dict[tuple[str, str], _CacheEntry] = {}
+        # Tests and custom transports stay isolated unless they explicitly
+        # opt into persistence. The production singleton uses the configured
+        # shared path by default.
+        if mirror_enabled is None:
+            mirror_enabled = transport is None or bool(os.getenv("SKILLS_SH_MIRROR_DB_PATH"))
+        self.mirror_enabled = bool(mirror_enabled)
+        configured_path = mirror_db_path or os.getenv("SKILLS_SH_MIRROR_DB_PATH", "")
+        if not configured_path:
+            configured_path = os.getenv(
+                "LOCAL_DB_PATH", str(Path(__file__).with_name(".skills_sh_mirror.db"))
+            )
+        if "://" in str(configured_path):
+            # LOCAL_DB_PATH may be repurposed as a remote URL by deployments;
+            # never attempt to create a filesystem path from that value.
+            configured_path = str(Path(__file__).with_name(".skills_sh_mirror.db"))
+        self._mirror = _PersistentMirror(configured_path) if self.mirror_enabled else None
+        self._inflight: dict[tuple[str, str], asyncio.Task[Any]] = {}
         # A catalog can be used by tests across multiple asyncio.run calls;
         # bind the semaphore lazily to the loop that owns the request.
         self._request_semaphore: asyncio.Semaphore | None = None
@@ -159,6 +366,40 @@ class SkillsShCatalog:
         self._pacing_lock: asyncio.Lock | None = None
         self._pacing_loop: asyncio.AbstractEventLoop | None = None
         self._last_request_at = 0.0
+
+    async def _singleflight(self, key: tuple[str, str], factory: Any) -> Any:
+        """Share one in-flight refresh across concurrent user requests."""
+        task = self._inflight.get(key)
+        if task is None:
+            task = asyncio.create_task(factory())
+            self._inflight[key] = task
+        try:
+            return await task
+        finally:
+            if self._inflight.get(key) is task:
+                self._inflight.pop(key, None)
+
+    async def _mirror_search(self, query: str, limit: int) -> list[dict[str, Any]]:
+        if self._mirror is None:
+            return []
+        return await asyncio.to_thread(self._mirror.search, query, limit, time.time())
+
+    async def _mirror_ids(self, ids: list[str]) -> list[dict[str, Any]]:
+        if self._mirror is None:
+            return []
+        return await asyncio.to_thread(self._mirror.get_ids, ids, time.time())
+
+    async def _mirror_put(self, rows: list[dict[str, Any]]) -> None:
+        if self._mirror is None or not rows:
+            return
+        now = time.time()
+        expires_at = now + max(self.detail_ttl_seconds, self.audit_ttl_seconds, self.search_ttl_seconds)
+        await asyncio.to_thread(
+            self._mirror.put,
+            rows,
+            expires_at=expires_at,
+            stale_until=expires_at + self.mirror_stale_seconds,
+        )
 
     @property
     def configured(self) -> bool:
@@ -284,6 +525,17 @@ class SkillsShCatalog:
         cached = self._cached("search", cache_key)
         if cached is not None:
             return [dict(item) for item in cached]
+        # Search the persistent skills.sh mirror before spending upstream
+        # quota. ``search`` returns listing rows for API compatibility; the
+        # hydrated ``retrieve`` path below is what normally populates it.
+        mirrored = await self._mirror_search(query, limit)
+        if mirrored:
+            return [dict(item) for item in self._put("search", cache_key, mirrored, self.search_ttl_seconds)]
+        return await self._singleflight(
+            ("search", cache_key), lambda: self._search_remote(query, limit, cache_key)
+        )
+
+    async def _search_remote(self, query: str, limit: int, cache_key: str) -> list[dict[str, Any]]:
         try:
             payload = await self._get("skills/search", params={"q": query, "limit": str(limit)}) if self.configured else {}
             data = payload.get("data")
@@ -563,10 +815,43 @@ class SkillsShCatalog:
         return rows
 
     async def retrieve(self, query: str, limit: int = 8) -> list[dict[str, Any]]:
-        """Search, hydrate, and audit a bounded skills.sh shortlist."""
-        listing = await self.search(query, limit=max(limit, 10))
-        shortlist = listing[: min(max(1, int(limit)), MAX_DETAIL_CANDIDATES)]
-        return await self._materialize(shortlist)
+        """Search, hydrate, and audit a bounded skills.sh shortlist.
+
+        Warm queries are served entirely from the persistent mirror. A cold
+        query is single-flighted, so a burst of identical users creates one
+        skills.sh search/detail/audit sequence rather than N sequences.
+        """
+        bounded_limit = min(max(1, int(limit)), MAX_DETAIL_CANDIDATES)
+        mirrored = await self._mirror_search(query, bounded_limit)
+        if mirrored:
+            fresh = [row for row in mirrored if row.get("mirror_fresh") is not False]
+            if fresh:
+                return fresh[:bounded_limit]
+        key = f"{query.casefold()}::{bounded_limit}"
+
+        async def refresh_retrieve() -> list[dict[str, Any]]:
+            # Bypass the stale mirror while refreshing; the single-flight key
+            # ensures only one replica-local refresh is in flight.
+            search_limit = max(bounded_limit, 10)
+            cache_key = f"{query.casefold()}::{search_limit}::{'auth' if self.configured else 'public'}"
+            listing = await self._singleflight(
+                ("search-refresh", cache_key),
+                lambda: self._search_remote(query, search_limit, cache_key),
+            )
+            shortlist = listing[:bounded_limit]
+            rows = await self._materialize(shortlist)
+            await self._mirror_put(rows)
+            return rows
+
+        if mirrored:
+            # Serve a bounded, explicitly hint-only stale result while a
+            # background refresh repairs the mirror. This keeps the user path
+            # available during a brief upstream outage without treating old
+            # audit state as current safety evidence.
+            refresh = asyncio.create_task(self._singleflight(("retrieve", key), refresh_retrieve))
+            refresh.add_done_callback(lambda task: task.exception() if not task.cancelled() else None)
+            return mirrored[:bounded_limit]
+        return await self._singleflight(("retrieve", key), refresh_retrieve)
 
     async def retrieve_ids(self, skill_ids: list[str], limit: int = 10) -> list[dict[str, Any]]:
         """Rehydrate previously offered skills without consulting local storage.
@@ -581,6 +866,9 @@ class SkillsShCatalog:
         ids = ids[: min(max(1, int(limit)), MAX_DETAIL_CANDIDATES)]
         if not ids:
             return []
+        mirrored = await self._mirror_ids(ids)
+        if len(mirrored) == len(ids):
+            return mirrored
         listings: list[dict[str, Any]] = []
         for skill_id in ids:
             listing = self._cached("listing", skill_id)
@@ -603,7 +891,9 @@ class SkillsShCatalog:
         else:
             for item in listings:
                 item.pop("_public_search_only", None)
-        return await self._materialize(listings)
+        rows = await self._materialize(listings)
+        await self._mirror_put(rows)
+        return rows
 
 
 _DEFAULT_CATALOG: SkillsShCatalog | None = None

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from unittest.mock import patch
+from uuid import uuid4
 import httpx
 
 from skills_sh_catalog import SkillsShCatalog, SkillsShCatalogError
@@ -92,6 +94,71 @@ def test_live_catalog_hydrates_shortlist_and_caches_search() -> None:
     assert row["provenance_score"] == 0.45
     assert row["content_hash"]
     assert "spreadsheet report" in row["retrieval_text"].lower()
+
+
+def test_persistent_mirror_serves_warm_retrieval_without_upstream() -> None:
+    calls = 0
+
+    def counting_transport(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return _catalog_transport(request)
+
+    mirror_path = Path(__file__).resolve().parents[1] / f".test-skills-sh-mirror-{uuid4().hex}.db"
+    mirror = str(mirror_path)
+    first = SkillsShCatalog(
+        api_url="https://skills.test/api/v1",
+        oidc_token="test-token",
+        mirror_db_path=mirror,
+        mirror_enabled=True,
+        transport=httpx.MockTransport(counting_transport),
+    )
+    first_rows = asyncio.run(first.retrieve("create spreadsheet report", limit=1))
+    assert first_rows and calls == 3
+
+    def should_not_call(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"unexpected upstream request: {request.url}")
+
+    second = SkillsShCatalog(
+        api_url="https://skills.test/api/v1",
+        oidc_token="test-token",
+        mirror_db_path=mirror,
+        mirror_enabled=True,
+        transport=httpx.MockTransport(should_not_call),
+    )
+    second_rows = asyncio.run(second.retrieve("spreadsheet report", limit=1))
+    assert second_rows[0]["skills_sh_id"] == first_rows[0]["skills_sh_id"]
+    assert second_rows[0]["retrieval_backend"] == "skills_sh_mirror"
+    assert second_rows[0]["mirror_fresh"] is True
+    for suffix in ("", "-wal", "-shm"):
+        mirror_path.with_name(mirror_path.name + suffix).unlink(missing_ok=True)
+
+
+def test_concurrent_cold_retrieval_is_single_flight() -> None:
+    calls = 0
+
+    async def run() -> list[list[dict]]:
+        nonlocal calls
+
+        def counting_transport(request: httpx.Request) -> httpx.Response:
+            nonlocal calls
+            calls += 1
+            return _catalog_transport(request)
+
+        catalog = SkillsShCatalog(
+            api_url="https://skills.test/api/v1",
+            oidc_token="test-token",
+            mirror_enabled=False,
+            transport=httpx.MockTransport(counting_transport),
+        )
+        return await asyncio.gather(
+            catalog.retrieve("create spreadsheet report", limit=1),
+            catalog.retrieve("create spreadsheet report", limit=1),
+        )
+
+    rows = asyncio.run(run())
+    assert rows[0] == rows[1]
+    assert calls == 3
 
 
 def test_missing_audit_is_not_treated_as_safe() -> None:
