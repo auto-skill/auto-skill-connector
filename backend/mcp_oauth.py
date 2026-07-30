@@ -130,9 +130,8 @@ def card_page(body: str, status_code: int = 200, title: str = "Sign in to Auto-S
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
   :root {{
-    --paper: #f7f7f2; --panel: #fffefa; --ink: #111111; --muted: #666666;
-    --line: #d9d9d1; --line-dark: #222222; --blue: #1f6fff;
-    --button: #111111; --button-rail: #1f6fff;
+    --paper: #ffffff; --panel: #ffffff; --ink: #0b0b0c; --muted: #626269;
+    --line: #d5d5d1; --line-strong: #a7a7a2; --button: #111113;
   }}
   * {{ box-sizing: border-box; }}
   body {{
@@ -141,36 +140,33 @@ def card_page(body: str, status_code: int = 200, title: str = "Sign in to Auto-S
   }}
   a {{ color: inherit; text-decoration: none; }}
   .card {{
-    width: min(380px, calc(100% - 40px)); border: 1px solid var(--line-dark);
-    background: var(--panel); box-shadow: 0 18px 60px rgba(0, 0, 0, 0.08); padding: 32px 28px;
+    width: min(380px, calc(100% - 40px)); border: 1px solid var(--ink);
+    background: var(--panel); box-shadow: 6px 6px 0 #c9c9c5; padding: 32px 28px;
   }}
   .brand {{ display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 650; margin-bottom: 20px; }}
   .mark {{
-    width: 26px; height: 26px; display: grid; place-items: center; border: 1px solid var(--ink);
-    color: var(--blue); font-family: "Geist Mono", Consolas, monospace; font-size: 13px; font-weight: 700;
+    display: inline-grid; grid-template-columns: repeat(2, 7px); grid-template-rows: repeat(2, 7px);
+    gap: 2px; width: 16px; height: 16px;
   }}
+  .mark span {{ background: var(--ink); }}
+  .mark span:nth-child(3) {{ grid-column: 2; }}
   h1 {{ margin: 0 0 8px; font-size: 20px; line-height: 1.25; }}
   p {{ margin: 0 0 22px; color: var(--muted); font-size: 14px; line-height: 1.5; }}
   .providers {{ display: flex; flex-direction: column; gap: 10px; }}
   .button {{
     min-height: 40px; display: flex; align-items: center; justify-content: center;
-    padding: 0 40px 0 16px; border: 0; position: relative;
-    background: linear-gradient(90deg, var(--button) 0, var(--button) calc(100% - 28px), var(--button-rail) calc(100% - 28px), var(--button-rail) 100%);
-    color: #ffffff; font-size: 14px; font-weight: 500;
-    box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.14);
+    padding: 0 16px; border: 1px solid var(--ink); position: relative;
+    background: var(--button); color: #ffffff; font-size: 14px; font-weight: 500;
+    box-shadow: 4px 4px 0 #c9c9c5;
   }}
-  .button::after {{
-    content: ">"; position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
-    font-family: "Geist Mono", Consolas, monospace; font-size: 13px;
-  }}
-  .button:hover {{ filter: brightness(1.06); }}
+  .button:hover {{ background: #2a2a2d; }}
   .email {{ color: var(--ink); font-weight: 600; }}
   .error {{ color: #b3261e; font-size: 14px; line-height: 1.5; margin: 0; }}
 </style>
 </head>
 <body>
   <div class="card">
-    <div class="brand"><span class="mark" aria-hidden="true">&gt;_</span><span>Auto-Skill</span></div>
+    <div class="brand"><span class="mark" aria-hidden="true"><span></span><span></span><span></span></span><span>Auto-Skill</span></div>
     {body}
   </div>
 </body>
