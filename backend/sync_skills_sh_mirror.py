@@ -34,6 +34,11 @@ def _parser() -> argparse.ArgumentParser:
         default=100,
         help="in --all-listings mode, hydrate/audit only this many selected rows",
     )
+    parser.add_argument(
+        "--hydrate-all",
+        action="store_true",
+        help="in --all-listings mode, resume hydration across every indexed listing",
+    )
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--delay-seconds", type=float, default=0.25)
     parser.add_argument("--no-curated", action="store_true")
@@ -47,6 +52,7 @@ async def sync_mirror(args: argparse.Namespace) -> dict[str, Any]:
     all_listings = bool(getattr(args, "all_listings", False))
     max_skills = max(1, min(int(args.max_skills), 500))
     hydrate_top = max(0, min(int(getattr(args, "hydrate_top", 100)), 500))
+    hydrate_all = bool(getattr(args, "hydrate_all", False))
     batch_size = max(1, min(int(args.batch_size), 12))
     listings: dict[str, dict[str, Any]] = {}
     curated_count = 0
@@ -89,9 +95,14 @@ async def sync_mirror(args: argparse.Namespace) -> dict[str, Any]:
             break
         page += 1
 
-    selected_limit = hydrate_top if all_listings else max_skills
+    selected_limit = len(listings) if (all_listings and hydrate_all) else hydrate_top if all_listings else max_skills
     selected = list(listings.values())[:selected_limit]
-    cached = await catalog.cached_ids([str(row.get("id") or "") for row in selected])
+    # SQLite builds cap bound parameters at 999 on common deployments. Keep
+    # the resumable all-listings mode safe for a 10k+ row mirror.
+    cached: list[dict[str, Any]] = []
+    selected_ids = [str(row.get("id") or "") for row in selected]
+    for offset in range(0, len(selected_ids), 900):
+        cached.extend(await catalog.cached_ids(selected_ids[offset : offset + 900]))
     fresh_ids = {
         str(row.get("skills_sh_id") or row.get("id") or "")
         for row in cached
@@ -115,6 +126,7 @@ async def sync_mirror(args: argparse.Namespace) -> dict[str, Any]:
         "leaderboard_listings": leaderboard_count,
         "selected": len(selected),
         "all_listings": all_listings,
+        "hydrate_all": hydrate_all,
         "pages_fetched": pages_fetched,
         "metadata_indexed": metadata_indexed,
         "already_fresh": len(fresh_ids),

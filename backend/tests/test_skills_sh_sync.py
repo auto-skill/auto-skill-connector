@@ -96,3 +96,48 @@ def test_all_listings_indexes_every_page_but_hydrates_only_bounded_top(monkeypat
     assert result["selected"] == 1
     assert result["hydrated"] == 1
     assert catalog.indexed == ["acme/skills/one", "acme/skills/two", "acme/skills/one"]
+
+
+def test_all_listings_can_resume_across_every_indexed_listing(monkeypatch):
+    class FullCatalog(_FakeCatalog):
+        def __init__(self):
+            self.hydrated_ids = []
+
+        async def curated(self):
+            return []
+
+        async def leaderboard_page(self, **kwargs):
+            return {
+                "data": [{"id": f"acme/skills/{index}"} for index in range(3)],
+                "pagination": {"hasMore": False},
+            }
+
+        async def cached_ids(self, ids):
+            return []
+
+        async def index_listings(self, rows):
+            return len(rows)
+
+        async def hydrate_listings(self, listings, limit):
+            self.hydrated_ids.extend(row["id"] for row in listings)
+            return [{"id": row["id"], "quality_status": "active"} for row in listings]
+
+    catalog = FullCatalog()
+    monkeypatch.setattr(sync, "default_catalog", lambda: catalog)
+    args = Namespace(
+        view="all-time",
+        pages=0,
+        per_page=500,
+        max_skills=100,
+        all_listings=True,
+        hydrate_all=True,
+        hydrate_top=1,
+        batch_size=2,
+        delay_seconds=0,
+        no_curated=True,
+    )
+    result = asyncio.run(sync.sync_mirror(args))
+    assert result["hydrate_all"] is True
+    assert result["selected"] == 3
+    assert result["hydrated"] == 3
+    assert catalog.hydrated_ids == ["acme/skills/0", "acme/skills/1", "acme/skills/2"]
