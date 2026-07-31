@@ -407,7 +407,7 @@ def test_catalog_reads_rotating_token_from_environment(monkeypatch) -> None:
 
 def test_catalog_reads_rotating_token_from_file(tmp_path, monkeypatch) -> None:
     token_file = tmp_path / "skills_sh_oidc_token"
-    token_file.write_text("file-token\n", encoding="utf-8")
+    token_file.write_text("\ufefffile-token\n", encoding="utf-8")
     monkeypatch.delenv("SKILLS_SH_OIDC_TOKEN", raising=False)
     monkeypatch.delenv("VERCEL_OIDC_TOKEN", raising=False)
     monkeypatch.setenv("SKILLS_SH_OIDC_TOKEN_FILE", str(token_file))

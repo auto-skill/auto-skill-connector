@@ -492,10 +492,12 @@ class SkillsShCatalog:
         token_file = os.getenv("SKILLS_SH_OIDC_TOKEN_FILE", "").strip()
         if not token and token_file:
             try:
-                token = Path(token_file).read_text(encoding="utf-8").strip()
+                # Windows PowerShell may write UTF-8 files with a BOM. It is
+                # valid file metadata but cannot appear in an HTTP header.
+                token = Path(token_file).read_text(encoding="utf-8").lstrip("\ufeff").strip()
             except OSError:
                 token = ""
-        return token.strip()
+        return token.lstrip("\ufeff").strip()
 
     def _cached(self, kind: str, key: str) -> Any | None:
         entry = self._cache.get((kind, key))

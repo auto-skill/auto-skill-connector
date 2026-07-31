@@ -20,7 +20,13 @@ class _FakeCatalog:
         ]
 
     async def cached_ids(self, ids):
-        return [{"id": "acme/skills/official", "skills_sh_id": "acme/skills/official", "mirror_fresh": True}]
+        return [{
+            "id": "acme/skills/official",
+            "skills_sh_id": "acme/skills/official",
+            "mirror_fresh": True,
+            "quality_status": "active",
+            "content_hash": "a" * 64,
+        }]
 
     async def hydrate_listings(self, listings, limit):
         return [{"id": row["id"], "quality_status": "active"} for row in listings]
