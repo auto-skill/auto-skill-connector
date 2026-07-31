@@ -1341,6 +1341,16 @@ def _library_content_by_hash(target_hash: str) -> str:
     return LibraryContent().get_by_hash(target_hash)
 
 
+async def _content_by_hash(target_hash: str) -> str:
+    text = await asyncio.to_thread(_library_content_by_hash, target_hash)
+    if text:
+        return text
+    try:
+        return await default_catalog().content_by_hash(target_hash)
+    except (SkillsShCatalogError, OSError):
+        return ""
+
+
 def _candidate_context_guard(
     query: str,
     candidate: dict,
@@ -1487,14 +1497,14 @@ async def find_deliverable_primary_candidate(
     )
     for candidate, text in zip(plausible, contents):
         guard = _candidate_context_guard(query, candidate, text) if text else None
-        if guard and guard.get("capsule"):
+        if guard and guard.get("delivery") in {"capsule", "isolation"}:
             return candidate, text
     return None, ""
 
 
 @router.get("/content/{hash_value}")
 async def get_content(hash_value: str):
-    text = await asyncio.to_thread(_library_content_by_hash, hash_value)
+    text = await _content_by_hash(hash_value)
     if not text:
         return Response(status_code=404)
     return PlainTextResponse(
@@ -1692,18 +1702,22 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
                 if CONTEXT_GUARD_ENABLED
                 else _empty_context_guard("safe-capsule-required")
             )
-            if context_guard.get("delivery") != "capsule":
+            if context_guard.get("delivery") not in {"capsule", "isolation"}:
                 tier = "hint"
                 warnings.append("Public skill could not be safely distilled; downgraded to hint.")
             else:
-                warnings.append("Verified public skill delivered as the whole safety-stripped skill.")
+                if context_guard.get("delivery") == "isolation":
+                    content_url = f"/content/{skill.get('content_hash')}" if skill.get("content_hash") else None
+                    warnings.append("Verified public skill retained in full and reserved for isolated delivery.")
+                else:
+                    warnings.append("Verified public skill delivered as the whole safety-stripped skill.")
             skill["verification"] = {
                 "content_hash_verified": True,
                 # The capsule compiler has already removed agent-control and
                 # credential-like material. Mark the bounded result as static
                 # instruction content so connector-side delivery validation
                 # does not downgrade a verified capsule to a hint.
-                "static_instruction_only": context_guard.get("delivery") == "capsule",
+                "static_instruction_only": context_guard.get("delivery") in {"capsule", "isolation"},
                 "safe_distilled_capsule": context_guard.get("delivery") == "capsule",
                 "hash_kind": "canonical_normalized",
                 "content_digest": digest,

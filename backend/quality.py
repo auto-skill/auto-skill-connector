@@ -270,10 +270,10 @@ def _is_path_or_link_line(line: str) -> bool:
     return slash_count >= 2 and len(value.split()) <= 3
 
 
-def skill_content_rejection_reasons(text: str) -> list[str]:
+def skill_content_rejection_reasons(text: str, *, allow_oversized: bool = False) -> list[str]:
     """Return rejection reasons for fetched skill-like content."""
     reasons: list[str] = []
-    if len(text or "") > MAX_SKILL_CONTENT_CHARS:
+    if not allow_oversized and len(text or "") > MAX_SKILL_CONTENT_CHARS:
         # Refuse oversized bodies rather than storing a truncated stub.
         return ["content-too-large"]
 
@@ -494,7 +494,10 @@ def evaluate_quality(skill: dict[str, Any], content: str = "") -> dict[str, Any]
     content_reasons: list[str] = []
     if content:
         chash = content_hash(content)
-        content_reasons = skill_content_rejection_reasons(content)
+        content_reasons = skill_content_rejection_reasons(
+            content,
+            allow_oversized=str(skill.get("registry") or "").casefold() == "skills_sh",
+        )
         reasons.extend(content_reasons)
         if not content_reasons:
             score += 45

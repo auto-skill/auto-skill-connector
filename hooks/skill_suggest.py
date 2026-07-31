@@ -448,7 +448,7 @@ def _policy_context_blocks(route: dict, skill: dict) -> str:
         if policy_identity and policy_identity == selected_identity:
             continue
         capsule = str(policy.get("capsule") or "")
-        if not capsule or len(capsule) > 2400:
+        if not capsule:
             continue
         blocks.append(
             "[auto-skill] Task-family policy: "
@@ -546,8 +546,8 @@ def main() -> None:
 
     if tier == "full" and delivery in {"capsule", "isolation"}:
         capsule = str(context_guard.get("capsule") or "")
-        if not capsule or len(capsule) > 2400:
-            _print_hint("bounded context capsule unavailable")
+        if not capsule:
+            _print_hint("context capsule unavailable")
             _log_routing_decision(prompt, "hint", skill, reason="content unavailable")
             _report_outcome(route, "shown")
             return
@@ -615,19 +615,17 @@ def main() -> None:
             if target
             else " Use the route content_url / content_hash to load the complete file."
         )
-        # Never label a truncated body as full active SKILL.md instructions.
+        # Never label a truncated body as full active SKILL.md instructions;
+        # preserve the complete source through the verified content URL.
         print(
             f"{receipt_block}"
             f"{policy_context}"
             f"[auto-skill] Route selected: {name}{risk_text}. Source: {url}\n\n"
-            "Full SKILL.md exceeds the local injection budget and is NOT fully inlined."
-            f"{fetch_line} Do not treat any preview as the complete skill.\n\n"
-            "<auto_skill_content_preview truncated=\"true\">\n"
-            f"{content[:MAX_CONTENT_CHARS].rstrip()}\n"
-            "</auto_skill_content_preview>"
+            "Full SKILL.md is retained but exceeds the local inline budget; it is NOT inlined."
+            f"{fetch_line} Load the complete file only through the verified isolated adapter."
             f"{metrics_text}"
         )
-        _log_routing_decision(prompt, "full", skill, reason="budget-truncated-honest")
+        _log_routing_decision(prompt, "full", skill, reason="budget-isolated-honest")
         _report_outcome(route, "injected")
         return
 

@@ -15,6 +15,7 @@ without going through ingest-time stripping.
 from __future__ import annotations
 
 import math
+import os
 from typing import Any
 
 from capsule_compiler import STRIP_VERSION, strip_unsafe_content
@@ -22,19 +23,25 @@ from quality import has_valid_skill_frontmatter
 
 
 POLICY_VERSION = STRIP_VERSION
-# Package ingestion accepts complete entrypoints up to the quality ceiling;
-# delivery is bounded by the same ceiling now, not a separate small budget.
+# Compatibility symbol only. Complete source is retained without a hard
+# delivery ceiling; oversized responses use the isolated fetch path below.
 MAX_GUARDED_CONTENT_CHARS = 500_000
 
 # Compatibility constants: callers (request-body defaults, tests) still
-# reference these names, but delivery is no longer truncated to them -- a
-# "full" result is the whole safety-stripped skill, capped only by
-# MAX_GUARDED_CONTENT_CHARS above.
+# reference these names, but delivery is no longer truncated to them.
 DEFAULT_CAPSULE_CHARS = 2400
 DEFAULT_INLINE_CHARS = 4000
 MAX_INLINE_CHARS = 12_000
 MAX_CAPSULE_CHARS = MAX_GUARDED_CONTENT_CHARS
 INCOMPLETE_CAPSULE_HINT = "This is not the complete SKILL.md; fetch the full content for the rest."
+DEFAULT_INLINE_DELIVERY_CHARS = 24_000
+
+
+def _inline_delivery_budget() -> int:
+    try:
+        return max(1, int(os.getenv("AUTOSKILL_MAX_INLINE_DELIVERY_CHARS", str(DEFAULT_INLINE_DELIVERY_CHARS))))
+    except (TypeError, ValueError):
+        return DEFAULT_INLINE_DELIVERY_CHARS
 
 
 def estimate_tokens(value: Any) -> int:
@@ -81,9 +88,6 @@ def build_context_guard(
     }
     if not content:
         return result
-    if len(content) > MAX_GUARDED_CONTENT_CHARS:
-        result["reason"] = "content_too_large"
-        return result
     if not has_valid_skill_frontmatter(content):
         result["reason"] = "invalid_skill_frontmatter"
         return result
@@ -91,6 +95,31 @@ def build_context_guard(
     stripped = strip_unsafe_content(content)
     if not stripped.text:
         result["reason"] = "capsule_unavailable"
+        return result
+    if len(stripped.text) > _inline_delivery_budget():
+        result.update(
+            {
+                "delivery": "isolation",
+                "reason": "public-source-isolated-full",
+                "complete": True,
+                "capsule": None,
+                "capsule_chars": 0,
+                "estimated_tokens": estimate_tokens(stripped.text),
+                "removed_meta_lines": stripped.removed_meta_lines,
+                "removed_credential_lines": stripped.removed_credential_lines,
+                "destructive_actions": stripped.destructive_actions,
+                "external_actions": stripped.external_actions,
+                "source_url": source_url,
+                "source_commit_sha": source_commit_sha,
+                "package_hash": package_hash,
+                "fetch_hint": (
+                    "Fetch the complete verified entrypoint through the content URL "
+                    f"for content hash {content_hash}."
+                    if content_hash
+                    else "Fetch the complete verified entrypoint through the content URL."
+                ),
+            }
+        )
         return result
     result.update(
         {

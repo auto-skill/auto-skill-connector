@@ -318,12 +318,12 @@ def test_route_task_payload_downgrades_oversized_backend_content(monkeypatch: py
 
     result = asyncio.run(core.route_task_payload("make a spreadsheet", client=LargeRouteClient()))
     assert result["routed"] is True
-    assert result["route_type"] == "capsule"
+    assert result["route_type"] == "isolation"
     assert result["route_tier"] == "full"
     assert result["skill_content"] == ""
     assert result["content_url"] == "/content/" + "a" * 64
-    assert "NOT treat any inlined excerpt as the complete" in result["instructions"]
-    assert "injection budget" in result["warnings"][0]
+    assert "Do not inline or truncate" in result["instructions"]
+    assert "inline budget" in result["warnings"][0]
 
 
 def test_route_task_payload_returns_hint_without_fetch(monkeypatch: pytest.MonkeyPatch) -> None:

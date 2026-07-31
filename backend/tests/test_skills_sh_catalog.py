@@ -96,6 +96,46 @@ def test_live_catalog_hydrates_shortlist_and_caches_search() -> None:
     assert "spreadsheet report" in row["retrieval_text"].lower()
 
 
+def test_live_catalog_preserves_oversized_entrypoint() -> None:
+    huge = (
+        "---\nname: Large\ndescription: A complete large entrypoint for isolated delivery.\n---\n"
+        "\n## Workflow\n"
+        + ("Validate formulas and preserve identifiers carefully. " * 12000)
+    )
+
+    def transport(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/skills/search"):
+            return httpx.Response(
+                200,
+                json={"data": [{"id": "acme/skills/large", "name": "Large", "source": "acme/skills"}]},
+                request=request,
+            )
+        if path.endswith("/skills/acme/skills/large"):
+            return httpx.Response(
+                200,
+                json={"id": "acme/skills/large", "hash": "snapshot-large", "files": [{"path": "SKILL.md", "contents": huge}]},
+                request=request,
+            )
+        if path.endswith("/skills/audit/acme/skills/large"):
+            return httpx.Response(200, json={"audits": [{"status": "pass", "riskLevel": "LOW"}]}, request=request)
+        return httpx.Response(404, request=request)
+
+    catalog = SkillsShCatalog(
+        api_url="https://skills.test/api/v1",
+        oidc_token="test-token",
+        mirror_enabled=True,
+        mirror_db_path=str(Path(__file__).resolve().parents[1] / ".test-large-entrypoint-mirror.db"),
+        transport=httpx.MockTransport(transport),
+    )
+    rows = asyncio.run(catalog.retrieve("large entrypoint", limit=1))
+    assert rows[0]["_content"] == huge
+    assert rows[0]["content_hash"]
+    assert rows[0]["quality_status"] == "active"
+    assert asyncio.run(catalog.content_by_hash(rows[0]["content_hash"])) == huge
+    Path(catalog._mirror.path).unlink(missing_ok=True)
+
+
 def test_persistent_mirror_serves_warm_retrieval_without_upstream() -> None:
     calls = 0
 

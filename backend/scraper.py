@@ -1226,6 +1226,11 @@ def _accepted_fetched_text(text: str) -> str:
     return body
 
 
+def _allows_oversized_entrypoint(skill: dict) -> bool:
+    """skills.sh mirror rows retain complete source for isolated delivery."""
+    return str(skill.get("registry") or "").casefold() == "skills_sh"
+
+
 def fold_metadata_tags(tags: list, fields: dict) -> list:
     """Merge tags/triggers/platforms nested under a frontmatter `metadata:`
     map into a flat tags list, case-insensitively deduped.
@@ -2391,7 +2396,7 @@ async def save_to_library(skill: dict, content: str):
     # Persist the complete canonical body. Refuse empty/oversized rather than
     # writing a stub that would still look "stored" in the index.
     content = canonicalize_skill_content(content or "")
-    if not content or len(content) > MAX_SKILL_CONTENT_CHARS:
+    if not content or (len(content) > MAX_SKILL_CONTENT_CHARS and not _allows_oversized_entrypoint(skill)):
         return
     filename = _library_filename(skill)
     async with library_lock:
@@ -2437,7 +2442,7 @@ async def save_raw_to_library(skill: dict, raw_content: str):
     (index.json already points at the curated file for this skill) -- just a
     same-filename mirror so the two are easy to diff by hand."""
     raw_content = canonicalize_skill_content(raw_content or "")
-    if not raw_content or len(raw_content) > MAX_SKILL_CONTENT_CHARS:
+    if not raw_content or (len(raw_content) > MAX_SKILL_CONTENT_CHARS and not _allows_oversized_entrypoint(skill)):
         return
     filename = _library_filename(skill)
     async with library_lock:
@@ -2561,7 +2566,7 @@ async def scan_skill(client: httpx.AsyncClient, skill: dict):
         # Only attach complete, accepted bodies for library persistence.
         if (
             content
-            and len(content) <= MAX_SKILL_CONTENT_CHARS
+            and (len(content) <= MAX_SKILL_CONTENT_CHARS or _allows_oversized_entrypoint(skill))
             and skill.get("quality_status") in ACTIVE_STATUSES
         ):
             skill["_library_content"] = content

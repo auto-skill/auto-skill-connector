@@ -50,7 +50,6 @@ DEFAULT_LISTING_TTL_SECONDS = max(
 MAX_RETRY_DELAY_SECONDS = 30.0
 MAX_SEARCH_LIMIT = 50
 MAX_DETAIL_CANDIDATES = 12
-MAX_CONTENT_CHARS = 300_000
 MAX_RETRIEVAL_CHARS = 1_500
 MAX_PUBLIC_DESCRIPTION_CHARS = 800
 MAX_PUBLIC_PAGE_METADATA = min(3, max(0, int(os.getenv("SKILLS_SH_PUBLIC_PAGE_METADATA", "1"))))
@@ -203,6 +202,19 @@ class _PersistentMirror:
                     )
                 by_id[str(row["id"])] = value
         return [by_id[item] for item in ids if item in by_id]
+
+    def get_content_by_hash(self, target_hash: str) -> str:
+        """Return the complete hydrated entrypoint for an exact content hash."""
+        with self._lock, self._connection() as conn:
+            rows = conn.execute("SELECT row_json FROM skills_sh_mirror").fetchall()
+        for row in rows:
+            try:
+                value = json.loads(row["row_json"])
+            except (TypeError, ValueError):
+                continue
+            if isinstance(value, dict) and value.get("content_hash") == target_hash:
+                return str(value.get("_content") or "")
+        return ""
 
     def put(self, rows: list[dict[str, Any]], *, expires_at: float, stale_until: float) -> None:
         values = []
@@ -391,6 +403,11 @@ class SkillsShCatalog:
         if self._mirror is None:
             return []
         return await asyncio.to_thread(self._mirror.get_ids, ids, time.time())
+
+    async def content_by_hash(self, target_hash: str) -> str:
+        if self._mirror is None or not target_hash:
+            return ""
+        return await asyncio.to_thread(self._mirror.get_content_by_hash, target_hash)
 
     async def cached_ids(self, ids: list[str]) -> list[dict[str, Any]]:
         """Return mirror rows for a sync worker without an upstream call."""
@@ -864,9 +881,9 @@ class SkillsShCatalog:
             detail = detail or {}
             files = detail.get("files") if isinstance(detail.get("files"), list) else []
             entrypoint, content = _entrypoint(files)
-            if len(content) > MAX_CONTENT_CHARS:
-                content = ""
-                entrypoint = ""
+            # Preserve the complete upstream entrypoint. Retrieval uses the
+            # compact normalized record below; delivery decides whether these
+            # verified bytes are inline or isolated.
             fields = _frontmatter_fields(content)
             skill_id = _stable_skill_id(listing_item) or _stable_skill_id(detail)
             name = str(listing_item.get("name") or fields.get("name") or detail.get("slug") or skill_id)

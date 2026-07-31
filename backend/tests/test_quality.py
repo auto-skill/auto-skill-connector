@@ -53,6 +53,25 @@ def test_quality_rejects_oversized_content_without_accepting() -> None:
     assert "content-too-large" in result["quality_reasons"]
 
 
+def test_quality_keeps_oversized_skills_sh_entrypoints_active() -> None:
+    skill = {
+        "name": "catalog-demo",
+        "description": "A complete skills.sh entrypoint retained for isolated delivery.",
+        "source": "acme/skills",
+        "registry": "skills_sh",
+    }
+    huge = (
+        "---\nname: catalog-demo\n"
+        "description: A complete skills.sh entrypoint retained for isolated delivery.\n"
+        "---\n\n## Workflow\n\n"
+        + ("Validate formulas and preserve identifiers carefully. " * 20000)
+    )
+    assert len(huge) > 500_000
+    result = evaluate_quality(skill, huge)
+    assert result["quality_status"] == "active"
+    assert "content-too-large" not in result["quality_reasons"]
+
+
 def test_quality_accepts_real_skill_content() -> None:
     skill = {
         "name": "spreadsheet-router",

@@ -40,7 +40,7 @@ and explain the generated file.
 
 
 def _large_static_skill() -> str:
-    # Exceeds DEFAULT_INLINE_CHARS so we can assert the whole body still ships.
+    # Exceeds the adaptive inline budget so full source uses isolation.
     body = VALID_SMALL + "\n## Reference\n" + ("Keep the workbook reproducible. " * 500)
     assert len(body) > DEFAULT_INLINE_CHARS
     return body
@@ -59,7 +59,7 @@ class DeliveryHonestyUnitTests(unittest.TestCase):
         self.assertEqual(guard["capsule"], VALID_SMALL)
         self.assertIsNone(guard["fetch_hint"])
 
-    def test_large_skill_is_delivered_whole_not_truncated(self) -> None:
+    def test_large_skill_is_isolated_without_truncation(self) -> None:
         content = _large_static_skill()
         guard = build_context_guard(
             task="create an excel report with formulas",
@@ -85,6 +85,19 @@ class DeliveryHonestyUnitTests(unittest.TestCase):
         self.assertEqual(guard["delivery"], "capsule")
         self.assertTrue(guard["complete"])
         self.assertEqual(guard["capsule"], content)
+
+    def test_oversized_skill_is_isolated_without_truncation(self) -> None:
+        content = VALID_SMALL + "\n## Reference\n" + ("Keep the workbook reproducible. " * 1200)
+        assert len(content) > 24_000
+        guard = build_context_guard(
+            task="create an excel report with formulas",
+            content=content,
+            content_hash="f" * 64,
+        )
+        self.assertEqual(guard["delivery"], "isolation")
+        self.assertTrue(guard["complete"])
+        self.assertIsNone(guard["capsule"])
+        self.assertIn("f" * 64, guard["fetch_hint"])
 
 
 class ContentAndRouteDeliveryTests(unittest.TestCase):

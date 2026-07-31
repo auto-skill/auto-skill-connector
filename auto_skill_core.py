@@ -702,7 +702,7 @@ def _public_backend_skill(skill: dict[str, Any] | None, task: str, tier: str) ->
 
 
 def _normalize_backend_skill_plan(raw_plan: Any, task: str) -> dict[str, Any]:
-    """Keep only verified, bounded policy items and public specialist fields."""
+    """Keep only verified policy items and public specialist fields."""
     if not isinstance(raw_plan, dict):
         return {}
     policies: list[dict[str, Any]] = []
@@ -715,7 +715,6 @@ def _normalize_backend_skill_plan(raw_plan: Any, task: str) -> dict[str, Any]:
             verification.get("content_hash_verified") is not True
             or verification.get("static_instruction_only") is not True
             or not capsule
-            or len(capsule) > 2400
         ):
             continue
         public = _public_backend_skill(raw_policy, task, "full")
@@ -990,7 +989,7 @@ async def _route_selfhosted(
         }
     if delivery == "capsule":
         capsule = str(context_guard.get("capsule") or "")
-        if not capsule or len(capsule) > 2400:
+        if not capsule:
             warnings.append("Backend returned an invalid context capsule; downgraded to hint.")
             hint_selected = {**selected, "routing_tier": "hint"}
             return {
@@ -1116,24 +1115,22 @@ async def _route_selfhosted(
             f"/content/{selected.get('content_hash')}" if selected.get("content_hash") else None
         )
         warnings.append(
-            "Backend selected a full route, but SKILL.md content exceeded the connector injection "
-            "budget; delivering as non-full with fetch instructions."
+            "Backend selected a full route, but SKILL.md content exceeded the connector inline "
+            "budget; delivering through isolated full-source fetch."
         )
-        capsule = str(context_guard.get("capsule") or "")
         return {
             "routed": True,
-            "route_type": "capsule",
+            "route_type": "isolation",
             "route_tier": "full",
             "selected_skill": selected,
-            "skill_content": capsule,
-            "context_capsule": capsule or None,
+            "skill_content": "",
             "content_url": content_url,
             "message": (
-                "A matching skill exists, but full content exceeded the injection budget and was "
-                "not fully inlined."
+                "A matching skill exists and is verified, but full content exceeded the inline "
+                "budget; it remains available through the isolated content URL."
             ),
             "instructions": (
-                "Do NOT treat any inlined excerpt as the complete SKILL.md. "
+                "Do not inline or truncate the SKILL.md. "
                 + (
                     f"Fetch the full verified file via {content_url}"
                     + (
@@ -1144,7 +1141,7 @@ async def _route_selfhosted(
                     if content_url
                     else "Use the route content_url / content_hash to load the complete file. "
                 )
-                + "Use a provided capsule only as bounded guidance."
+                + "Use the isolated route and verify the content hash before applying it."
             ),
             "install_hint": "No installation is required. Load the complete skill from content_url when needed.",
             **common,
