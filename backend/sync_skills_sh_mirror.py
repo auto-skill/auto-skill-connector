@@ -23,6 +23,17 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--pages", type=int, default=2, help="leaderboard pages to inspect")
     parser.add_argument("--per-page", type=int, default=50)
     parser.add_argument("--max-skills", type=int, default=100)
+    parser.add_argument(
+        "--all-listings",
+        action="store_true",
+        help="index every leaderboard page as metadata-only; detail hydration stays bounded",
+    )
+    parser.add_argument(
+        "--hydrate-top",
+        type=int,
+        default=100,
+        help="in --all-listings mode, hydrate/audit only this many selected rows",
+    )
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--delay-seconds", type=float, default=0.25)
     parser.add_argument("--no-curated", action="store_true")
@@ -33,11 +44,15 @@ async def sync_mirror(args: argparse.Namespace) -> dict[str, Any]:
     catalog = default_catalog()
     if not catalog.configured:
         raise SkillsShCatalogError("SKILLS_SH_OIDC_TOKEN or VERCEL_OIDC_TOKEN is required")
+    all_listings = bool(getattr(args, "all_listings", False))
     max_skills = max(1, min(int(args.max_skills), 500))
+    hydrate_top = max(0, min(int(getattr(args, "hydrate_top", 100)), 500))
     batch_size = max(1, min(int(args.batch_size), 12))
     listings: dict[str, dict[str, Any]] = {}
     curated_count = 0
     leaderboard_count = 0
+    pages_fetched = 0
+    metadata_indexed = 0
 
     if not args.no_curated:
         curated = await catalog.curated()
@@ -46,18 +61,36 @@ async def sync_mirror(args: argparse.Namespace) -> dict[str, Any]:
             skill_id = str(row.get("id") or "").strip()
             if skill_id and not row.get("isDuplicate"):
                 listings.setdefault(skill_id, row)
+        if all_listings:
+            metadata_indexed += await catalog.index_listings(curated)
 
-    for page in range(max(0, int(args.pages))):
-        rows = await catalog.leaderboard(view=args.view, page=page, per_page=args.per_page)
+    page = 0
+    while page < max(0, int(args.pages)) or all_listings:
+        if all_listings:
+            page_payload = await catalog.leaderboard_page(view=args.view, page=page, per_page=args.per_page)
+            rows = page_payload.get("data") or []
+            pagination = page_payload.get("pagination") or {}
+        else:
+            rows = await catalog.leaderboard(view=args.view, page=page, per_page=args.per_page)
+            pagination = {}
+        pages_fetched += 1
         leaderboard_count += len(rows)
         for row in rows:
             skill_id = str(row.get("id") or "").strip()
             if skill_id and not row.get("isDuplicate"):
                 listings.setdefault(skill_id, row)
+        if all_listings:
+            metadata_indexed += await catalog.index_listings(rows)
+            if not rows or not bool(pagination.get("hasMore")):
+                break
+            page += 1
+            continue
         if len(listings) >= max_skills:
             break
+        page += 1
 
-    selected = list(listings.values())[:max_skills]
+    selected_limit = hydrate_top if all_listings else max_skills
+    selected = list(listings.values())[:selected_limit]
     cached = await catalog.cached_ids([str(row.get("id") or "") for row in selected])
     fresh_ids = {
         str(row.get("skills_sh_id") or row.get("id") or "")
@@ -79,6 +112,9 @@ async def sync_mirror(args: argparse.Namespace) -> dict[str, Any]:
         "curated_listings": curated_count,
         "leaderboard_listings": leaderboard_count,
         "selected": len(selected),
+        "all_listings": all_listings,
+        "pages_fetched": pages_fetched,
+        "metadata_indexed": metadata_indexed,
         "already_fresh": len(fresh_ids),
         "pending": len(pending),
         "hydrated": hydrated,

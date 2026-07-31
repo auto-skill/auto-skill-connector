@@ -152,6 +152,22 @@ _CODING_TERMS = frozenset(
         "nextjs", "fastapi", "django", "flask", "html", "css", "sql", "api", "endpoint",
     }
 )
+_DATA_TERMS = frozenset(
+    {
+        "spreadsheet", "excel", "csv", "dataset", "analytics", "dashboard", "kpi",
+        "pandas", "polars", "parquet", "jsonl", "dataframe", "etl", "warehouse",
+        "dbt", "snowflake", "bigquery", "redshift", "databricks", "database", "databases",
+        "table", "tables", "schema", "schemas",
+    }
+)
+_STRONG_CODING_TERMS = frozenset(
+    {
+        "code", "coding", "function", "class", "method", "component", "refactor", "repository",
+        "repo", "debug", "python", "javascript", "typescript", "java", "rust", "golang",
+        "nextjs", "fastapi", "django", "flask", "html", "css", "sql", "react", "vue", "angular",
+        "api", "endpoint",
+    }
+)
 _INTEGRATION_REQUEST_TERMS = frozenset(
     {
         "integrate", "integration", "connect", "connector", "sync", "webhook", "oauth", "mcp",
@@ -387,6 +403,9 @@ def analyze_task(
     if explicit in supported:
         family = explicit
         signals.append("client-task-family")
+    elif tokens & _DATA_TERMS and not tokens & _STRONG_CODING_TERMS:
+        family = "data"
+        signals.append("data-artifact")
     elif tokens & _CODING_TERMS or any(
         suffix in query.casefold()
         for suffix in (".py", ".js", ".jsx", ".ts", ".tsx", ".rs", ".go", ".java", ".html", ".css")
@@ -396,9 +415,6 @@ def analyze_task(
     elif tokens & {"research", "competitor", "sources", "citations", "browse", "web"}:
         family = "research"
         signals.append("research-intent")
-    elif tokens & {"spreadsheet", "excel", "csv", "dataset", "analytics", "dashboard", "kpi"}:
-        family = "data"
-        signals.append("data-artifact")
     elif tokens & {"document", "docx", "pdf", "slides", "presentation", "report"}:
         family = "documents"
         signals.append("document-artifact")

@@ -44,6 +44,9 @@ DEFAULT_MIN_REQUEST_INTERVAL_SECONDS = max(
 DEFAULT_MIRROR_STALE_SECONDS = max(
     0.0, float(os.getenv("SKILLS_SH_MIRROR_STALE_SECONDS", "3600"))
 )
+DEFAULT_LISTING_TTL_SECONDS = max(
+    300.0, float(os.getenv("SKILLS_SH_LISTING_TTL_SECONDS", "3600"))
+)
 MAX_RETRY_DELAY_SECONDS = 30.0
 MAX_SEARCH_LIMIT = 50
 MAX_DETAIL_CANDIDATES = 12
@@ -393,11 +396,17 @@ class SkillsShCatalog:
         """Return mirror rows for a sync worker without an upstream call."""
         return await self._mirror_ids(ids)
 
-    async def _mirror_put(self, rows: list[dict[str, Any]]) -> None:
+    async def _mirror_put(self, rows: list[dict[str, Any]], *, ttl_seconds: float | None = None) -> None:
         if self._mirror is None or not rows:
             return
         now = time.time()
-        expires_at = now + max(self.detail_ttl_seconds, self.audit_ttl_seconds, self.search_ttl_seconds)
+        ttl = max(
+            self.detail_ttl_seconds,
+            self.audit_ttl_seconds,
+            self.search_ttl_seconds,
+            float(ttl_seconds or 0.0),
+        )
+        expires_at = now + ttl
         await asyncio.to_thread(
             self._mirror.put,
             rows,
@@ -415,6 +424,61 @@ class SkillsShCatalog:
         rows = await self._materialize(shortlist)
         await self._mirror_put(rows)
         return rows
+
+    async def index_listings(self, listings: list[dict[str, Any]]) -> int:
+        """Persist listing metadata without fetching package bodies.
+
+        The leaderboard is the complete discovery prior, not a trust grant.
+        Listing-only rows remain ``metadata_only`` hints until a bounded
+        shortlist is hydrated through the detail and audit endpoints.
+        """
+        rows: list[dict[str, Any]] = []
+        for item in listings:
+            skill_id = _stable_skill_id(item)
+            if not skill_id or bool(item.get("isDuplicate")):
+                continue
+            name = str(item.get("name") or item.get("slug") or skill_id.rsplit("/", 1)[-1])
+            description = str(item.get("description") or "")
+            source = str(item.get("source") or "skills_sh")
+            slug = str(item.get("slug") or "")
+            install_url = str(item.get("installUrl") or "")
+            page_url = str(item.get("url") or f"https://skills.sh/{skill_id}")
+            retrieval_text = _retrieval_text(name, description, "")
+            retrieval_text = " ".join(part for part in (retrieval_text, source, slug) if part)[:MAX_RETRIEVAL_CHARS]
+            rows.append(
+                {
+                    "id": skill_id,
+                    "name": name,
+                    "description": description,
+                    "source": source,
+                    "registry": "skills_sh",
+                    "slug": slug,
+                    "url": install_url or page_url,
+                    "skills_sh_url": page_url,
+                    "install_url": install_url,
+                    "skills_sh_id": skill_id,
+                    "installs": item.get("installs"),
+                    "source_type": item.get("sourceType"),
+                    "is_duplicate": False,
+                    "source_snapshot_hash": None,
+                    "content_hash": None,
+                    "retrieval_text": retrieval_text,
+                    "retrieval_text_hash": hashlib.sha256(retrieval_text.encode()).hexdigest(),
+                    "quality_status": "metadata_only",
+                    "quality_score": 0,
+                    "quality_reasons": ["skills-sh-listing-only"],
+                    "audit_status": "unknown",
+                    "audit_risk_level": "unknown",
+                    "audit_count": 0,
+                    "risk_score": 1,
+                    "risk_flags": ["audit-unavailable"],
+                    "package_completeness": "unknown",
+                    "dependency_closure_status": "unresolved",
+                    "entrypoint_truncated": 0,
+                }
+            )
+        await self._mirror_put(rows, ttl_seconds=DEFAULT_LISTING_TTL_SECONDS)
+        return len(rows)
 
     @property
     def configured(self) -> bool:
@@ -604,6 +668,17 @@ class SkillsShCatalog:
         per_page: int = 100,
     ) -> list[dict[str, Any]]:
         """Read one bounded page from the authenticated skills.sh catalog."""
+        payload = await self.leaderboard_page(view=view, page=page, per_page=per_page)
+        return payload["data"]
+
+    async def leaderboard_page(
+        self,
+        *,
+        view: str = "trending",
+        page: int = 0,
+        per_page: int = 100,
+    ) -> dict[str, Any]:
+        """Read a page and its pagination metadata from the authenticated catalog."""
         if not self.configured:
             raise SkillsShCatalogError("skills.sh sync requires an OIDC token")
         payload = await self._get(
@@ -615,7 +690,11 @@ class SkillsShCatalog:
             },
         )
         data = payload.get("data")
-        return [dict(item) for item in data if isinstance(item, dict)] if isinstance(data, list) else []
+        pagination = payload.get("pagination")
+        return {
+            "data": [dict(item) for item in data if isinstance(item, dict)] if isinstance(data, list) else [],
+            "pagination": dict(pagination) if isinstance(pagination, dict) else {},
+        }
 
     async def curated(self) -> list[dict[str, Any]]:
         """Flatten the official curated owners into the common listing shape."""

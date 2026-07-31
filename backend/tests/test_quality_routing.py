@@ -1,5 +1,6 @@
 import unittest
 
+from recommender import analyze_task
 from quality import (
     PLATFORM_ALIASES,
     dedupe_by_content_hash,
@@ -111,6 +112,19 @@ Review chart ranges, headers, and totals before returning the deliverable.
     def test_non_task_guard_keeps_short_real_tasks(self):
         self.assertFalse(is_non_task_prompt("fix css"))
         self.assertTrue(is_non_task_prompt("thanks that worked great"))
+
+    def test_data_family_recognizes_modern_tabular_prompts(self):
+        prompts = (
+            "clean a messy CSV with pandas and remove duplicate rows",
+            "query a Parquet dataset and normalize the data frame",
+            "design a database schema for a multi-tenant analytics warehouse",
+            "build a KPI dashboard from Snowflake tables",
+        )
+        for prompt in prompts:
+            with self.subTest(prompt=prompt):
+                result = analyze_task(prompt)
+                self.assertEqual(result["family"], "data")
+                self.assertIn("data-artifact", result["signals"])
 
 
 class RoutingTierTests(unittest.TestCase):

@@ -246,6 +246,18 @@ of detail/audit records at a time. It requires `SKILLS_SH_OIDC_TOKEN` (or
 `VERCEL_OIDC_TOKEN`) in the deployment environment; tokenless public discovery
 is intentionally not treated as a trusted bulk-ingestion source.
 
+To build a complete local discovery index, use the resumable metadata-only mode:
+
+```bash
+python backend/sync_skills_sh_mirror.py --all-listings --view all-time \
+  --per-page 500 --hydrate-top 100
+```
+
+This walks the API's `pagination.hasMore` pages and stores every non-duplicate
+listing as a searchable `metadata_only` hint. Only the bounded `--hydrate-top`
+slice fetches package files and audit records, so the full catalog does not
+turn into millions of detail/audit requests or trusted content.
+
 ## Evals
 
 Track retrieval quality, route latency, and token churn across changes:

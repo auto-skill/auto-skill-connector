@@ -240,6 +240,64 @@ def test_authenticated_catalog_exposes_bounded_sync_sources() -> None:
     assert curated[0]["id"] == "acme/skills/official"
 
 
+def test_leaderboard_page_preserves_pagination_metadata() -> None:
+    def paged_transport(request: httpx.Request) -> httpx.Response:
+        assert request.url.path.endswith("/skills")
+        return httpx.Response(
+            200,
+            json={
+                "data": [{"id": "acme/skills/one", "name": "One"}],
+                "pagination": {"page": 3, "perPage": 500, "total": 8420, "hasMore": True},
+            },
+            request=request,
+        )
+
+    catalog = SkillsShCatalog(
+        api_url="https://skills.test/api/v1",
+        oidc_token="test-token",
+        mirror_enabled=False,
+        transport=httpx.MockTransport(paged_transport),
+    )
+    page = asyncio.run(catalog.leaderboard_page(view="all-time", page=3, per_page=500))
+    assert page["data"][0]["id"] == "acme/skills/one"
+    assert page["pagination"]["total"] == 8420
+    assert page["pagination"]["hasMore"] is True
+
+
+def test_listing_index_is_metadata_only_and_searchable(tmp_path: Path) -> None:
+    mirror_path = tmp_path / "listing-mirror.db"
+    catalog = SkillsShCatalog(
+        api_url="https://skills.test/api/v1",
+        oidc_token="test-token",
+        mirror_db_path=str(mirror_path),
+        mirror_enabled=True,
+        transport=httpx.MockTransport(lambda request: httpx.Response(500, request=request)),
+    )
+
+    async def run() -> list[dict]:
+        indexed = await catalog.index_listings(
+            [
+                {
+                    "id": "acme/skills/csv-cleaner",
+                    "slug": "csv-cleaner",
+                    "name": "CSV Cleaner",
+                    "description": "Clean CSV datasets and normalize tabular data.",
+                    "source": "acme/skills",
+                    "sourceType": "github",
+                    "installUrl": "https://github.com/acme/skills",
+                    "url": "https://skills.sh/acme/skills/csv-cleaner",
+                }
+            ]
+        )
+        assert indexed == 1
+        return await catalog.retrieve("clean CSV datasets", limit=1)
+
+    rows = asyncio.run(run())
+    assert rows[0]["quality_status"] == "metadata_only"
+    assert rows[0]["content_hash"] is None
+    assert rows[0]["retrieval_backend"] == "skills_sh_mirror"
+
+
 def test_public_search_fallback_is_metadata_only_hint() -> None:
     def public_transport(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/search":
