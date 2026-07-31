@@ -839,7 +839,37 @@ def tier_for_ranked_candidates(candidates: list[dict[str, Any]]) -> str:
 
     top_similarity = top.get("similarity")
     if top_similarity is None:
-        return "hint"
+        # The authenticated skills.sh search endpoint returns ranked listings
+        # rather than our local vector cosine. A hydrated, audited, snapshot-
+        # pinned candidate can still earn a full route when lexical fit is
+        # strong; untrusted/no-similarity candidates retain the old hint gate.
+        remote_authoritative = (
+            top.get("retrieval_backend") == "skills_sh"
+            and top.get("content_hash")
+            and top.get("source_snapshot_hash")
+            and top.get("audit_status") == "pass"
+            and int(top.get("risk_score") or 0) == 0
+            and int(top.get("lexical_overlap") or 0) >= 3
+        )
+        if not remote_authoritative:
+            return "hint"
+        if len(candidates) == 1:
+            return "full"
+        comparable = [c for c in candidates[1:] if not c.get("platform_mismatch")]
+        for runner in comparable:
+            runner_authoritative = (
+                runner.get("retrieval_backend") == "skills_sh"
+                and runner.get("content_hash")
+                and runner.get("source_snapshot_hash")
+                and runner.get("audit_status") == "pass"
+                and int(runner.get("risk_score") or 0) == 0
+            )
+            if runner_authoritative:
+                route_delta = abs(float(top.get("route_score") or 0.0) - float(runner.get("route_score") or 0.0))
+                overlap_delta = abs(int(top.get("lexical_overlap") or 0) - int(runner.get("lexical_overlap") or 0))
+                if route_delta < 0.003 and overlap_delta <= 1:
+                    return "hint"
+        return "full"
     try:
         if float(top_similarity) < 0.87:
             return "none"

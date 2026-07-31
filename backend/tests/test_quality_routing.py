@@ -336,6 +336,26 @@ class RoutingTierTests(unittest.TestCase):
 
         self.assertEqual(tier_for_prompt(prompt, [candidate]), "hint")
 
+    def test_authenticated_skills_sh_candidate_without_cosine_can_full_route(self):
+        prompt = "create an excel spreadsheet report with formulas"
+        candidate = {
+            "name": "document-xlsx",
+            "description": "Create/edit .xlsx spreadsheets with formulas, charts, and data validation.",
+            "retrieval_backend": "skills_sh",
+            "quality_status": "active",
+            "quality_score": 90,
+            "risk_score": 0,
+            "audit_status": "pass",
+            "content_hash": "a" * 64,
+            "source_snapshot_hash": "b" * 64,
+            "lexical_overlap": 6,
+            "meaningfulness_score": 0.635,
+            "provenance_score": 0.45,
+            "rank": 0.016,
+        }
+
+        self.assertEqual(tier_for_prompt(prompt, [candidate]), "full")
+
     def test_selected_candidate_must_own_the_similarity_score(self):
         prompt = "create an excel spreadsheet report with formulas"
         lexical_but_no_vector = {
