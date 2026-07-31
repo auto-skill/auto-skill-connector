@@ -955,7 +955,16 @@ class SkillsShCatalog:
         bounded_limit = min(max(1, int(limit)), MAX_DETAIL_CANDIDATES)
         mirrored = await self._mirror_search(query, bounded_limit)
         if mirrored:
-            fresh = [row for row in mirrored if row.get("mirror_fresh") is not False]
+            # A complete listing index is intentionally metadata-only. It is
+            # useful as a hint while a cold authenticated query hydrates the
+            # shortlist, but it must never suppress detail/audit retrieval.
+            fresh = [
+                row
+                for row in mirrored
+                if row.get("mirror_fresh") is not False
+                and row.get("quality_status") == "active"
+                and row.get("content_hash")
+            ]
             if fresh:
                 return fresh[:bounded_limit]
         key = f"{query.casefold()}::{bounded_limit}"

@@ -134,6 +134,37 @@ def test_persistent_mirror_serves_warm_retrieval_without_upstream() -> None:
         mirror_path.with_name(mirror_path.name + suffix).unlink(missing_ok=True)
 
 
+def test_metadata_only_mirror_row_does_not_block_authenticated_hydration(tmp_path: Path) -> None:
+    mirror = str(tmp_path / "metadata-only.db")
+    seed = SkillsShCatalog(
+        api_url="https://skills.test/api/v1",
+        oidc_token="test-token",
+        mirror_db_path=mirror,
+        mirror_enabled=True,
+        transport=httpx.MockTransport(_catalog_transport),
+    )
+    asyncio.run(seed.index_listings([{"id": "acme/skills/reporting", "name": "Reporting"}]))
+
+    calls = 0
+
+    def counting_transport(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return _catalog_transport(request)
+
+    catalog = SkillsShCatalog(
+        api_url="https://skills.test/api/v1",
+        oidc_token="test-token",
+        mirror_db_path=mirror,
+        mirror_enabled=True,
+        transport=httpx.MockTransport(counting_transport),
+    )
+    rows = asyncio.run(catalog.retrieve("create spreadsheet report", limit=1))
+    assert rows[0]["quality_status"] == "active"
+    assert rows[0]["content_hash"]
+    assert calls == 3
+
+
 def test_concurrent_cold_retrieval_is_single_flight() -> None:
     calls = 0
 
