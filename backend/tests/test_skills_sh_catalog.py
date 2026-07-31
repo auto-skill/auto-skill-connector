@@ -143,7 +143,13 @@ def test_metadata_only_mirror_row_does_not_block_authenticated_hydration(tmp_pat
         mirror_enabled=True,
         transport=httpx.MockTransport(_catalog_transport),
     )
-    asyncio.run(seed.index_listings([{"id": "acme/skills/reporting", "name": "Reporting"}]))
+    asyncio.run(seed.index_listings([
+        {
+            "id": "acme/skills/reporting",
+            "name": "Reporting",
+            "description": "Spreadsheet report formulas",
+        }
+    ]))
 
     calls = 0
 

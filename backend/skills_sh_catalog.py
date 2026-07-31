@@ -984,6 +984,15 @@ class SkillsShCatalog:
             return rows
 
         if mirrored:
+            if self.configured:
+                # Authenticated callers need authoritative detail/audit state
+                # before ranking. A metadata-only hit can remain a fallback if
+                # the refresh fails, but it must not race the refresh and
+                # displace the hydrated primary candidate.
+                try:
+                    return await self._singleflight(("retrieve", key), refresh_retrieve)
+                except SkillsShCatalogError:
+                    return mirrored[:bounded_limit]
             # Serve a bounded, explicitly hint-only stale result while a
             # background refresh repairs the mirror. This keeps the user path
             # available during a brief upstream outage without treating old
