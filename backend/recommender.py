@@ -1699,6 +1699,11 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
                 warnings.append("Verified public skill delivered as the whole safety-stripped skill.")
             skill["verification"] = {
                 "content_hash_verified": True,
+                # The capsule compiler has already removed agent-control and
+                # credential-like material. Mark the bounded result as static
+                # instruction content so connector-side delivery validation
+                # does not downgrade a verified capsule to a hint.
+                "static_instruction_only": context_guard.get("delivery") == "capsule",
                 "safe_distilled_capsule": context_guard.get("delivery") == "capsule",
                 "hash_kind": "canonical_normalized",
                 "content_digest": digest,
