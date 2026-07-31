@@ -547,6 +547,17 @@ class MeasurementModeTests(unittest.TestCase):
         disabled = local_store.set_measurement_mode("u1", False)
         self.assertFalse(disabled["enabled"])
 
+    def test_holdout_rate_is_clamped_to_a_safe_maximum(self) -> None:
+        # A caller (including a test) asking for holdout_rate=1.0 must not
+        # silently withhold guidance on every eligible task -- this clamp is
+        # a deliberate safety rail, not a default. See recommender.py's
+        # measurement-mode tests, which pin the assignment arm directly
+        # rather than relying on the clamped rate for determinism.
+        settings = local_store.set_measurement_mode("u1", True, holdout_rate=1.0)
+        self.assertEqual(settings["holdout_rate"], 0.5)
+        settings = local_store.set_measurement_mode("u1", True, holdout_rate=-1.0)
+        self.assertEqual(settings["holdout_rate"], 0.0)
+
     def test_outcome_metrics_require_route_ownership(self) -> None:
         local_store.insert_route_event({"id": "r1", "client": "cli", "user_id": "u1", "tier": "full"})
         self.assertTrue(local_store.record_route_outcome_metrics("r1", "u1", turns=5))

@@ -87,6 +87,50 @@ class DeliveryHonestyUnitTests(unittest.TestCase):
         self.assertEqual(guard["capsule"], content)
 
 
+class MeasurementModeAssignmentUnitTests(unittest.TestCase):
+    """The hash-bucketing itself, independent of set_measurement_mode's
+    clamp -- covers what the /route integration test intentionally no
+    longer exercises end-to-end (see test_measurement_mode_holdout_..."""
+
+    def test_arm_is_holdout_or_routed_at_the_rate_extremes(self) -> None:
+        import recommender
+
+        with patch(
+            "recommender.store.get_measurement_mode_settings",
+            return_value={"enabled": True, "holdout_rate": 1.0},
+        ):
+            result = recommender._measurement_mode_assignment("u1", "coding", "cli", 20, None, "route-1")
+        self.assertEqual(result["arm"], "holdout")
+
+        with patch(
+            "recommender.store.get_measurement_mode_settings",
+            return_value={"enabled": True, "holdout_rate": 0.0},
+        ):
+            result = recommender._measurement_mode_assignment("u1", "coding", "cli", 20, None, "route-2")
+        self.assertEqual(result["arm"], "routed")
+
+    def test_returns_none_when_not_opted_in(self) -> None:
+        import recommender
+
+        with patch(
+            "recommender.store.get_measurement_mode_settings",
+            return_value={"enabled": False, "holdout_rate": 0.5},
+        ):
+            result = recommender._measurement_mode_assignment("u1", "coding", "cli", 20, None, "route-3")
+        self.assertIsNone(result)
+
+    def test_assignment_is_sticky_to_session_id_across_different_routes(self) -> None:
+        import recommender
+
+        with patch(
+            "recommender.store.get_measurement_mode_settings",
+            return_value={"enabled": True, "holdout_rate": 0.5},
+        ):
+            first = recommender._measurement_mode_assignment("u1", "coding", "cli", 20, "session-a", "route-1")
+            second = recommender._measurement_mode_assignment("u1", "coding", "cli", 20, "session-a", "route-2")
+        self.assertEqual(first["arm"], second["arm"])
+
+
 class ContentAndRouteDeliveryTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
@@ -213,10 +257,17 @@ class ContentAndRouteDeliveryTests(unittest.TestCase):
 
         headers = self._auth_headers()
         user = local_store.get_or_create_user("delivery-honesty@example.com", "Delivery Honesty", None)
-        local_store.set_measurement_mode(user["id"], True, holdout_rate=1.0)
+        local_store.set_measurement_mode(user["id"], True, holdout_rate=0.5)
 
+        # holdout_rate is clamped to <=0.5 (set_measurement_mode's own safety
+        # rail), so it alone can never guarantee a specific arm here. Pin the
+        # arm directly to test what this test is actually about: how /route
+        # behaves given an assignment, not the hash bucketing math itself.
         with patch("recommender.retrieve_skills", fake_retrieve), patch(
             "recommender.LibraryContent", FakeLibrary
+        ), patch(
+            "recommender._measurement_mode_assignment",
+            return_value={"arm": "holdout", "stratum": "coding:test:short"},
         ):
             held_out = self.client.post(
                 "/route",
@@ -231,9 +282,11 @@ class ContentAndRouteDeliveryTests(unittest.TestCase):
         self.assertEqual(held_out_body["measurement"]["arm"], "holdout")
         self.assertTrue(any("held out" in w for w in held_out_body["score_debug"].get("warnings", [])))
 
-        local_store.set_measurement_mode(user["id"], True, holdout_rate=0.0)
         with patch("recommender.retrieve_skills", fake_retrieve), patch(
             "recommender.LibraryContent", FakeLibrary
+        ), patch(
+            "recommender._measurement_mode_assignment",
+            return_value={"arm": "routed", "stratum": "coding:test:short"},
         ):
             routed = self.client.post(
                 "/route",
