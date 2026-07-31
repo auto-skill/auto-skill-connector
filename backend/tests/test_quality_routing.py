@@ -351,6 +351,7 @@ class RoutingTierTests(unittest.TestCase):
             "lexical_overlap": 6,
             "meaningfulness_score": 0.635,
             "provenance_score": 0.45,
+            "stars": 0,
             "rank": 0.016,
         }
 

@@ -834,23 +834,23 @@ def tier_for_ranked_candidates(candidates: list[dict[str, Any]]) -> str:
         return "hint"
     if float(top.get("meaningfulness_score") or 0.0) < MIN_MEANINGFULNESS:
         return "hint"
-    if not top.get("trust_signal"):
+    # The authenticated skills.sh search endpoint returns ranked listings
+    # rather than our local vector cosine. A hydrated, audited, snapshot-
+    # pinned candidate is independently trusted even when its explicit install
+    # count is zero; ordinary candidates still need the normal trust signal.
+    remote_authoritative = (
+        top.get("retrieval_backend") == "skills_sh"
+        and top.get("content_hash")
+        and top.get("source_snapshot_hash")
+        and top.get("audit_status") == "pass"
+        and int(top.get("risk_score") or 0) == 0
+        and int(top.get("lexical_overlap") or 0) >= 3
+    )
+    if not top.get("trust_signal") and not remote_authoritative:
         return "hint"
 
     top_similarity = top.get("similarity")
     if top_similarity is None:
-        # The authenticated skills.sh search endpoint returns ranked listings
-        # rather than our local vector cosine. A hydrated, audited, snapshot-
-        # pinned candidate can still earn a full route when lexical fit is
-        # strong; untrusted/no-similarity candidates retain the old hint gate.
-        remote_authoritative = (
-            top.get("retrieval_backend") == "skills_sh"
-            and top.get("content_hash")
-            and top.get("source_snapshot_hash")
-            and top.get("audit_status") == "pass"
-            and int(top.get("risk_score") or 0) == 0
-            and int(top.get("lexical_overlap") or 0) >= 3
-        )
         if not remote_authoritative:
             return "hint"
         if len(candidates) == 1:
