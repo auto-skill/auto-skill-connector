@@ -71,6 +71,20 @@ _GENERIC_DIAGNOSTIC_REASONS = {
 }
 
 
+def _survey_nudge_text(route: dict) -> str:
+    """Optional, sparse check-in -- the backend only sets feedback_prompt
+    true once every ~12 substantial routed tasks (see
+    record_substantial_route_for_survey in backend/local_store.py), and
+    never after a plain acknowledgement or skipped prompt."""
+    if not (route or {}).get("feedback_prompt"):
+        return ""
+    return (
+        "\n\n[auto-skill] Quick optional check-in: run "
+        "`auto-skill survey helpful|not_useful|skip` to tell us if Auto-Skill "
+        "has been useful in this stretch of work."
+    )
+
+
 def _served_content_digest(text: str) -> str:
     return hashlib.sha256((text or "").encode("utf-8")).hexdigest() if text else ""
 
@@ -530,6 +544,23 @@ def main() -> None:
             "Apply content only when route_tier is full."
             f"{metrics_text}"
             f"{options_text}"
+            f"{_survey_nudge_text(route)}"
+        )
+
+    def _print_measurement_holdout() -> None:
+        """Transparency for Measurement Mode: this account opted in, and this
+        one task was randomly assigned to the no-guidance comparison arm.
+        Never silently withhold without saying so (see the opt-in plan's
+        "clearly state a small share of eligible tasks may not receive
+        automated guidance for measurement" requirement)."""
+        print(
+            f"{receipt_block}"
+            f"[auto-skill] Measurement Mode: this task was randomly held out from automated "
+            f"guidance delivery for your opted-in comparison (\"{name}\" would otherwise have been "
+            "used). Continue the task normally; this does not reflect a routing failure. "
+            "Run `auto-skill measurement-mode disable` to opt out at any time."
+            f"{metrics_text}"
+            f"{_survey_nudge_text(route)}"
         )
 
     verification = skill.get("verification") if isinstance(skill.get("verification"), dict) else {}
@@ -570,12 +601,19 @@ def main() -> None:
             f"{capsule}\n"
             "</auto_skill_capsule>"
             f"{metrics_text}"
+            f"{_survey_nudge_text(route)}"
         )
         _log_routing_decision(prompt, "full", skill, reason="selected")
         _report_outcome(route, "injected")
         return
 
     if tier == "hint":
+        measurement = route.get("measurement") if isinstance(route.get("measurement"), dict) else None
+        if measurement and measurement.get("arm") == "holdout":
+            _print_measurement_holdout()
+            _log_routing_decision(prompt, "hint", skill, reason="selected")
+            _report_outcome(route, "shown")
+            return
         # Several candidates are plausible -- name the option instead of
         # committing to one skill's content, which would bias toward
         # whichever happened to rank first among near-ties.
@@ -626,6 +664,7 @@ def main() -> None:
             f"{content[:MAX_CONTENT_CHARS].rstrip()}\n"
             "</auto_skill_content_preview>"
             f"{metrics_text}"
+            f"{_survey_nudge_text(route)}"
         )
         _log_routing_decision(prompt, "full", skill, reason="budget-truncated-honest")
         _report_outcome(route, "injected")
@@ -640,6 +679,7 @@ def main() -> None:
         "<auto_skill_content>\n"
         f"{content}\n"
         "</auto_skill_content>"
+        f"{_survey_nudge_text(route)}"
     )
     _log_routing_decision(prompt, "full", skill, reason="selected")
     _report_outcome(route, "injected")

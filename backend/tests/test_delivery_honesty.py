@@ -183,6 +183,68 @@ class ContentAndRouteDeliveryTests(unittest.TestCase):
         # the whole skill ships, not a bounded excerpt.
         self.assertEqual(body["context_guard"]["capsule"], content)
 
+    def test_measurement_mode_holdout_withholds_an_otherwise_full_route(self) -> None:
+        content = _large_static_skill()
+        chash = content_hash(content)
+        candidate = {
+            "id": "skill-large",
+            "name": "spreadsheet-reporter",
+            "description": "Build spreadsheet reports with formulas and charts.",
+            "source": "github_skill_file",
+            "url": "https://example.com/large-spreadsheet",
+            "risk_score": 0,
+            "quality_status": "active",
+            "quality_score": 90,
+            "content_hash": chash,
+            "rank": 1.0,
+            "similarity": 0.95,
+        }
+
+        async def fake_retrieve(client, query, limit):
+            del client, query, limit
+            return [candidate]
+
+        class FakeLibrary:
+            def get(self, url: str) -> str:
+                return content if url == candidate["url"] else ""
+
+            def get_by_hash(self, hash_value: str) -> str:
+                return content if hash_value == chash else ""
+
+        headers = self._auth_headers()
+        user = local_store.get_or_create_user("delivery-honesty@example.com", "Delivery Honesty", None)
+        local_store.set_measurement_mode(user["id"], True, holdout_rate=1.0)
+
+        with patch("recommender.retrieve_skills", fake_retrieve), patch(
+            "recommender.LibraryContent", FakeLibrary
+        ):
+            held_out = self.client.post(
+                "/route",
+                json={"task": "create an excel report with formulas"},
+                headers=headers,
+            )
+        self.assertEqual(held_out.status_code, 200)
+        held_out_body = held_out.json()
+        self.assertEqual(held_out_body["tier"], "hint")
+        self.assertIsNone(held_out_body["content"])
+        self.assertEqual(held_out_body["context_guard"]["reason"], "measurement_holdout")
+        self.assertEqual(held_out_body["measurement"]["arm"], "holdout")
+        self.assertTrue(any("held out" in w for w in held_out_body["score_debug"].get("warnings", [])))
+
+        local_store.set_measurement_mode(user["id"], True, holdout_rate=0.0)
+        with patch("recommender.retrieve_skills", fake_retrieve), patch(
+            "recommender.LibraryContent", FakeLibrary
+        ):
+            routed = self.client.post(
+                "/route",
+                json={"task": "create an excel report with formulas"},
+                headers=headers,
+            )
+        self.assertEqual(routed.status_code, 200)
+        routed_body = routed.json()
+        self.assertEqual(routed_body["tier"], "full")
+        self.assertEqual(routed_body["measurement"]["arm"], "routed")
+
 
 if __name__ == "__main__":
     unittest.main()

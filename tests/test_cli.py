@@ -339,6 +339,125 @@ def test_feedback_command_reports_failure(
     assert "not recorded" in out
 
 
+def test_survey_command_records_response(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    async def fake_survey(response: str) -> bool:
+        assert response == "helpful"
+        return True
+
+    monkeypatch.setattr(cli, "record_route_survey_response", fake_survey)
+    result = cli.main(["survey", "helpful"])
+    out = capsys.readouterr().out
+    assert result == 0
+    assert "recorded survey response: helpful" in out
+
+
+def test_survey_command_reports_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    async def fake_survey(response: str) -> bool:
+        del response
+        return False
+
+    monkeypatch.setattr(cli, "record_route_survey_response", fake_survey)
+    result = cli.main(["survey", "skip"])
+    out = capsys.readouterr().out
+    assert result == 1
+    assert "not recorded" in out
+
+
+def test_impact_report_command_prints_summary(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    async def fake_report(days: int) -> dict:
+        assert days == 30
+        return {
+            "window_days": 30,
+            "activity": {
+                "substantial_tasks_routed": 12,
+                "tiers": {"full": 8, "hint": 3, "none": 1},
+                "declined_uncertain_count": 1,
+                "top_task_families": [{"task_family": "coding", "count": 9}],
+                "distinct_specialists_delivered": 4,
+                "specialists_discovered_without_install": 3,
+            },
+            "context_efficiency": {
+                "delivered_capsule_tokens": 2140,
+                "eligible_raw_tokens": 17600,
+                "compression_ratio": 0.88,
+                "median_injected_tokens": 300,
+                "p95_injected_tokens": 900,
+                "token_budget": 1000,
+                "budget_compliance_rate": 0.95,
+            },
+            "measured_lift": {"available": False, "reason": "measurement_mode_not_enabled"},
+        }
+
+    monkeypatch.setattr(cli, "get_impact_report", fake_report)
+    result = cli.main(["impact-report"])
+    out = capsys.readouterr().out
+    assert result == 0
+    assert "substantial tasks routed: 12" in out
+    assert "88% reduction in reference context" in out
+    assert "opt in with `auto-skill measurement-mode enable`" in out
+
+
+def test_impact_report_command_requires_login(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    async def fake_report(days: int) -> dict:
+        del days
+        raise cli.NotLoggedInError("Not logged in. Run `auto-skill login` first.")
+
+    monkeypatch.setattr(cli, "get_impact_report", fake_report)
+    result = cli.main(["impact-report"])
+    err = capsys.readouterr().err
+    assert result == 1
+    assert "Not logged in" in err
+
+
+def test_measurement_mode_status_and_enable_and_disable(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    async def fake_get() -> dict:
+        return {"enabled": False, "holdout_rate": 0.05}
+
+    monkeypatch.setattr(cli, "get_measurement_mode", fake_get)
+    result = cli.main(["measurement-mode", "status"])
+    out = capsys.readouterr().out
+    assert result == 0
+    assert "disabled" in out
+
+    async def fake_set(enabled: bool, holdout_rate: float | None) -> dict:
+        assert enabled is True
+        assert holdout_rate == 0.1
+        return {"enabled": True, "holdout_rate": 0.1}
+
+    monkeypatch.setattr(cli, "set_measurement_mode", fake_set)
+    result = cli.main(["measurement-mode", "enable", "--holdout-rate", "0.1"])
+    out = capsys.readouterr().out
+    assert result == 0
+    assert "measurement mode enabled" in out
+    assert "may not receive automated guidance" in out
+
+    async def fake_disable(enabled: bool, holdout_rate: float | None = None) -> dict:
+        assert enabled is False
+        assert holdout_rate is None
+        return {"enabled": False, "holdout_rate": 0.1}
+
+    monkeypatch.setattr(cli, "set_measurement_mode", fake_disable)
+    result = cli.main(["measurement-mode", "disable"])
+    out = capsys.readouterr().out
+    assert result == 0
+    assert "measurement mode disabled" in out
+
+
 class FakeMetricsResponse:
     def __init__(self, status_code: int, payload: dict | None = None, text: str = "") -> None:
         self.status_code = status_code

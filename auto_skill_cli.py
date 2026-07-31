@@ -29,6 +29,8 @@ from auto_skill_core import (
     _search,
     add_favorite,
     get_autoskill_url,
+    get_impact_report,
+    get_measurement_mode,
     get_skills_home,
     install_skill_from_content,
     is_url,
@@ -37,10 +39,12 @@ from auto_skill_core import (
     logout_backend,
     recommend_skill_payload,
     record_route_feedback,
+    record_route_survey_response,
     remove_favorite,
     remove_private_skill,
     route_prompt_payload,
     route_task_payload,
+    set_measurement_mode,
     submit_private_skill,
     validate_skill_content,
     whoami,
@@ -267,6 +271,124 @@ async def _command_feedback(args: argparse.Namespace) -> int:
         return 0
     print("feedback was not recorded")
     return 1
+
+
+async def _command_survey(args: argparse.Namespace) -> int:
+    ok = await record_route_survey_response(args.response)
+    if ok:
+        print(f"recorded survey response: {args.response}")
+        return 0
+    print("survey response was not recorded (not logged in, or an invalid value)")
+    return 1
+
+
+def _print_impact_report(report: dict[str, Any]) -> None:
+    activity = report.get("activity") or {}
+    efficiency = report.get("context_efficiency") or {}
+    lift = report.get("measured_lift") or {}
+
+    print(f"Auto-Skill impact report -- last {report.get('window_days', '?')} days")
+    print()
+    print("What Auto-Skill did for you:")
+    print(f"  substantial tasks routed: {activity.get('substantial_tasks_routed', 0)}")
+    tiers = activity.get("tiers") or {}
+    if tiers:
+        tiers_text = ", ".join(f"{tier}={count}" for tier, count in sorted(tiers.items()))
+        print(f"  tiers: {tiers_text}")
+    print(f"  declined uncertain matches (trust behavior): {activity.get('declined_uncertain_count', 0)}")
+    families = activity.get("top_task_families") or []
+    if families:
+        families_text = ", ".join(f"{f['task_family']} ({f['count']})" for f in families[:5])
+        print(f"  top task families: {families_text}")
+    print(
+        "  distinct specialists delivered: "
+        f"{activity.get('distinct_specialists_delivered', 0)} "
+        f"({activity.get('specialists_discovered_without_install', 0)} discovered without installing anything)"
+    )
+    print()
+    print("Context efficiency:")
+    raw = efficiency.get("eligible_raw_tokens") or 0
+    delivered = efficiency.get("delivered_capsule_tokens") or 0
+    ratio = efficiency.get("compression_ratio")
+    if raw:
+        pct = round((ratio or 0) * 100)
+        print(
+            f"  delivered {delivered:,} tokens of task-specific guidance from {raw:,} tokens of verified "
+            f"source material: a {pct}% reduction in reference context"
+        )
+    else:
+        print("  no full-tier deliveries in this window yet")
+    if efficiency.get("median_injected_tokens") is not None:
+        print(
+            f"  injected tokens: median={efficiency['median_injected_tokens']}, "
+            f"p95={efficiency.get('p95_injected_tokens')}, budget={efficiency.get('token_budget')}"
+        )
+    if efficiency.get("budget_compliance_rate") is not None:
+        print(f"  within budget: {round(efficiency['budget_compliance_rate'] * 100)}%")
+    print()
+    print("Proven lift:")
+    if lift.get("available"):
+        print(
+            f"  in comparable measured tasks, routed guidance changed median {lift['metric']} by "
+            f"{lift['relative_reduction_pct']}% (95% CI: {lift['ci_low_pct']}% to {lift['ci_high_pct']}%; "
+            f"{lift['measured_tasks']} measured tasks)"
+        )
+    else:
+        reason = lift.get("reason", "not_enough_measurement_mode_data")
+        if reason == "measurement_mode_not_enabled":
+            print("  not available -- opt in with `auto-skill measurement-mode enable` to start measuring.")
+        else:
+            print("  we have not collected enough controlled observations to claim a personal performance lift yet.")
+
+
+async def _command_impact_report(args: argparse.Namespace) -> int:
+    try:
+        report = await get_impact_report(args.days)
+    except NotLoggedInError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    if args.json:
+        print(json.dumps(report, indent=2))
+        return 0
+    _print_impact_report(report)
+    return 0
+
+
+async def _command_measurement_mode_status(args: argparse.Namespace) -> int:
+    del args
+    try:
+        settings = await get_measurement_mode()
+    except NotLoggedInError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    state = "enabled" if settings.get("enabled") else "disabled"
+    print(f"measurement mode: {state} (holdout_rate={settings.get('holdout_rate')})")
+    return 0
+
+
+async def _command_measurement_mode_enable(args: argparse.Namespace) -> int:
+    try:
+        settings = await set_measurement_mode(True, args.holdout_rate)
+    except NotLoggedInError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print(
+        f"measurement mode enabled (holdout_rate={settings.get('holdout_rate')}). "
+        "A small share of otherwise-full-tier tasks may not receive automated guidance, "
+        "so their outcomes can be compared against routed tasks."
+    )
+    return 0
+
+
+async def _command_measurement_mode_disable(args: argparse.Namespace) -> int:
+    del args
+    try:
+        await set_measurement_mode(False)
+    except NotLoggedInError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print("measurement mode disabled")
+    return 0
 
 
 def _print_route_metrics_summary(payload: dict[str, Any]) -> None:
@@ -1117,6 +1239,38 @@ def build_parser() -> argparse.ArgumentParser:
     metrics.add_argument("--base-url", default="", help="Override AUTOSKILL_URL; use a local/loopback API.")
     metrics.add_argument("--json", action="store_true", help="Print raw /route-metrics JSON.")
     metrics.set_defaults(func=_command_metrics)
+
+    survey = subparsers.add_parser(
+        "survey", help="Answer the voluntary 'was Auto-Skill useful?' prompt (requires login)."
+    )
+    survey.add_argument("response", choices=["helpful", "not_useful", "skip"], help="Your answer.")
+    survey.set_defaults(func=_command_survey)
+
+    impact_report = subparsers.add_parser(
+        "impact-report", help="Show your personal Auto-Skill impact report (requires login)."
+    )
+    impact_report.add_argument("--days", type=int, default=30, help="Window size in days (default 30).")
+    impact_report.add_argument("--json", action="store_true", help="Print raw /impact-report JSON.")
+    impact_report.set_defaults(func=_command_impact_report)
+
+    measurement_mode = subparsers.add_parser(
+        "measurement-mode", help="Manage opt-in Measurement Mode (requires login)."
+    )
+    measurement_mode_sub = measurement_mode.add_subparsers(dest="measurement_mode_command", required=True)
+
+    measurement_mode_status = measurement_mode_sub.add_parser("status", help="Show current Measurement Mode settings.")
+    measurement_mode_status.set_defaults(func=_command_measurement_mode_status)
+
+    measurement_mode_enable = measurement_mode_sub.add_parser(
+        "enable", help="Opt in: randomly withhold a small share of full-tier routes to measure lift."
+    )
+    measurement_mode_enable.add_argument(
+        "--holdout-rate", type=float, default=None, help="Fraction of eligible routes to hold out (default 0.05)."
+    )
+    measurement_mode_enable.set_defaults(func=_command_measurement_mode_enable)
+
+    measurement_mode_disable = measurement_mode_sub.add_parser("disable", help="Opt out at any time.")
+    measurement_mode_disable.set_defaults(func=_command_measurement_mode_disable)
 
     preview = subparsers.add_parser("preview", help="Preview a skill by URL or task description.")
     preview.add_argument("source", nargs="+", help="Skill URL or task description.")

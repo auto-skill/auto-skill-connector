@@ -118,6 +118,8 @@ PUBLIC_GET_PATHS = frozenset(
         "/collections",
         "/preferences",
         "/analytics",
+        "/impact-report",
+        "/measurement-mode",
         "/orgs",
         "/billing/status",
         # Only the two browser-facing MCP OAuth pages are public. The
@@ -138,6 +140,8 @@ PUBLIC_POST_PATHS = frozenset(
         "/route",
         "/find-semantic",
         "/route-feedback",
+        "/route-survey-response",
+        "/route-outcome-metrics",
         "/favorites",
         "/installs",
         "/private-skills",
@@ -151,7 +155,7 @@ PUBLIC_POST_PATHS = frozenset(
     }
 )
 PUBLIC_POST_PREFIXES = ("/auth/", "/alerts/", "/collections/", "/orgs/")
-PUBLIC_PUT_PATHS = frozenset({"/preferences"})
+PUBLIC_PUT_PATHS = frozenset({"/preferences", "/measurement-mode"})
 PUBLIC_DELETE_PREFIXES = (
     "/favorites/",
     "/private-skills/",

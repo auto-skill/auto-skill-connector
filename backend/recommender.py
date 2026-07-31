@@ -754,6 +754,8 @@ class RouteRequest(BaseModel):
     languages: list[str] = []
     frameworks: list[str] = []
     project_tags: list[str] = []
+    session_id: str | None = None
+    task_id: str | None = None
 
 
 class SemanticSearchRequest(BaseModel):
@@ -767,6 +769,23 @@ class RouteFeedbackRequest(BaseModel):
     outcome: str
     source: str = ""
     note: str = ""
+
+
+class RouteSurveyResponseRequest(BaseModel):
+    response: str
+
+
+class MeasurementModeRequest(BaseModel):
+    enabled: bool
+    holdout_rate: float | None = None
+
+
+class RouteOutcomeMetricsRequest(BaseModel):
+    route_id: str
+    turns: int | None = None
+    total_tokens: int | None = None
+    tool_calls: int | None = None
+    elapsed_seconds: int | None = None
 
 
 NONE_MESSAGE = ("I couldn't find anything matching that. Try describing the task with "
@@ -1105,6 +1124,38 @@ def _route_client_ip(request: Request) -> str | None:
     return request.client.host if request.client else None
 
 
+def _measurement_length_band(query_chars: int) -> str:
+    if query_chars < 80:
+        return "short"
+    if query_chars < 400:
+        return "medium"
+    return "long"
+
+
+def _measurement_mode_assignment(
+    user_id: str,
+    task_family: str,
+    client: str,
+    query_chars: int,
+    session_id: str | None,
+    route_id: str,
+) -> dict | None:
+    """Deterministic, sticky holdout assignment for a user's opted-in
+    Measurement Mode -- only called for a route that would otherwise deliver
+    full-tier guidance. Stratified by task family, client, and a coarse
+    query-length band; assignment sticks to the session when the client
+    provides one, otherwise to this single route."""
+    settings = store.get_measurement_mode_settings(user_id)
+    if not settings["enabled"]:
+        return None
+    stratum = f"{task_family or 'general'}:{client or 'unknown'}:{_measurement_length_band(query_chars)}"
+    sticky_key = session_id or route_id
+    digest = hashlib.sha256(f"{sticky_key}:{stratum}".encode("utf-8")).hexdigest()
+    bucket = int(digest[:8], 16) / 0xFFFFFFFF
+    arm = "holdout" if bucket < settings["holdout_rate"] else "routed"
+    return {"arm": arm, "stratum": stratum}
+
+
 def _require_route_user(authorization: str | None) -> dict:
     """Require identity at the handler boundary, even when proxy headers are absent."""
     user = auth.user_from_authorization_header(authorization)
@@ -1391,6 +1442,7 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
                 "query_chars": len(query),
                 "tier": "none",
                 "config_version": CONFIG_VERSION,
+                "skip_reason": "non-task prompt",
                 "warnings": [],
             }
         )
@@ -1466,6 +1518,23 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
     else:
         primary_tier = injection_tier(query, primary_results, ranked=results_are_ranked)
     tier_decision_ms = int((time.monotonic() - tier_decision_start) * 1000)
+    route_id = str(uuid.uuid4())
+    measurement = None
+    if primary_tier == "full":
+        measurement = await asyncio.to_thread(
+            _measurement_mode_assignment,
+            user["id"],
+            task_analysis["family"],
+            body.client,
+            len(query),
+            body.session_id,
+            route_id,
+        )
+        if measurement and measurement["arm"] == "holdout":
+            # Withhold delivery like any other non-full route (skill/candidate
+            # still surfaced as a hint, no capsule injected) rather than
+            # inventing a new tier state client code has never seen.
+            primary_tier = "hint"
     policy_build_start = time.monotonic()
     policy_item = (
         await _build_verified_policy_item(user["id"], policy_candidate, query, body.max_capsule_chars)
@@ -1477,12 +1546,16 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
     rerank_ms = int((time.monotonic() - rerank_start) * 1000)
     skill_find_ms = int((time.monotonic() - retrieval_start) * 1000)
     warnings: list[str] = []
+    if measurement and measurement["arm"] == "holdout":
+        warnings.append(
+            "This task was randomly held out from automated guidance delivery for your opted-in "
+            "Measurement Mode comparison."
+        )
     content = None
     content_url = None
     skill = _public_skill(primary_results[0]) if primary_results else None
     selected_role = "primary" if primary_results else None
     content_ms = 0
-    route_id = str(uuid.uuid4())
     context_guard = _empty_context_guard("no-route")
 
     # A caller's own private skills and their orgs' shared skills never enter
@@ -1609,6 +1682,8 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
     if tier == "hint":
         context_guard = _empty_context_guard("confidence_or_safety_gate")
         context_guard["delivery"] = "hint"
+        if measurement and measurement["arm"] == "holdout":
+            context_guard["reason"] = "measurement_holdout"
     debug = _score_debug(results, tier)
     debug["intent_compiler"] = {
         "version": intent.compiler_version,
@@ -1683,6 +1758,8 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
         "latency_warn_ms": ROUTE_LATENCY_WARN_MS,
         "response_token_warn": ROUTE_RESPONSE_TOKEN_WARN,
     }
+    compression_ratio = round(guard_tokens / content_tokens, 4) if content_tokens else None
+    route_confidence = debug.get("top_route_score") if isinstance(debug.get("top_route_score"), (int, float)) else None
     if metrics["latency_ms"] > ROUTE_LATENCY_WARN_MS:
         warnings.append(f"Route latency exceeded {ROUTE_LATENCY_WARN_MS}ms budget.")
     if metrics["skill_find_ms"] > ROUTE_SKILL_FIND_WARN_MS:
@@ -1724,9 +1801,19 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
             "guard_delivery": context_guard.get("delivery"),
             "capsule_chars": context_guard.get("capsule_chars", 0),
             "meaningfulness_score": skill.get("meaningfulness_score") if skill else None,
+            "task_family": task_analysis.get("family"),
+            "policy_skill_id": policy_item.get("id") if policy_item else None,
+            "plan_size": metrics["skill_count"],
+            "compression_ratio": compression_ratio,
+            "route_confidence": route_confidence,
+            "session_id": body.session_id,
+            "task_id": body.task_id,
+            "measurement_arm": measurement.get("arm") if measurement else None,
+            "measurement_stratum": measurement.get("stratum") if measurement else None,
             "warnings": warnings,
         }
     )
+    feedback_prompt = await asyncio.to_thread(store.record_substantial_route_for_survey, user["id"])
     return {
         "tier": tier,
         "skill": skill,
@@ -1740,6 +1827,8 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
         "score_debug": debug,
         "config_version": CONFIG_VERSION,
         "ttl": ROUTE_TTL_SECONDS,
+        "feedback_prompt": feedback_prompt,
+        "measurement": measurement,
     }
 
 
@@ -1852,3 +1941,55 @@ async def route_feedback(body: RouteFeedbackRequest, authorization: str | None =
     if not updated:
         return Response(status_code=404)
     return {"ok": True, "route_id": route_id, "outcome": outcome}
+
+
+@router.post("/route-survey-response")
+async def route_survey_response(body: RouteSurveyResponseRequest, authorization: str | None = Header(None)):
+    """Voluntary "Was Auto-Skill useful?" answer (helpful/not_useful/skip),
+    shown at most once every N substantial routes per record_substantial_route_for_survey.
+    Any of the three choices resets the prompt cadence."""
+    user = _require_route_user(authorization)
+    response = (body.response or "").strip().lower()
+    ok = await asyncio.to_thread(store.record_route_survey_response, user["id"], response)
+    if not ok:
+        return Response(status_code=400)
+    return {"ok": True, "response": response}
+
+
+@router.get("/measurement-mode")
+async def get_measurement_mode(authorization: str | None = Header(None)):
+    user = _require_route_user(authorization)
+    return {"measurement_mode": await asyncio.to_thread(store.get_measurement_mode_settings, user["id"])}
+
+
+@router.put("/measurement-mode")
+async def put_measurement_mode(body: MeasurementModeRequest, authorization: str | None = Header(None)):
+    """Opt in or out of Measurement Mode at any time. Opting in randomly
+    withholds a small share (default 5%) of otherwise-full-tier routes as a
+    holdout comparison arm, stratified by task family/client/length and
+    sticky to the caller's session."""
+    user = _require_route_user(authorization)
+    settings = await asyncio.to_thread(
+        store.set_measurement_mode, user["id"], body.enabled, body.holdout_rate
+    )
+    return {"measurement_mode": settings}
+
+
+@router.post("/route-outcome-metrics")
+async def route_outcome_metrics(body: RouteOutcomeMetricsRequest, authorization: str | None = Header(None)):
+    """Sparse, voluntary session-outcome numbers (turns/tokens/tool calls/
+    elapsed time) a client can report against a route_id it already
+    received. Used only to compute Measurement Mode lift for opted-in users."""
+    user = _require_route_user(authorization)
+    ok = await asyncio.to_thread(
+        store.record_route_outcome_metrics,
+        body.route_id,
+        user["id"],
+        turns=body.turns,
+        total_tokens=body.total_tokens,
+        tool_calls=body.tool_calls,
+        elapsed_seconds=body.elapsed_seconds,
+    )
+    if not ok:
+        return Response(status_code=404)
+    return {"ok": True}
