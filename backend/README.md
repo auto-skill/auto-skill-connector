@@ -227,12 +227,14 @@ rate limit still causes the route or benchmark to abstain; it must not be
 treated as a successful safety check.
 
 Runtime routing is local-first once a skills.sh record has been hydrated. The
-record is persisted in the SQLite mirror at `SKILLS_SH_MIRROR_DB_PATH`, with a
-bounded stale window controlled by `SKILLS_SH_MIRROR_STALE_SECONDS`. Identical
-cold queries are single-flighted, so concurrent users share one upstream
-search/detail/audit sequence. Mount the mirror on durable shared storage (or
-replace it with the deployment's shared catalog store) before scaling across
-API replicas; the normal user path should not call skills.sh per request.
+record is persisted in the SQLite mirror at `SKILLS_SH_MIRROR_DB_PATH`. Detail
+and audit freshness are controlled by `SKILLS_SH_MIRROR_STALE_SECONDS`, but
+mirror rows and immutable source blobs do not expire from discovery; stale rows
+remain searchable as hints until refreshed. Identical cold queries are
+single-flighted, so concurrent users share one upstream search/detail/audit
+sequence. Mount the mirror on durable shared storage (or replace it with the
+deployment's shared catalog store) before scaling across API replicas; the
+normal user path should not call skills.sh per request.
 
 Warm the mirror after deployment with an authenticated, quota-bounded sync.
 The recommended flow refreshes the short-lived token into the mounted file,

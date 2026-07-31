@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import sqlite3
+import time
 from pathlib import Path
 from unittest.mock import patch
 from uuid import uuid4
@@ -190,6 +191,8 @@ def test_mirror_keeps_source_blobs_separate_and_rehydrates_by_id(tmp_path: Path)
         stored = conn.execute("SELECT row_json FROM skills_sh_mirror").fetchone()[0]
         assert "_content" not in stored
         assert conn.execute("SELECT count(*) FROM skills_sh_sources").fetchone()[0] == 1
+        stale_until = conn.execute("SELECT stale_until FROM skills_sh_mirror").fetchone()[0]
+        assert stale_until > time.time() + (100 * 365 * 24 * 3600)
     warm = asyncio.run(catalog.retrieve_ids([row["skills_sh_id"]], limit=1))
     assert warm[0]["_content"] == row["_content"]
     assert asyncio.run(catalog.content_by_hash(row["content_hash"])) == row["_content"]

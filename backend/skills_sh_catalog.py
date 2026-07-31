@@ -44,9 +44,10 @@ DEFAULT_MIN_REQUEST_INTERVAL_SECONDS = max(
 DEFAULT_MIRROR_STALE_SECONDS = max(
     0.0, float(os.getenv("SKILLS_SH_MIRROR_STALE_SECONDS", "3600"))
 )
-DEFAULT_SOURCE_RETENTION_SECONDS = max(
-    86_400.0, float(os.getenv("SKILLS_SH_SOURCE_RETENTION_SECONDS", str(30 * 86_400)))
-)
+# Source blobs and their mirror metadata are durable by default. Audit/detail
+# freshness is tracked separately by ``expires_at``; it must never make a
+# previously ingested skill disappear from discovery.
+MIRROR_NEVER_EXPIRES = 9_223_372_036_854_775_807.0
 DEFAULT_LISTING_TTL_SECONDS = max(
     300.0, float(os.getenv("SKILLS_SH_LISTING_TTL_SECONDS", "3600"))
 )
@@ -346,7 +347,7 @@ class _PersistentMirror:
             ).fetchone()
         return dict(row) if row else None
 
-    def migrate_legacy_rows(self, *, retention_seconds: float = DEFAULT_SOURCE_RETENTION_SECONDS) -> dict[str, int]:
+    def migrate_legacy_rows(self) -> dict[str, int]:
         """Move inline legacy bodies into the immutable source table safely."""
         migrated = 0
         retained = 0
@@ -400,7 +401,7 @@ class _PersistentMirror:
                     migrated += 1
                 conn.execute(
                     "UPDATE skills_sh_mirror SET stale_until=? WHERE id=?",
-                    (max(float(row["stale_until"] or 0), now + retention_seconds), row["id"]),
+                    (MIRROR_NEVER_EXPIRES, row["id"]),
                 )
                 retained += 1
         return {"migrated": migrated, "retained": retained}
@@ -679,7 +680,7 @@ class SkillsShCatalog:
             float(ttl_seconds or 0.0),
         )
         expires_at = now + ttl
-        source_retention_until = now + DEFAULT_SOURCE_RETENTION_SECONDS
+        source_retention_until = MIRROR_NEVER_EXPIRES
         await asyncio.to_thread(
             self._mirror.put,
             rows,
@@ -693,7 +694,6 @@ class SkillsShCatalog:
             return {"migrated": 0, "retained": 0}
         return await asyncio.to_thread(
             self._mirror.migrate_legacy_rows,
-            retention_seconds=DEFAULT_SOURCE_RETENTION_SECONDS,
         )
 
     async def record_ingestion_attempt(self, **kwargs: Any) -> None:
