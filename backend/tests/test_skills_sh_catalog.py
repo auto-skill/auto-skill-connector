@@ -405,6 +405,20 @@ def test_catalog_reads_rotating_token_from_environment(monkeypatch) -> None:
     assert catalog.configured is False
 
 
+def test_catalog_reads_rotating_token_from_file(tmp_path, monkeypatch) -> None:
+    token_file = tmp_path / "skills_sh_oidc_token"
+    token_file.write_text("file-token\n", encoding="utf-8")
+    monkeypatch.delenv("SKILLS_SH_OIDC_TOKEN", raising=False)
+    monkeypatch.delenv("VERCEL_OIDC_TOKEN", raising=False)
+    monkeypatch.setenv("SKILLS_SH_OIDC_TOKEN_FILE", str(token_file))
+    catalog = SkillsShCatalog(api_url="https://skills.test/api/v1")
+    assert catalog.configured is True
+    assert catalog._current_oidc_token() == "file-token"
+
+    token_file.write_text("rotated-file-token\n", encoding="utf-8")
+    assert catalog._current_oidc_token() == "rotated-file-token"
+
+
 def test_recommender_uses_live_catalog_before_local_store() -> None:
     class FakeCatalog:
         configured = True

@@ -11,8 +11,10 @@ services:
       ENABLE_OLLAMA_CHAT: "0"
       AUTOSKILL_CONTEXT_GUARD: ${AUTOSKILL_CONTEXT_GUARD:-1}
       AUTOSKILL_VALIDATED_CAPSULE_DIGESTS: ${AUTOSKILL_VALIDATED_CAPSULE_DIGESTS:-}
+      # Prefer the mounted rotating token file. The environment variable is
+      # retained only as an explicit emergency/one-shot override.
       SKILLS_SH_OIDC_TOKEN: ${SKILLS_SH_OIDC_TOKEN:-}
-      SKILLS_SH_OIDC_TOKEN_FILE: ${SKILLS_SH_OIDC_TOKEN_FILE:-}
+      SKILLS_SH_OIDC_TOKEN_FILE: ${SKILLS_SH_OIDC_TOKEN_FILE:-/run/secrets/autoskill-oidc/skills_sh_oidc_token}
       SKILLS_SH_API_URL: ${SKILLS_SH_API_URL:-https://skills.sh/api/v1}
       SKILLS_SH_PUBLIC_PAGE_METADATA: ${SKILLS_SH_PUBLIC_PAGE_METADATA:-1}
       SKILLS_SH_MAX_CONCURRENT_REQUESTS: ${SKILLS_SH_MAX_CONCURRENT_REQUESTS:-4}
@@ -48,6 +50,7 @@ services:
     volumes:
       - ../data:/data
       - ../skills_library:/app/skills_library
+      - ./oidc:/run/secrets/autoskill-oidc:ro
     ports:
       - "127.0.0.1:8000:8000"
     command: uvicorn scraper:app --host 0.0.0.0 --port 8000
@@ -72,6 +75,7 @@ services:
     environment:
       LOCAL_DB_PATH: /data/local_skills.db
       SKILLS_SH_MIRROR_DB_PATH: ${SKILLS_SH_MIRROR_DB_PATH:-/data/local_skills.db}
+      SKILLS_SH_OIDC_TOKEN_FILE: ${SKILLS_SH_OIDC_TOKEN_FILE:-/run/secrets/autoskill-oidc/skills_sh_oidc_token}
       AUTO_START_SCRAPER: "0"
       AUTO_START_EMBEDDER: "0"
       # The founder UI does not serve route requests; do not duplicate the
@@ -86,6 +90,7 @@ services:
     volumes:
       - ../data:/data
       - ../skills_library:/app/skills_library:ro
+      - ./oidc:/run/secrets/autoskill-oidc:ro
     ports:
       - "127.0.0.1:8002:8000"
     networks:
@@ -163,10 +168,12 @@ services:
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       SEARXNG_URL: ${SEARXNG_URL:-}
       SKILLS_SH_OIDC_TOKEN: ${SKILLS_SH_OIDC_TOKEN:-}
+      SKILLS_SH_OIDC_TOKEN_FILE: ${SKILLS_SH_OIDC_TOKEN_FILE:-/run/secrets/autoskill-oidc/skills_sh_oidc_token}
       SKILLS_SH_DISCOVERY_LIMIT: ${SKILLS_SH_DISCOVERY_LIMIT:-50}
       SKILLSMP_DISCOVERY_LIMIT: ${SKILLSMP_DISCOVERY_LIMIT:-100}
     volumes:
       - ../skills_library:/app/skills_library
+      - ./oidc:/run/secrets/autoskill-oidc:ro
     command: python worker.py
     init: true
     mem_limit: ${COLLECTOR_MEMORY_LIMIT:-1024m}

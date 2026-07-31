@@ -234,17 +234,24 @@ search/detail/audit sequence. Mount the mirror on durable shared storage (or
 replace it with the deployment's shared catalog store) before scaling across
 API replicas; the normal user path should not call skills.sh per request.
 
-Warm the mirror after deployment with an authenticated, quota-bounded sync:
+Warm the mirror after deployment with an authenticated, quota-bounded sync.
+The recommended flow refreshes the short-lived token into the mounted file,
+then runs the sync:
 
 ```bash
-bash backend/deploy/sync-skills-sh.sh --view trending --pages 2 --max-skills 100
+VERCEL_PROJECT=autoskill-indexer \
+  bash backend/deploy/refresh-and-sync-skills-sh.sh
 ```
 
 The job also includes the official curated set by default, skips fresh mirror
 rows on reruns, filters detected duplicates, and hydrates only a small batch
-of detail/audit records at a time. It requires `SKILLS_SH_OIDC_TOKEN` (or
-`VERCEL_OIDC_TOKEN`) in the deployment environment; tokenless public discovery
-is intentionally not treated as a trusted bulk-ingestion source.
+of detail/audit records at a time. Set `VERCEL_PROJECT` to the dedicated
+Auto-Skill Vercel project before refreshing. The token is mounted read-only and
+read on each request, so rotation does not require an API restart. Inline
+`SKILLS_SH_OIDC_TOKEN` remains available only for a one-shot emergency run.
+The combined command is safe to run from cron or a systemd timer; it refreshes
+the token, walks every leaderboard page in metadata-only mode, hydrates the
+bounded top slice, and verifies that the shared mirror is non-empty.
 
 To build a complete local discovery index, use the resumable metadata-only mode:
 
