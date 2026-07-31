@@ -44,6 +44,9 @@ DEFAULT_MIN_REQUEST_INTERVAL_SECONDS = max(
 DEFAULT_MIRROR_STALE_SECONDS = max(
     0.0, float(os.getenv("SKILLS_SH_MIRROR_STALE_SECONDS", "3600"))
 )
+DEFAULT_SOURCE_RETENTION_SECONDS = max(
+    86_400.0, float(os.getenv("SKILLS_SH_SOURCE_RETENTION_SECONDS", str(30 * 86_400)))
+)
 DEFAULT_LISTING_TTL_SECONDS = max(
     300.0, float(os.getenv("SKILLS_SH_LISTING_TTL_SECONDS", "3600"))
 )
@@ -57,6 +60,7 @@ MAX_PUBLIC_PAGE_METADATA = min(3, max(0, int(os.getenv("SKILLS_SH_PUBLIC_PAGE_ME
 _FRONTMATTER_RE = re.compile(r"\A\ufeff?---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\Z)", re.S)
 _FIELD_RE = re.compile(r"^(name|description):[ \t]*(.*)$", re.I)
 _TOKEN_RE = re.compile(r"[a-z0-9]+", re.I)
+_REFERENCE_RE = re.compile(r"\]\(([^)#\s]+)|(?<![\w])((?:\.{0,2}/)[^\s)`>]+)", re.I)
 
 
 class SkillsShCatalogError(RuntimeError):
@@ -93,6 +97,33 @@ class _PersistentMirror:
     );
     CREATE INDEX IF NOT EXISTS skills_sh_mirror_expiry_idx
         ON skills_sh_mirror(expires_at, stale_until);
+    CREATE TABLE IF NOT EXISTS skills_sh_sources (
+        content_hash TEXT PRIMARY KEY,
+        canonical_skill_id TEXT NOT NULL DEFAULT '',
+        snapshot_hash TEXT,
+        entrypoint_path TEXT,
+        content TEXT NOT NULL,
+        files_json TEXT NOT NULL DEFAULT '[]',
+        byte_count INTEGER NOT NULL DEFAULT 0,
+        created_at REAL NOT NULL,
+        last_seen_at REAL NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS skills_sh_sources_snapshot_idx
+        ON skills_sh_sources(snapshot_hash);
+    CREATE TABLE IF NOT EXISTS skills_sh_ingestion_attempts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        skill_id TEXT NOT NULL,
+        snapshot_hash TEXT,
+        status TEXT NOT NULL,
+        reason TEXT NOT NULL DEFAULT '',
+        retryable INTEGER NOT NULL DEFAULT 0,
+        content_hash TEXT,
+        byte_count INTEGER NOT NULL DEFAULT 0,
+        error TEXT,
+        attempted_at REAL NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS skills_sh_ingestion_attempts_lookup_idx
+        ON skills_sh_ingestion_attempts(skill_id, snapshot_hash, attempted_at DESC);
     CREATE VIRTUAL TABLE IF NOT EXISTS skills_sh_mirror_fts USING fts5(
         id UNINDEXED, name, description, retrieval_text,
         content='skills_sh_mirror', content_rowid='rowid'
@@ -155,7 +186,7 @@ class _PersistentMirror:
                          bm25(skills_sh_mirror_fts), m.updated_at DESC
                 LIMIT ?
                 """,
-                (fts_query, now, now, max(1, int(limit))),
+                (fts_query, now, now, min(MAX_SEARCH_LIMIT, max(1, int(limit)) * 3)),
             ).fetchall()
         values: list[dict[str, Any]] = []
         for row in rows:
@@ -164,6 +195,7 @@ class _PersistentMirror:
             except (TypeError, ValueError):
                 continue
             if isinstance(value, dict):
+                self._attach_source(conn=None, value=value)
                 value["retrieval_backend"] = "skills_sh_mirror"
                 fresh = float(row["expires_at"]) >= now
                 value["mirror_fresh"] = fresh
@@ -173,7 +205,7 @@ class _PersistentMirror:
                         set([*(value.get("quality_reasons") or []), "skills-sh-mirror-stale"])
                     )
                 values.append(value)
-        return values
+        return self._dedupe_rows(values)[: max(1, int(limit))]
 
     def get_ids(self, ids: list[str], now: float) -> list[dict[str, Any]]:
         if not ids:
@@ -192,6 +224,7 @@ class _PersistentMirror:
             except (TypeError, ValueError):
                 continue
             if isinstance(value, dict):
+                self._attach_source(None, value)
                 value["retrieval_backend"] = "skills_sh_mirror"
                 fresh = float(row["expires_at"]) >= now
                 value["mirror_fresh"] = fresh
@@ -203,27 +236,193 @@ class _PersistentMirror:
                 by_id[str(row["id"])] = value
         return [by_id[item] for item in ids if item in by_id]
 
+    @staticmethod
+    def _dedupe_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        seen: set[str] = set()
+        result: list[dict[str, Any]] = []
+        for row in rows:
+            key = str(row.get("content_hash") or row.get("skills_sh_id") or row.get("id") or "")
+            if key and key in seen:
+                continue
+            if key:
+                seen.add(key)
+            result.append(row)
+        return result
+
+    def _attach_source(self, conn: sqlite3.Connection | None, value: dict[str, Any]) -> None:
+        """Join compact mirror metadata to its immutable source blob.
+
+        Legacy rows may still carry ``_content`` inline. They remain readable
+        until the migration command rewrites them into ``skills_sh_sources``.
+        """
+        if value.get("_content") or not value.get("content_hash"):
+            return
+        owned = conn
+        close = False
+        if owned is None:
+            owned = sqlite3.connect(self.path, timeout=30)
+            owned.row_factory = sqlite3.Row
+            close = True
+        try:
+            source = owned.execute(
+                "SELECT content, files_json FROM skills_sh_sources WHERE content_hash=?",
+                (str(value.get("content_hash")),),
+            ).fetchone()
+            if source:
+                value["_content"] = str(source["content"] or "")
+                try:
+                    value["_source_files"] = json.loads(source["files_json"] or "[]")
+                except (TypeError, ValueError):
+                    value["_source_files"] = []
+        finally:
+            if close:
+                owned.close()
+
     def get_content_by_hash(self, target_hash: str) -> str:
         """Return the complete hydrated entrypoint for an exact content hash."""
         with self._lock, self._connection() as conn:
-            rows = conn.execute("SELECT row_json FROM skills_sh_mirror").fetchall()
-        for row in rows:
-            try:
-                value = json.loads(row["row_json"])
-            except (TypeError, ValueError):
-                continue
-            if isinstance(value, dict) and value.get("content_hash") == target_hash:
-                return str(value.get("_content") or "")
-        return ""
+            source = conn.execute(
+                "SELECT content FROM skills_sh_sources WHERE content_hash=?", (target_hash,)
+            ).fetchone()
+            if source:
+                return str(source["content"] or "")
+            # Compatibility for pre-migration rows.
+            row = conn.execute(
+                "SELECT row_json FROM skills_sh_mirror WHERE json_extract(row_json, '$.content_hash')=? LIMIT 1",
+                (target_hash,),
+            ).fetchone()
+        if not row:
+            return ""
+        try:
+            value = json.loads(row["row_json"])
+        except (TypeError, ValueError):
+            return ""
+        return str(value.get("_content") or "") if isinstance(value, dict) else ""
 
-    def put(self, rows: list[dict[str, Any]], *, expires_at: float, stale_until: float) -> None:
+    def record_attempt(
+        self,
+        *,
+        skill_id: str,
+        snapshot_hash: str | None,
+        status: str,
+        reason: str = "",
+        retryable: bool = False,
+        content_hash_value: str | None = None,
+        byte_count: int = 0,
+        error: str | None = None,
+    ) -> None:
+        with self._lock, self._connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO skills_sh_ingestion_attempts
+                    (skill_id, snapshot_hash, status, reason, retryable,
+                     content_hash, byte_count, error, attempted_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    skill_id,
+                    snapshot_hash,
+                    status,
+                    reason,
+                    int(retryable),
+                    content_hash_value,
+                    int(byte_count or 0),
+                    error,
+                    time.time(),
+                ),
+            )
+
+    def latest_attempt(self, skill_id: str, snapshot_hash: str | None) -> dict[str, Any] | None:
+        with self._lock, self._connection() as conn:
+            row = conn.execute(
+                """
+                SELECT skill_id, snapshot_hash, status, reason, retryable,
+                       content_hash, byte_count, error, attempted_at
+                FROM skills_sh_ingestion_attempts
+                WHERE skill_id=? AND (snapshot_hash=? OR (snapshot_hash IS NULL AND ? IS NULL))
+                ORDER BY attempted_at DESC LIMIT 1
+                """,
+                (skill_id, snapshot_hash, snapshot_hash),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def migrate_legacy_rows(self, *, retention_seconds: float = DEFAULT_SOURCE_RETENTION_SECONDS) -> dict[str, int]:
+        """Move inline legacy bodies into the immutable source table safely."""
+        migrated = 0
+        retained = 0
+        now = time.time()
+        with self._lock, self._connection() as conn:
+            rows = conn.execute("SELECT id, row_json, stale_until FROM skills_sh_mirror").fetchall()
+            for row in rows:
+                try:
+                    value = json.loads(row["row_json"])
+                except (TypeError, ValueError):
+                    continue
+                if not isinstance(value, dict):
+                    continue
+                content = str(value.get("_content") or "")
+                content_hash_value = str(value.get("content_hash") or "")
+                if content and content_hash_value:
+                    files = value.get("_source_files") or []
+                    try:
+                        files_json = json.dumps(files, separators=(",", ":"), ensure_ascii=False)
+                    except (TypeError, ValueError):
+                        files_json = "[]"
+                    conn.execute(
+                        """
+                        INSERT INTO skills_sh_sources
+                            (content_hash, canonical_skill_id, snapshot_hash, entrypoint_path,
+                             content, files_json, byte_count, created_at, last_seen_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(content_hash) DO UPDATE SET
+                            last_seen_at=excluded.last_seen_at
+                        """,
+                        (
+                            content_hash_value,
+                            str(value.get("skills_sh_id") or value.get("id") or ""),
+                            str(value.get("source_snapshot_hash") or "") or None,
+                            str((value.get("raw") or {}).get("entrypoint_path") or "")
+                            if isinstance(value.get("raw"), dict)
+                            else "",
+                            content,
+                            files_json,
+                            len(content.encode("utf-8")),
+                            now,
+                            now,
+                        ),
+                    )
+                    value.pop("_content", None)
+                    value.pop("_source_files", None)
+                    conn.execute(
+                        "UPDATE skills_sh_mirror SET row_json=? WHERE id=?",
+                        (json.dumps(value, separators=(",", ":"), ensure_ascii=False), row["id"]),
+                    )
+                    migrated += 1
+                conn.execute(
+                    "UPDATE skills_sh_mirror SET stale_until=? WHERE id=?",
+                    (max(float(row["stale_until"] or 0), now + retention_seconds), row["id"]),
+                )
+                retained += 1
+        return {"migrated": migrated, "retained": retained}
+
+    def put(
+        self,
+        rows: list[dict[str, Any]],
+        *,
+        expires_at: float,
+        stale_until: float,
+        source_retention_until: float | None = None,
+    ) -> None:
         values = []
         for row in rows:
             skill_id = str(row.get("skills_sh_id") or row.get("id") or "").strip()
             if not skill_id:
                 continue
             try:
-                row_json = json.dumps(row, separators=(",", ":"), ensure_ascii=False)
+                row_for_json = dict(row)
+                row_for_json.pop("_content", None)
+                row_for_json.pop("_source_files", None)
+                row_json = json.dumps(row_for_json, separators=(",", ":"), ensure_ascii=False)
             except (TypeError, ValueError):
                 continue
             values.append(
@@ -236,12 +435,45 @@ class _PersistentMirror:
                     str(row.get("source_snapshot_hash") or "") or None,
                     time.time(),
                     expires_at,
-                    stale_until,
+                    max(stale_until, float(source_retention_until or 0.0)),
                 )
             )
         if not values:
             return
+        now = time.time()
         with self._lock, self._connection() as conn:
+            for row in rows:
+                content = str(row.get("_content") or "")
+                content_hash_value = str(row.get("content_hash") or "")
+                if not content or not content_hash_value:
+                    continue
+                try:
+                    files_json = json.dumps(row.get("_source_files") or [], separators=(",", ":"), ensure_ascii=False)
+                except (TypeError, ValueError):
+                    files_json = "[]"
+                conn.execute(
+                    """
+                    INSERT INTO skills_sh_sources
+                        (content_hash, canonical_skill_id, snapshot_hash, entrypoint_path,
+                         content, files_json, byte_count, created_at, last_seen_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(content_hash) DO UPDATE SET
+                        last_seen_at=excluded.last_seen_at
+                    """,
+                    (
+                        content_hash_value,
+                        str(row.get("skills_sh_id") or row.get("id") or ""),
+                        str(row.get("source_snapshot_hash") or "") or None,
+                        str((row.get("raw") or {}).get("entrypoint_path") or "")
+                        if isinstance(row.get("raw"), dict)
+                        else "",
+                        content,
+                        files_json,
+                        len(content.encode("utf-8")),
+                        now,
+                        now,
+                    ),
+                )
             conn.executemany(
                 """
                 INSERT INTO skills_sh_mirror
@@ -294,6 +526,29 @@ def _retrieval_text(name: str, description: str, content: str) -> str:
     body = re.sub(r"\s+", " ", body).strip()
     value = " ".join(part for part in (name, description, body) if part).strip()
     return value[:MAX_RETRIEVAL_CHARS]
+
+
+def _reference_closure(files: list[dict[str, Any]], entrypoint: str) -> tuple[list[str], list[str]]:
+    """Resolve local markdown/path references against the captured package."""
+    available = {
+        str(item.get("path") or "").replace("\\", "/").strip("/")
+        for item in files
+        if isinstance(item, dict) and item.get("path")
+    }
+    refs: set[str] = set()
+    for item in files:
+        if not isinstance(item, dict) or item.get("contents") is None:
+            continue
+        text = str(item.get("contents"))
+        for match in _REFERENCE_RE.finditer(text):
+            reference = (match.group(1) or match.group(2) or "").strip().strip("`'\"")
+            if not reference or reference.startswith(("http://", "https://", "mailto:")):
+                continue
+            base = Path(str(item.get("path") or "").replace("\\", "/")).parent
+            normalized = (base / reference).as_posix().lstrip("./")
+            refs.add(normalized)
+    unresolved = sorted(reference for reference in refs if reference not in available)
+    return sorted(refs), unresolved
 
 
 def _audit_summary(audits: list[dict[str, Any]] | None) -> tuple[str, str, int, list[str]]:
@@ -424,12 +679,34 @@ class SkillsShCatalog:
             float(ttl_seconds or 0.0),
         )
         expires_at = now + ttl
+        source_retention_until = now + DEFAULT_SOURCE_RETENTION_SECONDS
         await asyncio.to_thread(
             self._mirror.put,
             rows,
             expires_at=expires_at,
             stale_until=expires_at + self.mirror_stale_seconds,
+            source_retention_until=source_retention_until,
         )
+
+    async def migrate_mirror(self) -> dict[str, int]:
+        if self._mirror is None:
+            return {"migrated": 0, "retained": 0}
+        return await asyncio.to_thread(
+            self._mirror.migrate_legacy_rows,
+            retention_seconds=DEFAULT_SOURCE_RETENTION_SECONDS,
+        )
+
+    async def record_ingestion_attempt(self, **kwargs: Any) -> None:
+        if self._mirror is None:
+            return
+        await asyncio.to_thread(self._mirror.record_attempt, **kwargs)
+
+    async def latest_ingestion_attempt(
+        self, skill_id: str, snapshot_hash: str | None
+    ) -> dict[str, Any] | None:
+        if self._mirror is None:
+            return None
+        return await asyncio.to_thread(self._mirror.latest_attempt, skill_id, snapshot_hash)
 
     async def hydrate_listings(
         self,
@@ -885,6 +1162,49 @@ class SkillsShCatalog:
             # compact normalized record below; delivery decides whether these
             # verified bytes are inline or isolated.
             fields = _frontmatter_fields(content)
+            source_files: list[dict[str, Any]] = []
+            for file in files:
+                if not isinstance(file, dict):
+                    continue
+                path = str(file.get("path") or "").replace("\\", "/").strip("/")
+                if not path or file.get("contents") is None:
+                    continue
+                body = str(file.get("contents"))
+                source_files.append(
+                    {
+                        "path": path,
+                        "contents": body,
+                        "sha256": hashlib.sha256(body.encode("utf-8")).hexdigest(),
+                        "bytes": len(body.encode("utf-8")),
+                    }
+                )
+            detail_snapshot = str(detail.get("hash") or "") or None
+            source_commit_sha = str(
+                detail.get("commitSha")
+                or detail.get("commit_sha")
+                or detail.get("commit")
+                or detail.get("sha")
+                or ""
+            ) or None
+            license_spdx = str(
+                detail.get("licenseSpdx")
+                or detail.get("license_spdx")
+                or detail.get("license")
+                or ""
+            ) or None
+            entrypoint_record = next(
+                (item for item in files if isinstance(item, dict) and str(item.get("path") or "").replace("\\", "/").strip("/") == entrypoint),
+                {},
+            )
+            entrypoint_truncated = int(
+                bool(
+                    entrypoint_record.get("truncated")
+                    or entrypoint_record.get("isTruncated")
+                    or detail.get("truncated")
+                    or detail.get("filesTruncated")
+                )
+            )
+            references, unresolved_references = _reference_closure(files, entrypoint)
             skill_id = _stable_skill_id(listing_item) or _stable_skill_id(detail)
             name = str(listing_item.get("name") or fields.get("name") or detail.get("slug") or skill_id)
             description = str(
@@ -909,7 +1229,7 @@ class SkillsShCatalog:
                 "skills_sh_url": page_url,
                 "install_url": install_url,
                 "skills_sh_id": skill_id,
-                "source_snapshot_hash": str(detail.get("hash") or "") or None,
+                "source_snapshot_hash": detail_snapshot,
                 "is_duplicate": bool(listing_item.get("isDuplicate")),
                 "stars": 0,
                 "installs": listing_item.get("installs") or page_meta.get("installs"),
@@ -920,10 +1240,17 @@ class SkillsShCatalog:
                 "_content": content,
                 "retrieval_text": _retrieval_text(name, description, content),
                 "retrieval_text_hash": hashlib.sha256(_retrieval_text(name, description, content).encode()).hexdigest(),
-                "source_commit_sha": None,
-                "package_completeness": "complete" if files and detail.get("hash") else "unknown",
-                "dependency_closure_status": "unresolved",
-                "entrypoint_truncated": 0,
+                "source_commit_sha": source_commit_sha,
+                "license_spdx": license_spdx,
+                "source_file_count": len(source_files),
+                "source_total_bytes": sum(int(item.get("bytes") or 0) for item in source_files),
+                "package_completeness": "complete" if source_files and detail_snapshot else "unknown",
+                "dependency_closure_status": (
+                    "resolved" if source_files and not unresolved_references else
+                    "captured_unresolved" if source_files else "unresolved"
+                ),
+                "entrypoint_truncated": entrypoint_truncated,
+                "_source_files": source_files,
                 "raw": {
                     "skills_sh_id": skill_id,
                     "skills_sh_url": page_url,
@@ -932,6 +1259,12 @@ class SkillsShCatalog:
                     "source_type": listing_item.get("sourceType"),
                     "snapshot_hash": detail.get("hash"),
                     "entrypoint_path": entrypoint,
+                    "references": references,
+                    "unresolved_references": unresolved_references,
+                    "file_manifest": [
+                        {key: item[key] for key in ("path", "sha256", "bytes")}
+                        for item in source_files
+                    ],
                     "audits": partner_audits or [],
                 },
             }

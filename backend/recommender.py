@@ -1056,6 +1056,8 @@ def _public_skill(row: dict | None) -> dict | None:
         "package_hash": row.get("package_hash"),
         "source_commit_sha": row.get("source_commit_sha"),
         "license_spdx": row.get("license_spdx"),
+        "source_file_count": row.get("source_file_count"),
+        "source_total_bytes": row.get("source_total_bytes"),
         "package_completeness": row.get("package_completeness"),
         "dependency_closure_status": row.get("dependency_closure_status"),
         "retrieval_record_hash": row.get("retrieval_record_hash"),

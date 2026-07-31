@@ -240,7 +240,7 @@ then runs the sync:
 
 ```bash
 VERCEL_PROJECT=autoskill-indexer \
-  bash backend/deploy/refresh-and-sync-skills-sh.sh
+bash backend/deploy/refresh-and-sync-skills-sh.sh
 ```
 
 The job also includes the official curated set by default, skips fresh mirror
@@ -264,6 +264,23 @@ This walks the API's `pagination.hasMore` pages and stores every non-duplicate
 listing as a searchable `metadata_only` hint. Only the bounded `--hydrate-top`
 slice fetches package files and audit records, so the full catalog does not
 turn into millions of detail/audit requests or trusted content.
+
+For a resumable full hydration pass across every discovered listing, use:
+
+```bash
+python backend/sync_skills_sh_mirror.py --all-listings \
+  --views all-time,trending,hot --per-page 500 \
+  --hydrate-all --retry-failed --batch-size 8 --delay-seconds 0.25
+```
+
+The deployed operator wrapper for this explicit full pass is
+`backend/deploy/reingest-skills-sh-full.sh`; the ordinary refresh job remains
+bounded by design.
+
+Hydrated source blobs are retained separately from compact retrieval metadata,
+with per-skill ingestion attempts and reason-level counters. Permanent failures
+are skipped on later runs unless `--retry-failed` is supplied; transient detail,
+audit, and stale-mirror failures remain eligible for retry.
 
 ## Evals
 

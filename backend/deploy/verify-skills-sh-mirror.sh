@@ -21,10 +21,32 @@ try:
         "select count(*) from sqlite_master where type='table' and name='skills_sh_mirror'"
     ).fetchone()[0]
     rows = conn.execute("select count(*) from skills_sh_mirror").fetchone()[0] if table else 0
+    active = conn.execute(
+        "select count(*) from skills_sh_mirror where json_extract(row_json, '$.quality_status')='active'"
+    ).fetchone()[0] if table else 0
+    metadata_only = conn.execute(
+        "select count(*) from skills_sh_mirror where json_extract(row_json, '$.quality_status')='metadata_only'"
+    ).fetchone()[0] if table else 0
+    rejected = conn.execute(
+        "select count(*) from skills_sh_mirror where json_extract(row_json, '$.quality_status')='rejected'"
+    ).fetchone()[0] if table else 0
+    sources = conn.execute("select count(*) from skills_sh_sources").fetchone()[0] if table else 0
+    source_bytes = conn.execute("select coalesce(sum(byte_count), 0) from skills_sh_sources").fetchone()[0] if table else 0
+    attempts = conn.execute("select count(*) from skills_sh_ingestion_attempts").fetchone()[0] if table else 0
 finally:
     conn.close()
 
-result = {"mirror_path": path, "table_present": bool(table), "rows": rows}
+result = {
+    "mirror_path": path,
+    "table_present": bool(table),
+    "rows": rows,
+    "active": active,
+    "metadata_only": metadata_only,
+    "rejected": rejected,
+    "source_blobs": sources,
+    "source_bytes": source_bytes,
+    "ingestion_attempts": attempts,
+}
 print(json.dumps(result, sort_keys=True))
 if not table or rows < 1:
     raise SystemExit("skills.sh mirror is absent or empty")

@@ -141,3 +141,46 @@ def test_all_listings_can_resume_across_every_indexed_listing(monkeypatch):
     assert result["selected"] == 3
     assert result["hydrated"] == 3
     assert catalog.hydrated_ids == ["acme/skills/0", "acme/skills/1", "acme/skills/2"]
+
+
+def test_sync_skips_terminal_failures_until_explicit_retry(monkeypatch):
+    class LedgerCatalog(_FakeCatalog):
+        def __init__(self):
+            self.hydrated_ids = []
+
+        async def curated(self):
+            return []
+
+        async def leaderboard(self, **kwargs):
+            return [{"id": "acme/skills/terminal"}, {"id": "acme/skills/retry"}]
+
+        async def cached_ids(self, ids):
+            return []
+
+        async def latest_ingestion_attempt(self, skill_id, snapshot_hash):
+            if skill_id.endswith("terminal"):
+                return {"retryable": 0, "status": "rejected"}
+            return None
+
+        async def hydrate_listings(self, listings, limit):
+            self.hydrated_ids.extend(row["id"] for row in listings)
+            return [{"id": row["id"], "quality_status": "active"} for row in listings]
+
+    catalog = LedgerCatalog()
+    monkeypatch.setattr(sync, "default_catalog", lambda: catalog)
+    args = Namespace(
+        view="trending",
+        pages=1,
+        per_page=50,
+        max_skills=10,
+        all_listings=False,
+        hydrate_all=False,
+        hydrate_top=100,
+        retry_failed=False,
+        batch_size=2,
+        delay_seconds=0,
+        no_curated=False,
+    )
+    result = asyncio.run(sync.sync_mirror(args))
+    assert result["terminal_skipped"] == 1
+    assert catalog.hydrated_ids == ["acme/skills/retry"]

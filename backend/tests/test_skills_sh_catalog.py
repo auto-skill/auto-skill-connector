@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import sqlite3
 from pathlib import Path
 from unittest.mock import patch
 from uuid import uuid4
@@ -172,6 +173,26 @@ def test_persistent_mirror_serves_warm_retrieval_without_upstream() -> None:
     assert second_rows[0]["mirror_fresh"] is True
     for suffix in ("", "-wal", "-shm"):
         mirror_path.with_name(mirror_path.name + suffix).unlink(missing_ok=True)
+
+
+def test_mirror_keeps_source_blobs_separate_and_rehydrates_by_id(tmp_path: Path) -> None:
+    mirror = str(tmp_path / "source-store.db")
+    catalog = SkillsShCatalog(
+        api_url="https://skills.test/api/v1",
+        oidc_token="test-token",
+        mirror_db_path=mirror,
+        mirror_enabled=True,
+        transport=httpx.MockTransport(_catalog_transport),
+    )
+    rows = asyncio.run(catalog.retrieve("create spreadsheet report", limit=1))
+    row = rows[0]
+    with sqlite3.connect(mirror) as conn:
+        stored = conn.execute("SELECT row_json FROM skills_sh_mirror").fetchone()[0]
+        assert "_content" not in stored
+        assert conn.execute("SELECT count(*) FROM skills_sh_sources").fetchone()[0] == 1
+    warm = asyncio.run(catalog.retrieve_ids([row["skills_sh_id"]], limit=1))
+    assert warm[0]["_content"] == row["_content"]
+    assert asyncio.run(catalog.content_by_hash(row["content_hash"])) == row["_content"]
 
 
 def test_metadata_only_mirror_row_does_not_block_authenticated_hydration(tmp_path: Path) -> None:
