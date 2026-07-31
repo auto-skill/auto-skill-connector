@@ -154,8 +154,6 @@ async def sync_mirror(args: argparse.Namespace) -> dict[str, Any]:
     terminal_skipped = 0
     for row in selected:
         skill_id = str(row.get("id") or "")
-        if skill_id in fresh_ids:
-            continue
         cached_row = cached_by_id.get(skill_id) or {}
         snapshot_hash = str(cached_row.get("source_snapshot_hash") or "") or None
         latest_reader = getattr(catalog, "latest_ingestion_attempt", None)
@@ -164,6 +162,8 @@ async def sync_mirror(args: argparse.Namespace) -> dict[str, Any]:
             if callable(latest_reader)
             else None
         )
+        if skill_id in fresh_ids and not (latest and bool(latest.get("retryable"))):
+            continue
         if latest and not retry_failed and not bool(latest.get("retryable")):
             terminal_skipped += 1
             continue
