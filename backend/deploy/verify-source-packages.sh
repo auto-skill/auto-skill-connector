@@ -8,4 +8,6 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 DB_PATH="${LOCAL_DB_PATH:-$ROOT_DIR/backend/data/local_skills.db}"
 PACKAGE_ROOT="${PACKAGE_ROOT:-$ROOT_DIR/backend/skills_library/packages}"
 cd "$ROOT_DIR"
-exec python backend/audit_package_integrity.py --db "$DB_PATH" --package-root "$PACKAGE_ROOT"
+PYTHON_BIN="${PYTHON_BIN:-python3}"
+command -v "$PYTHON_BIN" >/dev/null 2>&1 || PYTHON_BIN=python
+exec "$PYTHON_BIN" backend/audit_package_integrity.py --db "$DB_PATH" --package-root "$PACKAGE_ROOT"
