@@ -1,4 +1,19 @@
 services:
+  hydrator:
+    profiles: ["hydrator"]
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.hydrator
+    environment:
+      LOCAL_DB_PATH: /data/local_skills.db
+    volumes:
+      - ../data:/data
+      - ../skills_library:/app/skills_library
+    working_dir: /app
+    mem_limit: 768m
+    cpus: "0.75"
+    pids_limit: 128
+
   api:
     build:
       context: ..

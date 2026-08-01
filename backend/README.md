@@ -241,6 +241,10 @@ windows on small droplets so the ONNX runtime cannot spike memory. Set
 `BATCHES` to repeat bounded windows while keeping readers stopped once.
 On the current 1.5 GiB API droplet, keep `STOP_SERVICES=1`: the serving ONNX
 runtime and a concurrent hydrator exceed the host memory budget.
+The optional `hydrator` Compose profile uses a small HTTPX/NumPy-only image;
+build it once with `BUILD_HYDRATOR=1`. With that image available, a monitored
+`STOP_SERVICES=0 HYDRATOR_SERVICE=hydrator` run can keep the API online while
+package writes remain transactional.
 
 Conversation follow-ups carry the stable skills.sh ID, not an arbitrary source
 URL. Live mode rehydrates that ID through the skills.sh catalog (using the

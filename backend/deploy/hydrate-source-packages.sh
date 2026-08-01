@@ -13,6 +13,8 @@ BATCHES="${BATCHES:-1}"
 RETRY_FAILED="${RETRY_FAILED:-0}"
 AUDIT_REQUIRE_COMPLETE="${AUDIT_REQUIRE_COMPLETE:-0}"
 STOP_SERVICES="${STOP_SERVICES:-1}"
+HYDRATOR_SERVICE="${HYDRATOR_SERVICE:-hydrator}"
+BUILD_HYDRATOR="${BUILD_HYDRATOR:-0}"
 
 cd "$ROOT_DIR"
 
@@ -30,6 +32,10 @@ else
   echo "warning: running with readers online; SQLite writes remain transactional but API caches refresh only after restart" >&2
 fi
 
+if [[ "$BUILD_HYDRATOR" == "1" ]]; then
+  docker compose --profile hydrator -f "$COMPOSE_FILE" build "$HYDRATOR_SERVICE"
+fi
+
 retry_args=()
 if [[ "$RETRY_FAILED" == "1" ]]; then
   retry_args+=(--retry-failed)
@@ -37,7 +43,7 @@ fi
 
 for batch in $(seq 1 "$BATCHES"); do
   echo "==> Hydration batch $batch/$BATCHES (limit=$LIMIT)"
-  docker compose -f "$COMPOSE_FILE" run --rm --no-deps api \
+  docker compose --profile hydrator -f "$COMPOSE_FILE" run --rm --no-deps "$HYDRATOR_SERVICE" \
     python hydrate_github_packages.py \
     --db /data/local_skills.db \
     --library-dir /app/skills_library \
