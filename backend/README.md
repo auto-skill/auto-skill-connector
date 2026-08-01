@@ -237,7 +237,8 @@ non-green until more batches finish. After hydration,
 `backend/deploy/backfill-source-embeddings.sh` re-embeds active rows with the
 API stopped and restarts it to refresh its vector cache.
 The operator defaults to `LIMIT=0` and `BATCH_SIZE=8`; use bounded `LIMIT`
-windows on small droplets so the ONNX runtime cannot spike memory.
+windows on small droplets so the ONNX runtime cannot spike memory. Set
+`BATCHES` to repeat bounded windows while keeping readers stopped once.
 On the current 1.5 GiB API droplet, keep `STOP_SERVICES=1`: the serving ONNX
 runtime and a concurrent hydrator exceed the host memory budget.
 

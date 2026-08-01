@@ -9,6 +9,7 @@ ROOT_DIR="$(cd "$DEPLOY_DIR/../.." && pwd)"
 COMPOSE_FILE="${COMPOSE_FILE:-$DEPLOY_DIR/docker-compose.yml}"
 LIMIT="${LIMIT:-0}"
 BATCH_SIZE="${BATCH_SIZE:-8}"
+BATCHES="${BATCHES:-1}"
 cd "$ROOT_DIR"
 
 restart_services() {
@@ -17,9 +18,12 @@ restart_services() {
 trap 'restart_services || true' EXIT
 
 docker compose -f "$COMPOSE_FILE" stop api admin-local mcp litestream >/dev/null
-docker compose -f "$COMPOSE_FILE" run --rm --no-deps api \
-  python backfill_embeddings_local.py \
-  --db /data/local_skills.db \
-  --library-dir /app/skills_library \
-  --limit "$LIMIT" \
-  --batch-size "$BATCH_SIZE"
+for batch in $(seq 1 "$BATCHES"); do
+  echo "==> Embedding batch $batch/$BATCHES (limit=$LIMIT, batch-size=$BATCH_SIZE)"
+  docker compose -f "$COMPOSE_FILE" run --rm --no-deps api \
+    python backfill_embeddings_local.py \
+    --db /data/local_skills.db \
+    --library-dir /app/skills_library \
+    --limit "$LIMIT" \
+    --batch-size "$BATCH_SIZE"
+done
