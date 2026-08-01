@@ -25,7 +25,13 @@ import httpx
 
 import local_store as store
 from capsule_compiler import strip_unsafe_content
-from package_store import ImmutablePackageStore, PackageFileInput, build_package_manifest
+from package_store import (
+    MAX_PACKAGE_BYTES,
+    MAX_PACKAGE_FILES,
+    ImmutablePackageStore,
+    PackageFileInput,
+    build_package_manifest,
+)
 from quality import canonicalize_skill_content, content_hash, evaluate_quality
 
 
@@ -98,24 +104,39 @@ def _safe_member_name(name: str) -> str:
     return "/".join(parts)
 
 
-def read_archive(raw: bytes) -> dict[str, bytes]:
+def read_archive(raw: bytes, scope: str = "") -> dict[str, bytes]:
     if len(raw) > MAX_ARCHIVE_BYTES:
         raise ValueError(f"archive exceeds {MAX_ARCHIVE_BYTES} byte safety limit")
     files: dict[str, bytes] = {}
-    with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as archive:
-        members = archive.getmembers()
-        for member in members:
-            if member.issym() or member.islnk() or not (member.isfile() or member.isdir()):
-                raise ValueError(f"unsupported archive entry: {member.name}")
-        for member in members:
-            if not member.isfile():
-                continue
+    scoped_prefix = scope.strip("/")
+    total_bytes = 0
+    with tarfile.open(fileobj=io.BytesIO(raw), mode="r|gz") as archive:
+        wrapper = ""
+        for member in archive:
             name = _safe_member_name(member.name)
             # codeload wraps files in one top-level ``repo-ref`` directory.
-            if "/" not in name:
+            if not wrapper:
+                wrapper = name.split("/", 1)[0]
+            if not name.startswith(wrapper + "/"):
                 continue
-            relative = name.split("/", 1)[1]
-            files[relative] = archive.extractfile(member).read()  # type: ignore[union-attr]
+            relative = name[len(wrapper) + 1:]
+            if scoped_prefix and not (
+                relative == scoped_prefix or relative.startswith(scoped_prefix + "/")
+            ):
+                continue
+            if member.issym() or member.islnk() or not (member.isfile() or member.isdir()):
+                raise ValueError(f"unsupported archive entry: {member.name}")
+            if not member.isfile():
+                continue
+            if len(files) >= MAX_PACKAGE_FILES:
+                raise ValueError("scoped tree exceeds package file limit")
+            total_bytes += int(member.size or 0)
+            if total_bytes > MAX_PACKAGE_BYTES:
+                raise ValueError("scoped tree exceeds package byte limit")
+            extracted = archive.extractfile(member)
+            if extracted is None:
+                raise ValueError(f"could not read archive entry: {member.name}")
+            files[relative] = extracted.read()
     return files
 
 
@@ -194,7 +215,7 @@ def hydrate_row(
         )
         response = client.get(archive_url, timeout=120)
         response.raise_for_status()
-        files = read_archive(response.content)
+        files = read_archive(response.content, parsed["scope"])
         archive_cache[cache_key] = files
     entrypoint, scoped = select_package_files(files, parsed["scope"], parsed["entrypoint"])
     package_files = [
