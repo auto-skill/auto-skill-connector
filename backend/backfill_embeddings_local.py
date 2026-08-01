@@ -21,7 +21,7 @@ def main() -> int:
     parser.add_argument("--db", type=Path, default=store.DB_PATH)
     parser.add_argument("--library-dir", type=Path, default=Path(__file__).parent / "skills_library")
     parser.add_argument("--limit", type=int, default=0, help="maximum rows; zero means all")
-    parser.add_argument("--batch-size", type=int, default=128)
+    parser.add_argument("--batch-size", type=int, default=8)
     args = parser.parse_args()
     store.DB_PATH = args.db
     store.init_db()
