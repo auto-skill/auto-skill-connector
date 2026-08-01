@@ -140,6 +140,23 @@ def read_archive(raw: bytes, scope: str = "") -> dict[str, bytes]:
     return files
 
 
+def download_archive(client: httpx.Client, url: str) -> bytes:
+    """Download with a hard compressed-size cap before buffering in memory."""
+    with client.stream("GET", url, timeout=120) as response:
+        response.raise_for_status()
+        declared = int(response.headers.get("content-length") or 0)
+        if declared > MAX_ARCHIVE_BYTES:
+            raise ValueError(f"archive exceeds {MAX_ARCHIVE_BYTES} byte safety limit")
+        chunks: list[bytes] = []
+        total = 0
+        for chunk in response.iter_bytes():
+            total += len(chunk)
+            if total > MAX_ARCHIVE_BYTES:
+                raise ValueError(f"archive exceeds {MAX_ARCHIVE_BYTES} byte safety limit")
+            chunks.append(chunk)
+    return b"".join(chunks)
+
+
 def select_package_files(files: dict[str, bytes], scope: str, entrypoint: str) -> tuple[str, dict[str, bytes]]:
     scoped = {
         path: content
@@ -213,9 +230,7 @@ def hydrate_row(
             f"https://codeload.github.com/{parsed['owner']}/{parsed['repo']}/tar.gz/"
             f"{quote(parsed['ref'], safe='')}"
         )
-        response = client.get(archive_url, timeout=120)
-        response.raise_for_status()
-        files = read_archive(response.content, parsed["scope"])
+        files = read_archive(download_archive(client, archive_url), parsed["scope"])
         archive_cache[cache_key] = files
     entrypoint, scoped = select_package_files(files, parsed["scope"], parsed["entrypoint"])
     package_files = [
