@@ -231,7 +231,8 @@ For existing catalogs, `backend/deploy/hydrate-source-packages.sh` provides a
 bounded, resumable repair pass. It captures the full public codeload tree,
 quarantines malformed/oversized/ambiguous sources, and writes immutable
 manifests/objects around a stopped-reader SQLite window. Set `LIMIT`,
-`BATCHES`, and `RETRY_FAILED`; a partial pass intentionally leaves the audit
+`BATCHES`, `RETRY_FAILED`, and (for a long online run) `STOP_SERVICES=0`; a
+partial pass intentionally leaves the audit
 non-green until more batches finish. After hydration,
 `backend/deploy/backfill-source-embeddings.sh` re-embeds active rows with the
 API stopped and restarts it to refresh its vector cache.

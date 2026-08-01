@@ -12,6 +12,7 @@ LIMIT="${LIMIT:-100}"
 BATCHES="${BATCHES:-1}"
 RETRY_FAILED="${RETRY_FAILED:-0}"
 AUDIT_REQUIRE_COMPLETE="${AUDIT_REQUIRE_COMPLETE:-0}"
+STOP_SERVICES="${STOP_SERVICES:-1}"
 
 cd "$ROOT_DIR"
 
@@ -22,9 +23,12 @@ restart_services() {
 cleanup() {
   restart_services || true
 }
-trap cleanup EXIT
-
-docker compose -f "$COMPOSE_FILE" stop api admin-local mcp litestream >/dev/null
+if [[ "$STOP_SERVICES" == "1" ]]; then
+  trap cleanup EXIT
+  docker compose -f "$COMPOSE_FILE" stop api admin-local mcp litestream >/dev/null
+else
+  echo "warning: running with readers online; SQLite writes remain transactional but API caches refresh only after restart" >&2
+fi
 
 retry_args=()
 if [[ "$RETRY_FAILED" == "1" ]]; then
@@ -41,6 +45,12 @@ for batch in $(seq 1 "$BATCHES"); do
     --limit "$LIMIT" \
     "${retry_args[@]}"
 done
+
+if [[ "$STOP_SERVICES" != "1" ]]; then
+  # Do not restart or disrupt the live API in online mode. The operator can
+  # run backfill-source-embeddings.sh afterward, which refreshes caches.
+  trap - EXIT
+fi
 
 if ! docker compose -f "$COMPOSE_FILE" run --rm --no-deps api \
   python audit_package_integrity.py \
