@@ -298,6 +298,16 @@ def main() -> int:
                     counts[result] += 1
                 elif result.startswith("incomplete:"):
                     state["failed"][url] = result
+                    conn = store.get_conn()
+                    try:
+                        conn.execute(
+                            "UPDATE skills SET quality_status='rejected', package_completeness='incomplete', "
+                            "quality_reasons=? WHERE id=?",
+                            (json.dumps(["package-incomplete", result], sort_keys=True), row["id"]),
+                        )
+                        conn.commit()
+                    finally:
+                        conn.close()
                     counts["incomplete"] += 1
                 else:
                     state["failed"][url] = result
