@@ -10,6 +10,7 @@ COMPOSE_FILE="${COMPOSE_FILE:-$DEPLOY_DIR/docker-compose.yml}"
 STATE_PATH="${STATE_PATH:-/data/github_package_hydration_state.json}"
 LIMIT="${LIMIT:-100}"
 RETRY_FAILED="${RETRY_FAILED:-0}"
+AUDIT_REQUIRE_COMPLETE="${AUDIT_REQUIRE_COMPLETE:-0}"
 
 cd "$ROOT_DIR"
 
@@ -37,7 +38,12 @@ docker compose -f "$COMPOSE_FILE" run --rm --no-deps api \
   --limit "$LIMIT" \
   "${retry_args[@]}"
 
-docker compose -f "$COMPOSE_FILE" run --rm --no-deps api \
+if ! docker compose -f "$COMPOSE_FILE" run --rm --no-deps api \
   python audit_package_integrity.py \
   --db /data/local_skills.db \
-  --package-root /app/skills_library/packages
+  --package-root /app/skills_library/packages; then
+  if [[ "$AUDIT_REQUIRE_COMPLETE" == "1" ]]; then
+    exit 1
+  fi
+  echo "warning: source package audit is not complete yet; rerun with more batches" >&2
+fi

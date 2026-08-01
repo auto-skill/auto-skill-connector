@@ -275,7 +275,7 @@ def main() -> int:
     conn = store.get_conn()
     try:
         rows = conn.execute(
-            "SELECT * FROM skills WHERE quality_status IN ('active','metadata_only') "
+            "SELECT * FROM skills WHERE quality_status IN ('active','metadata_only','pending') "
             "AND source IN ('github','github_skill_file','skillsmp','awesome_list') ORDER BY id"
         ).fetchall()
     finally:
@@ -303,7 +303,30 @@ def main() -> int:
                     state["failed"][url] = result
                     counts[result] += 1
             except Exception as exc:  # one public repository must not stop the resumable run
-                state["failed"][url] = f"{type(exc).__name__}:{exc}"[:500]
+                reason = f"{type(exc).__name__}:{exc}"[:500]
+                state["failed"][url] = reason
+                # Invalid/malformed packages are permanently ineligible for
+                # routing. Network/rate-limit failures remain pending so a
+                # later --retry-failed pass can retry them without surfacing
+                # an incomplete source package.
+                terminal = isinstance(exc, ValueError)
+                if isinstance(exc, httpx.HTTPStatusError):
+                    terminal = exc.response.status_code in {400, 404, 410, 422}
+                conn = store.get_conn()
+                try:
+                    conn.execute(
+                        "UPDATE skills SET quality_status=?, package_completeness=?, "
+                        "quality_reasons=? WHERE id=?",
+                        (
+                            "rejected" if terminal else "pending",
+                            "incomplete",
+                            json.dumps(["package-incomplete", reason], sort_keys=True),
+                            row["id"],
+                        ),
+                    )
+                    conn.commit()
+                finally:
+                    conn.close()
                 counts["failed"] += 1
             args.state.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")
             print(url, counts, flush=True)
