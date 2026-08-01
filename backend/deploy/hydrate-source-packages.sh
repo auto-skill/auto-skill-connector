@@ -9,6 +9,7 @@ ROOT_DIR="$(cd "$DEPLOY_DIR/../.." && pwd)"
 COMPOSE_FILE="${COMPOSE_FILE:-$DEPLOY_DIR/docker-compose.yml}"
 STATE_PATH="${STATE_PATH:-/data/github_package_hydration_state.json}"
 LIMIT="${LIMIT:-100}"
+BATCHES="${BATCHES:-1}"
 RETRY_FAILED="${RETRY_FAILED:-0}"
 AUDIT_REQUIRE_COMPLETE="${AUDIT_REQUIRE_COMPLETE:-0}"
 
@@ -30,13 +31,16 @@ if [[ "$RETRY_FAILED" == "1" ]]; then
   retry_args+=(--retry-failed)
 fi
 
-docker compose -f "$COMPOSE_FILE" run --rm --no-deps api \
-  python hydrate_github_packages.py \
-  --db /data/local_skills.db \
-  --library-dir /app/skills_library \
-  --state "$STATE_PATH" \
-  --limit "$LIMIT" \
-  "${retry_args[@]}"
+for batch in $(seq 1 "$BATCHES"); do
+  echo "==> Hydration batch $batch/$BATCHES (limit=$LIMIT)"
+  docker compose -f "$COMPOSE_FILE" run --rm --no-deps api \
+    python hydrate_github_packages.py \
+    --db /data/local_skills.db \
+    --library-dir /app/skills_library \
+    --state "$STATE_PATH" \
+    --limit "$LIMIT" \
+    "${retry_args[@]}"
+done
 
 if ! docker compose -f "$COMPOSE_FILE" run --rm --no-deps api \
   python audit_package_integrity.py \

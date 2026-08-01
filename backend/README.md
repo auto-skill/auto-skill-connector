@@ -227,6 +227,15 @@ python backend/audit_package_integrity.py \
 An `ok: true` result means every active GitHub/SkillsMP/curated-list row has a
 complete manifest and every referenced source object hashes correctly.
 
+For existing catalogs, `backend/deploy/hydrate-source-packages.sh` provides a
+bounded, resumable repair pass. It captures the full public codeload tree,
+quarantines malformed/oversized/ambiguous sources, and writes immutable
+manifests/objects around a stopped-reader SQLite window. Set `LIMIT`,
+`BATCHES`, and `RETRY_FAILED`; a partial pass intentionally leaves the audit
+non-green until more batches finish. After hydration,
+`backend/deploy/backfill-source-embeddings.sh` re-embeds active rows with the
+API stopped and restarts it to refresh its vector cache.
+
 Conversation follow-ups carry the stable skills.sh ID, not an arbitrary source
 URL. Live mode rehydrates that ID through the skills.sh catalog (using the
 short-lived search cache for public metadata-only rows); it never reloads a
