@@ -32,3 +32,16 @@ def test_refresh_and_verify_scripts_are_present() -> None:
     assert "active_incomplete" in verify
     assert "--all-listings" in refresh_and_sync
     assert "refresh-skills-sh-oidc.sh" in refresh_and_sync
+
+
+def test_complete_package_operators_are_profiled_and_bounded() -> None:
+    deploy = ROOT / "backend/deploy"
+    compose = (deploy / "docker-compose.yml").read_text(encoding="utf-8")
+    hydrate = (deploy / "hydrate-source-packages.sh").read_text(encoding="utf-8")
+    embed = (deploy / "backfill-source-embeddings.sh").read_text(encoding="utf-8")
+    assert "Dockerfile.hydrator" in compose
+    assert 'profiles: ["hydrator"]' in compose
+    assert "--profile hydrator" in hydrate
+    assert "BATCHES" in hydrate
+    assert "BATCH_SIZE" in embed
+    assert "--batch-size" in embed
