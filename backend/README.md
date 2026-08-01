@@ -236,6 +236,8 @@ partial pass intentionally leaves the audit
 non-green until more batches finish. After hydration,
 `backend/deploy/backfill-source-embeddings.sh` re-embeds active rows with the
 API stopped and restarts it to refresh its vector cache.
+On the current 1.5 GiB API droplet, keep `STOP_SERVICES=1`: the serving ONNX
+runtime and a concurrent hydrator exceed the host memory budget.
 
 Conversation follow-ups carry the stable skills.sh ID, not an arbitrary source
 URL. Live mode rehydrates that ID through the skills.sh catalog (using the
