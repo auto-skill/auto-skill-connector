@@ -35,6 +35,7 @@ class QualityGateTests(unittest.TestCase):
                 "name": "spreadsheet-reporter",
                 "description": "Build spreadsheet reports with formulas and charts.",
                 "source": "github_skill_file",
+                "package_completeness": "complete",
                 "tags": [],
                 "raw": {"stars": 12},
             },

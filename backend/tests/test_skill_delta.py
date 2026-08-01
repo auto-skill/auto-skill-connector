@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import gzip
+import base64
 import hashlib
 import io
 import json
@@ -12,10 +13,12 @@ import zipfile
 from pathlib import Path
 
 from embeddings import build_embed_text, embed_text_hash
+from package_store import PackageFileInput, build_package_manifest
 from quality import content_hash
 from skill_delta import (
     LIBRARY_MEMBER,
     MANIFEST_MEMBER,
+    PACKAGES_MEMBER,
     SKILLS_MEMBER,
     SkillDeltaError,
     apply_import,
@@ -192,6 +195,47 @@ class SkillDeltaTests(unittest.TestCase):
         package_text = self.package.read_bytes()
         self.assertNotIn(b"founder@example.com", package_text)
         self.assertNotIn(b"super-secret-hash", package_text)
+
+    def test_v2_package_member_round_trips_complete_source_objects(self) -> None:
+        self._export()
+        with zipfile.ZipFile(self.package, "r") as archive:
+            manifest = json.loads(archive.read(MANIFEST_MEMBER))
+            skills_raw = archive.read(SKILLS_MEMBER)
+            library_raw = archive.read(LIBRARY_MEMBER)
+        library_record = json.loads(gzip.decompress(library_raw).splitlines()[0])
+        source_url = library_record["url"]
+        source_bytes = library_record["content"].encode("utf-8")
+        package_manifest, objects = build_package_manifest(
+            source={"provider": "github", "commit_sha": "a" * 40},
+            source_url=source_url,
+            entrypoint="SKILL.md",
+            files=[PackageFileInput("SKILL.md", source_bytes, expected_size=len(source_bytes))],
+            tree_complete=True,
+        )
+        package_record = {
+            "skill_urls": [source_url],
+            "manifest": package_manifest,
+            "objects": {digest: base64.b64encode(raw).decode("ascii") for digest, raw in objects.items()},
+        }
+        packages_raw = gzip_bytes([
+            json.dumps(package_record, sort_keys=True, separators=(",", ":")).encode() + b"\n"
+        ])
+        manifest["version"] = 2
+        manifest["files"][PACKAGES_MEMBER] = {
+            "sha256": hashlib.sha256(packages_raw).hexdigest(),
+            "bytes": len(packages_raw),
+        }
+        with zipfile.ZipFile(self.package, "w", compression=zipfile.ZIP_STORED) as archive:
+            archive.writestr(MANIFEST_MEMBER, json.dumps(manifest))
+            archive.writestr(SKILLS_MEMBER, skills_raw)
+            archive.writestr(LIBRARY_MEMBER, library_raw)
+            archive.writestr(PACKAGES_MEMBER, packages_raw)
+
+        loaded = load_package(self.package)
+        self.assertEqual(len(loaded.packages), 1)
+        package = next(iter(loaded.packages.values()))
+        self.assertEqual(package["manifest"]["completeness_status"], "complete")
+        self.assertEqual(package["objects"], objects)
 
     def test_apply_preserves_all_operational_tables_and_writes_audit(self) -> None:
         self._export()

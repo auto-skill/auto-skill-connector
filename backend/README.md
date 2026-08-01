@@ -189,7 +189,9 @@ authorizes delivery of the underlying raw `SKILL.md`. The
 runs only, not production routing.
 
 New GitHub and marketplace ingestion is package-first. GitHub tree URLs are
-resolved to a commit and complete bounded subtree; the optional official
+resolved to a commit and a complete subtree; if any file cannot be captured or
+the immutable package safety limits are exceeded, the candidate is rejected
+instead of silently shortened. The optional official
 `skills.sh` curated API capture stores its complete file snapshot and registry
 hash when `SKILLS_SH_OIDC_TOKEN` is configured. At route time, the same token
 enables the live skills.sh data gate: Auto-Skill sends the original and
@@ -207,7 +209,23 @@ capped at 100 unique URLs per run by default. Unpinned GitHub content is
 retained for triage with `pending_package` status and is not embedded. Package
 bytes, paths, hashes, licenses, roles, references, and source aliases remain
 separate from the single entrypoint-first 1,500-character retrieval record, so
-package integrity does not imply all-file embedding.
+package integrity does not imply all-file embedding. GitHub, SkillsMP, and
+curated-list content without a complete package is discovery metadata only and
+cannot become an active instruction route.
+
+Collector delta exports use format v2 when immutable package tables are
+available. The archive carries complete package manifests and content-addressed
+source objects, not just the curated entrypoint body. Audit a collector or
+production database before applying an import:
+
+```bash
+python backend/audit_package_integrity.py \
+  --db backend/data/local_skills.db \
+  --package-root backend/skills_library/packages
+```
+
+An `ok: true` result means every active GitHub/SkillsMP/curated-list row has a
+complete manifest and every referenced source object hashes correctly.
 
 Conversation follow-ups carry the stable skills.sh ID, not an arbitrary source
 URL. Live mode rehydrates that ID through the skills.sh catalog (using the

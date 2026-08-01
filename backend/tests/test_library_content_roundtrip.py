@@ -136,6 +136,7 @@ class LibraryContentRoundTripTests(unittest.TestCase):
         # into an immutable package. Unpinned GitHub content is intentionally
         # quarantined by the evidence gate.
         skill["_package_manifest"] = {"package_hash": "a" * 64}
+        skill["package_completeness"] = "complete"
 
         asyncio.run(scan_skill(None, skill))
 

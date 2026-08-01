@@ -37,7 +37,6 @@ from quality import (
     canonicalize_skill_content,
     content_hash as quality_content_hash,
     evaluate_quality,
-    has_valid_skill_frontmatter,
     pick_canonical,
 )
 import admin_security
@@ -1138,6 +1137,15 @@ def _skill_bundle_sibling_paths(dir_path: str, skill_md_path: str, all_paths: li
 MAX_BUNDLE_FILES = 200
 MAX_RAW_BUNDLE_CHARS = 300_000
 
+
+class IncompleteSkillBundle(RuntimeError):
+    """Raised when a GitHub skill directory cannot be captured in full.
+
+    A partial sibling bundle is worse than no bundle: it can look like a
+    complete skill while omitting the reference or script that changes its
+    behavior. Callers must reject the candidate or retry it later.
+    """
+
 # Extensions that raw.githubusercontent.com would return as garbled bytes if
 # decoded as text -- content is never dropped for these, just not decoded;
 # the file's existence is still recorded by path (see _fetch_bundle_entry).
@@ -1194,19 +1202,21 @@ async def _fetch_bundle_entry(client: httpx.AsyncClient, owner: str, repo: str, 
 
 
 async def _fetch_text_bundle(client: httpx.AsyncClient, owner: str, repo: str, paths: list, branch: str = "HEAD") -> str:
-    """Fetch every path (up to the safety-valve caps) and concatenate,
-    delimited by a '## path' header per file, stopping once the raw-bundle
-    size backstop is hit."""
+    """Fetch a complete sibling bundle or raise; never return a prefix."""
+    if len(paths) > MAX_BUNDLE_FILES:
+        raise IncompleteSkillBundle(f"bundle has {len(paths)} files; limit is {MAX_BUNDLE_FILES}")
     entries = await asyncio.gather(
-        *(_fetch_bundle_entry(client, owner, repo, p, branch) for p in paths[:MAX_BUNDLE_FILES])
+        *(_fetch_bundle_entry(client, owner, repo, p, branch) for p in paths)
     )
     parts = []
     total = 0
-    for entry in entries:
+    for path, entry in zip(paths, entries):
         if not entry:
-            continue
+            raise IncompleteSkillBundle(f"could not fetch bundle file: {path}")
         if total + len(entry) > MAX_RAW_BUNDLE_CHARS:
-            break
+            raise IncompleteSkillBundle(
+                f"bundle exceeds {MAX_RAW_BUNDLE_CHARS} characters before {path}"
+            )
         parts.append(entry)
         total += len(entry)
     return "".join(parts)
@@ -1326,15 +1336,20 @@ async def tree_crawl_repo(client: httpx.AsyncClient, gh_headers: dict, owner_rep
 
     contents = await asyncio.gather(*(_fetch_raw_file(client, owner, repo, p) for p in skill_paths))
 
-    async def _with_bundle(skill_path: str, skill_content: str) -> str:
+    async def _with_bundle(skill_path: str, skill_content: str) -> str | None:
         if not skill_content:
             return skill_content
         dir_path = skill_path[: -len("SKILL.md")].rstrip("/")
         sibling_paths = _skill_bundle_sibling_paths(dir_path, skill_path, paths)
         if not sibling_paths:
             return skill_content
-        bundle = await _fetch_text_bundle(client, owner, repo, sibling_paths)
-        return skill_content + bundle if bundle else skill_content
+        try:
+            bundle = await _fetch_text_bundle(client, owner, repo, sibling_paths)
+        except IncompleteSkillBundle:
+            # Do not emit a partial skill row. The repo remains eligible for a
+            # later retry after the operator raises the source/package limits.
+            return None
+        return skill_content + bundle
 
     bundled_contents = await asyncio.gather(*(_with_bundle(p, c) for p, c in zip(skill_paths, contents)))
     found = [
@@ -2530,21 +2545,18 @@ async def scan_skill(client: httpx.AsyncClient, skill: dict):
             # fetched.
             skill["_raw_bundle"] = raw_bundle
 
+        # Package completeness is part of the quality decision. Set the
+        # fallback before evaluate_quality so GitHub/SkillsMP bodies fetched
+        # without an immutable package cannot become active by accident.
+        if content and GITHUB_OWNER_REPO_RE.search(str(skill.get("url") or "")) and not skill.get("_package_manifest"):
+            skill.setdefault("package_completeness", "missing")
+
         blob = f"{skill.get('name', '')} {skill.get('description', '')} {content}"
         score, flags = heuristic_scan(blob)
         skill["risk_score"] = score
         skill["risk_flags"] = sorted(set(flags) | set(safety_flags))
         skill["scanned_at"] = datetime.now(timezone.utc).isoformat()
         skill.update(evaluate_quality(skill, content))
-
-        # package_completeness is an honest informational signal (was this
-        # GitHub-sourced skill backed by a commit-pinned, provenance-complete
-        # package snapshot, or just a raw fetch) -- alongside, not instead of,
-        # quality_status/ACTIVE_STATUSES. It does not gate discovery, indexing,
-        # or embedding; quality.tier_for_ranked_candidates is the sole tier
-        # decision (see the comment below).
-        if content and GITHUB_OWNER_REPO_RE.search(str(skill.get("url") or "")) and not skill.get("_package_manifest"):
-            skill.setdefault("package_completeness", "missing")
 
         # The embedding/summary reflect this exact body. A re-scan that
         # changes it (or makes it ineligible) must force a redo; otherwise a
@@ -2945,6 +2957,11 @@ async def run_rescan():
                     updated.raise_for_status()
 
                 await asyncio.gather(*(patch_row(row) for row in rows))
+                await asyncio.to_thread(
+                    _persist_package_records,
+                    rows,
+                    {str(row.get("url") or ""): str(row.get("id") or "") for row in rows},
+                )
                 rescan_progress["scanned"] += len(rows)
                 if len(rows) < page_size:
                     break

@@ -45,6 +45,16 @@ TRUSTED_METADATA_SOURCES = {
     "npm",
 }
 
+# These sources point at GitHub-hosted instruction packages. A fetched body
+# without a complete immutable package is useful as a discovery lead, but it
+# is not safe to treat as an active instruction source.
+PACKAGE_REQUIRED_SOURCES = {
+    "github",
+    "github_skill_file",
+    "skillsmp",
+    "awesome_list",
+}
+
 PLATFORM_ALIASES: dict[str, tuple[str, ...]] = {
     "airtable": ("airtable",),
     "aws": ("aws", "amazon web services"),
@@ -501,6 +511,10 @@ def evaluate_quality(skill: dict[str, Any], content: str = "") -> dict[str, Any]
             reasons.append("entrypoint-truncated")
         package_state = skill.get("package_completeness")
         if content and package_state is not None and str(package_state).casefold() != "complete":
+            reasons.append("package-incomplete")
+    elif source in PACKAGE_REQUIRED_SOURCES and content:
+        package_state = str(skill.get("package_completeness") or "missing").casefold()
+        if package_state != "complete":
             reasons.append("package-incomplete")
     if content:
         chash = content_hash(content)

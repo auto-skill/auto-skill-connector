@@ -31,15 +31,19 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import quality
+from package_store import ImmutablePackageStore
 from embeddings import build_embed_text, embed_text_hash
 
 
 FORMAT = "autoskill-skill-delta"
-FORMAT_VERSION = 1
+FORMAT_VERSION = 2
+LEGACY_FORMAT_VERSION = 1
 SKILLS_MEMBER = "skills.jsonl.gz"
 LIBRARY_MEMBER = "library.jsonl.gz"
+PACKAGES_MEMBER = "packages.jsonl.gz"
 MANIFEST_MEMBER = "manifest.json"
-ALLOWED_MEMBERS = frozenset({MANIFEST_MEMBER, SKILLS_MEMBER, LIBRARY_MEMBER})
+ALLOWED_MEMBERS_V1 = frozenset({MANIFEST_MEMBER, SKILLS_MEMBER, LIBRARY_MEMBER})
+ALLOWED_MEMBERS_V2 = frozenset({MANIFEST_MEMBER, SKILLS_MEMBER, LIBRARY_MEMBER, PACKAGES_MEMBER})
 
 EMBEDDING_DIM = 384
 EMBEDDING_BYTES = EMBEDDING_DIM * 4
@@ -102,6 +106,7 @@ class LoadedPackage:
     manifest: dict
     skills: list[dict]
     library: dict[str, str]
+    packages: dict[str, dict]
     package_sha256: str
 
 
@@ -272,6 +277,54 @@ def _validate_library(record: dict) -> tuple[str, str]:
     return url, content
 
 
+def _validate_package_record(record: dict) -> tuple[str, dict]:
+    """Validate one complete immutable package and its content-addressed bytes."""
+    if set(record) != {"skill_urls", "manifest", "objects"}:
+        raise SkillDeltaError("package record contains missing or forbidden fields")
+    urls = record.get("skill_urls")
+    if not isinstance(urls, list) or not urls or any(not isinstance(url, str) for url in urls):
+        raise SkillDeltaError("package skill_urls must be a non-empty string list")
+    manifest = record.get("manifest")
+    if not isinstance(manifest, dict):
+        raise SkillDeltaError("package manifest must be an object")
+    package_hash = manifest.get("package_hash")
+    if not isinstance(package_hash, str) or not re.fullmatch(r"[a-f0-9]{64}", package_hash):
+        raise SkillDeltaError("package manifest has an invalid package_hash")
+    if manifest.get("completeness_status") != "complete" or manifest.get("entrypoint_truncated"):
+        raise SkillDeltaError(f"package is not complete: {package_hash}")
+    if not manifest.get("tree_complete", False):
+        raise SkillDeltaError(f"package tree is incomplete: {package_hash}")
+    objects = record.get("objects")
+    if not isinstance(objects, dict):
+        raise SkillDeltaError("package objects must be an object")
+    expected: set[str] = set()
+    decoded: dict[str, bytes] = {}
+    for file_info in manifest.get("files") or []:
+        if not isinstance(file_info, dict):
+            raise SkillDeltaError(f"package file entry is invalid: {package_hash}")
+        digest = file_info.get("raw_sha256")
+        if not isinstance(digest, str) or not re.fullmatch(r"[a-f0-9]{64}", digest):
+            raise SkillDeltaError(f"package file hash is invalid: {package_hash}")
+        expected.add(digest)
+        encoded = objects.get(digest)
+        if not isinstance(encoded, str):
+            raise SkillDeltaError(f"package object is missing: {digest}")
+        try:
+            content = base64.b64decode(encoded, validate=True)
+        except (ValueError, base64.binascii.Error) as exc:
+            raise SkillDeltaError(f"package object is invalid: {digest}") from exc
+        if _sha256(content) != digest or len(content) != int(file_info.get("size") or 0):
+            raise SkillDeltaError(f"package object checksum/size mismatch: {digest}")
+        decoded[digest] = content
+    if set(objects) != expected:
+        raise SkillDeltaError(f"package object set does not match manifest: {package_hash}")
+    for url in urls:
+        parsed = urlparse(url)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise SkillDeltaError(f"package skill URL is not public HTTP(S): {url!r}")
+    return package_hash, {"manifest": manifest, "objects": decoded, "skill_urls": urls}
+
+
 def _read_member(archive: zipfile.ZipFile, name: str) -> bytes:
     infos = [info for info in archive.infolist() if info.filename == name]
     if len(infos) != 1:
@@ -292,18 +345,20 @@ def load_package(path: Path) -> LoadedPackage:
             names = [info.filename for info in archive.infolist()]
             if len(names) != len(set(names)):
                 raise SkillDeltaError("package contains duplicate member names")
-            if set(names) != ALLOWED_MEMBERS:
+            if set(names) not in {ALLOWED_MEMBERS_V1, ALLOWED_MEMBERS_V2}:
                 raise SkillDeltaError("package contains missing or forbidden members")
             manifest_raw = _read_member(archive, MANIFEST_MEMBER)
             skills_raw = _read_member(archive, SKILLS_MEMBER)
             library_raw = _read_member(archive, LIBRARY_MEMBER)
+            packages_raw = archive.read(PACKAGES_MEMBER) if PACKAGES_MEMBER in names else None
     except zipfile.BadZipFile as exc:
         raise SkillDeltaError("package is not a valid zip archive") from exc
     try:
         manifest = json.loads(manifest_raw)
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise SkillDeltaError("manifest.json is invalid") from exc
-    if not isinstance(manifest, dict) or manifest.get("format") != FORMAT or manifest.get("version") != FORMAT_VERSION:
+    version = manifest.get("version") if isinstance(manifest, dict) else None
+    if not isinstance(manifest, dict) or manifest.get("format") != FORMAT or version not in {LEGACY_FORMAT_VERSION, FORMAT_VERSION}:
         raise SkillDeltaError("unsupported skill delta format or version")
     expected_manifest_keys = {"format", "version", "created_at", "skill_count", "library_count", "files"}
     if set(manifest) != expected_manifest_keys:
@@ -311,9 +366,17 @@ def load_package(path: Path) -> LoadedPackage:
     _validate_text(manifest.get("created_at"), "manifest created_at", 100, required=True)
     if not isinstance(manifest.get("skill_count"), int) or not isinstance(manifest.get("library_count"), int):
         raise SkillDeltaError("manifest counts must be integers")
-    if set(manifest.get("files") or {}) != {SKILLS_MEMBER, LIBRARY_MEMBER}:
+    expected_files = {SKILLS_MEMBER, LIBRARY_MEMBER}
+    if version == FORMAT_VERSION:
+        expected_files.add(PACKAGES_MEMBER)
+    if set(manifest.get("files") or {}) != expected_files:
         raise SkillDeltaError("manifest file allowlist is invalid")
-    for name, raw in ((SKILLS_MEMBER, skills_raw), (LIBRARY_MEMBER, library_raw)):
+    members = [(SKILLS_MEMBER, skills_raw), (LIBRARY_MEMBER, library_raw)]
+    if version == FORMAT_VERSION:
+        if packages_raw is None:
+            raise SkillDeltaError("v2 package is missing packages member")
+        members.append((PACKAGES_MEMBER, packages_raw))
+    for name, raw in members:
         entry = manifest["files"].get(name)
         if (
             not isinstance(entry, dict)
@@ -324,6 +387,11 @@ def load_package(path: Path) -> LoadedPackage:
             raise SkillDeltaError(f"manifest checksum or size mismatch for {name}")
     skills_records = _parse_json_lines(_gunzip_limited(skills_raw, SKILLS_MEMBER), SKILLS_MEMBER)
     library_records = _parse_json_lines(_gunzip_limited(library_raw, LIBRARY_MEMBER), LIBRARY_MEMBER)
+    package_records = (
+        _parse_json_lines(_gunzip_limited(packages_raw, PACKAGES_MEMBER), PACKAGES_MEMBER)
+        if packages_raw is not None
+        else []
+    )
     if manifest.get("skill_count") != len(skills_records) or manifest.get("library_count") != len(library_records):
         raise SkillDeltaError("manifest record counts do not match package contents")
     if not skills_records:
@@ -353,9 +421,10 @@ def load_package(path: Path) -> LoadedPackage:
             {
                 "name": skill["name"],
                 "description": skill.get("description"),
-                "source": skill["source"],
+                "source": skill["source"] if version == FORMAT_VERSION else "legacy-delta",
                 "url": skill["url"],
                 "tags": skill.get("tags") or [],
+                "package_completeness": "complete" if version == FORMAT_VERSION else None,
             },
             content,
         )
@@ -367,7 +436,35 @@ def load_package(path: Path) -> LoadedPackage:
         if skill.get("embedding_text_hash") != expected_embedding_hash:
             raise SkillDeltaError(f"embedding text hash does not match packaged content: {skill['url']}")
         skill.update(assessed)
-    return LoadedPackage(manifest=manifest, skills=skills, library=library, package_sha256=package_sha)
+    packages: dict[str, dict] = {}
+    package_urls: set[str] = set()
+    for record in package_records:
+        package_hash, package = _validate_package_record(record)
+        if package_hash in packages:
+            raise SkillDeltaError(f"duplicate package hash: {package_hash}")
+        if package_urls.intersection(package["skill_urls"]):
+            raise SkillDeltaError("a skill URL is linked to multiple packages")
+        unknown_urls = set(package["skill_urls"]) - seen_urls
+        if unknown_urls:
+            raise SkillDeltaError(f"package references an unshipped skill: {sorted(unknown_urls)[0]}")
+        package_urls.update(package["skill_urls"])
+        packages[package_hash] = package
+    if version == FORMAT_VERSION:
+        missing = [
+            skill["url"]
+            for skill in skills
+            if skill["source"] in {"github", "github_skill_file", "skillsmp", "awesome_list"}
+            and skill["url"] not in package_urls
+        ]
+        if missing:
+            raise SkillDeltaError(f"complete package missing for {missing[0]}")
+    return LoadedPackage(
+        manifest=manifest,
+        skills=skills,
+        library=library,
+        packages=packages,
+        package_sha256=package_sha,
+    )
 
 
 def _library_filenames(library_dir: Path) -> dict[str, str]:
@@ -417,6 +514,7 @@ def export_package(db_path: Path, library_dir: Path, output: Path) -> dict:
     files_root = library_dir.resolve() / "files"
     skills_writer = _GzipLineWriter()
     library_writer = _GzipLineWriter()
+    packages_writer = _GzipLineWriter()
     conn = sqlite3.connect(f"file:{db_path.as_posix()}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
     try:
@@ -425,14 +523,28 @@ def export_package(db_path: Path, library_dir: Path, output: Path) -> dict:
         missing = required - columns
         if missing:
             raise SkillDeltaError(f"collector database is missing skill columns: {', '.join(sorted(missing))}")
+        tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        package_mode = "package_hash" in columns and {"skill_packages", "skill_package_files"}.issubset(tables)
+        package_root = library_dir.resolve() / "packages"
+        package_entries: dict[str, dict] = {}
+        package_cursor = conn.execute(
+            "SELECT package_hash,manifest_json FROM skill_packages"
+        ) if package_mode else None
+        package_manifests = {
+            str(row[0]): json.loads(row[1])
+            for row in (package_cursor or [])
+        }
         cursor = conn.execute(
-            f"SELECT {','.join(SKILL_FIELDS)},embedding FROM skills "
+            f"SELECT {','.join(SKILL_FIELDS)},embedding"
+            + (",package_hash" if package_mode else "")
+            + " FROM skills "
             "WHERE quality_status='active' AND embedding IS NOT NULL AND url IS NOT NULL ORDER BY url"
         )
         skipped_invalid = 0
         for row in cursor:
             record = dict(row)
             url = record.get("url")
+            package_hash = str(record.pop("package_hash", "") or "")
             filename = filenames.get(url)
             if filename is None:
                 continue
@@ -448,6 +560,28 @@ def export_package(db_path: Path, library_dir: Path, output: Path) -> dict:
                 # instead of passing the per-row loop and only failing during
                 # load_package's whole-package self-verification at the end.
                 _validate_text(content, "library content", MAX_CONTENT_CHARS, required=True)
+                if package_mode and record.get("source") in {"github", "github_skill_file", "skillsmp", "awesome_list"}:
+                    if not re.fullmatch(r"[a-f0-9]{64}", package_hash):
+                        raise SkillDeltaError("active GitHub/SkillsMP row has no complete package")
+                    package_manifest = package_manifests.get(package_hash)
+                    if not isinstance(package_manifest, dict) or package_manifest.get("completeness_status") != "complete":
+                        raise SkillDeltaError("active GitHub/SkillsMP row has an incomplete package")
+                    object_map: dict[str, str] = {}
+                    for file_info in package_manifest.get("files") or []:
+                        digest = str(file_info.get("raw_sha256") or "")
+                        object_path = package_root / "objects" / digest[:2] / digest
+                        if not re.fullmatch(r"[a-f0-9]{64}", digest) or not object_path.is_file():
+                            raise SkillDeltaError(f"package object is missing: {digest}")
+                        raw = object_path.read_bytes()
+                        if _sha256(raw) != digest or len(raw) != int(file_info.get("size") or 0):
+                            raise SkillDeltaError(f"package object checksum mismatch: {digest}")
+                        object_map[digest] = base64.b64encode(raw).decode("ascii")
+                    package_entry = package_entries.setdefault(
+                        package_hash,
+                        {"skill_urls": [], "manifest": package_manifest, "objects": object_map},
+                    )
+                    if url not in package_entry["skill_urls"]:
+                        package_entry["skill_urls"].append(url)
             except (SkillDeltaError, OSError):
                 # The collector's corpus is scraped from noisy sources (e.g.
                 # web search results with occasionally malformed URLs); one bad
@@ -471,9 +605,13 @@ def export_package(db_path: Path, library_dir: Path, output: Path) -> dict:
         print(f"skipped {skipped_invalid} invalid skill row(s) during export", file=sys.stderr)
     skills_gz = skills_writer.finish()
     library_gz = library_writer.finish()
+    for package_entry in package_entries.values():
+        packages_writer.write(package_entry)
+    packages_gz = packages_writer.finish()
+    version = FORMAT_VERSION if package_mode else LEGACY_FORMAT_VERSION
     manifest = {
         "format": FORMAT,
-        "version": FORMAT_VERSION,
+        "version": version,
         "created_at": _utc_now(),
         "skill_count": skills_writer.count,
         "library_count": library_writer.count,
@@ -482,6 +620,8 @@ def export_package(db_path: Path, library_dir: Path, output: Path) -> dict:
             LIBRARY_MEMBER: {"sha256": _sha256(library_gz), "bytes": len(library_gz)},
         },
     }
+    if version == FORMAT_VERSION:
+        manifest["files"][PACKAGES_MEMBER] = {"sha256": _sha256(packages_gz), "bytes": len(packages_gz)}
     output = output.resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
     fd, temp_name = tempfile.mkstemp(prefix=output.name, suffix=".tmp", dir=output.parent)
@@ -491,6 +631,8 @@ def export_package(db_path: Path, library_dir: Path, output: Path) -> dict:
             archive.writestr(MANIFEST_MEMBER, json.dumps(manifest, indent=2, sort_keys=True) + "\n")
             archive.writestr(SKILLS_MEMBER, skills_gz)
             archive.writestr(LIBRARY_MEMBER, library_gz)
+            if version == FORMAT_VERSION:
+                archive.writestr(PACKAGES_MEMBER, packages_gz)
         os.replace(temp_name, output)
     finally:
         if os.path.exists(temp_name):
@@ -540,6 +682,7 @@ def plan_import(db_path: Path, package: LoadedPackage) -> dict:
             "updated": updated,
             "unchanged": unchanged,
             "library_files": len(package.library),
+            "packages": len(package.packages),
             "before": {"total": int(counts[0] or 0), "active": int(counts[1] or 0), "embedded": int(counts[2] or 0)},
         }
     finally:
@@ -615,6 +758,110 @@ def _write_library(library_dir: Path, package: LoadedPackage) -> None:
             os.unlink(temp_name)
 
 
+def _write_packages(library_dir: Path, package: LoadedPackage) -> None:
+    """Install verified package manifests/objects through the immutable CAS."""
+    if not package.packages:
+        return
+    store = ImmutablePackageStore(library_dir.resolve() / "packages")
+    for item in package.packages.values():
+        manifest = item["manifest"]
+        store.put(manifest, item["objects"])
+
+
+def _persist_package_metadata(conn: sqlite3.Connection, package: LoadedPackage) -> None:
+    if not package.packages:
+        return
+    tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    required = {"skill_packages", "skill_package_files", "skill_package_sources"}
+    if not required.issubset(tables):
+        raise SkillDeltaError("target database is missing immutable package tables")
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(skills)")}
+    if "package_hash" not in columns:
+        raise SkillDeltaError("target database is missing skills.package_hash")
+    for package_hash, item in package.packages.items():
+        manifest = item["manifest"]
+        source = manifest.get("source") if isinstance(manifest.get("source"), dict) else {}
+        license_info = manifest.get("license") if isinstance(manifest.get("license"), dict) else {}
+        created_at = str(manifest.get("created_at") or _utc_now())
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO skill_packages
+            (package_hash, source_url, source_provider, source_commit_sha, root_path,
+             entrypoint_path, tree_sha, license_spdx, completeness_status,
+             dependency_closure_status, entrypoint_truncated, manifest_json, created_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                package_hash,
+                str(manifest.get("source_url") or ""),
+                str(source.get("provider") or ""),
+                str(source.get("commit_sha") or "") or None,
+                str(source.get("root_path") or ""),
+                str(manifest.get("entrypoint") or ""),
+                str(source.get("tree_sha") or ""),
+                license_info.get("spdx_id"),
+                str(manifest.get("completeness_status") or "partial"),
+                str(manifest.get("dependency_closure_status") or "unknown"),
+                int(bool(manifest.get("entrypoint_truncated"))),
+                json.dumps(manifest, sort_keys=True, separators=(",", ":")),
+                created_at,
+            ),
+        )
+        source_url = str(manifest.get("source_url") or "")
+        if source_url:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO skill_package_sources
+                (package_hash, source_url, source_commit_sha, provenance_json, observed_at)
+                VALUES (?,?,?,?,?)
+                """,
+                (
+                    package_hash,
+                    source_url,
+                    str(source.get("commit_sha") or ""),
+                    json.dumps(manifest.get("provenance") or {}, sort_keys=True),
+                    created_at,
+                ),
+            )
+        for file_info in manifest.get("files") or []:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO skill_package_files
+                (package_hash, path, raw_sha256, git_blob_sha, size, role, media_type,
+                 text_indexable, in_dependency_closure)
+                VALUES (?,?,?,?,?,?,?,?,?)
+                """,
+                (
+                    package_hash,
+                    str(file_info.get("path") or ""),
+                    str(file_info.get("raw_sha256") or ""),
+                    str(file_info.get("git_blob_sha") or ""),
+                    int(file_info.get("size") or 0),
+                    str(file_info.get("role") or "other"),
+                    str(file_info.get("media_type") or "application/octet-stream"),
+                    int(bool(file_info.get("text_indexable"))),
+                    int(bool(file_info.get("in_dependency_closure"))),
+                ),
+            )
+        for url in item["skill_urls"]:
+            conn.execute(
+                """
+                UPDATE skills SET package_hash=?, source_commit_sha=?, license_spdx=?,
+                    package_completeness=?, dependency_closure_status=?, entrypoint_truncated=?
+                WHERE url=?
+                """,
+                (
+                    package_hash,
+                    str(source.get("commit_sha") or "") or None,
+                    license_info.get("spdx_id"),
+                    str(manifest.get("completeness_status") or "partial"),
+                    str(manifest.get("dependency_closure_status") or "unknown"),
+                    int(bool(manifest.get("entrypoint_truncated"))),
+                    url,
+                ),
+            )
+
+
 def apply_import(
     db_path: Path,
     library_dir: Path,
@@ -630,6 +877,7 @@ def apply_import(
         raise SkillDeltaError("actor_email must be an email address")
     plan = plan_import(db_path, package)
     backup_dir = _backup_database(db_path, library_dir, backup_root, package)
+    _write_packages(library_dir, package)
     _write_library(library_dir, package)
     conn = sqlite3.connect(db_path, timeout=60)
     conn.row_factory = sqlite3.Row
@@ -657,6 +905,7 @@ def apply_import(
                     "INSERT OR IGNORE INTO skill_versions (id,skill_id,content_hash,seen_at) VALUES (?,?,?,?)",
                     (str(uuid.uuid4()), stored["id"], stored["content_hash"], _utc_now()),
                 )
+        _persist_package_metadata(conn, package)
         new_value = {
             "package_sha256": package.package_sha256,
             "skills": len(package.skills),
@@ -664,6 +913,7 @@ def apply_import(
             "updated": plan["updated"],
             "unchanged": plan["unchanged"],
             "library_files": len(package.library),
+            "packages": len(package.packages),
         }
         conn.execute(
             "INSERT INTO admin_audit_log "
@@ -726,6 +976,7 @@ def main(argv: list[str] | None = None) -> int:
                 "package_sha256": package.package_sha256,
                 "skills": len(package.skills),
                 "library_files": len(package.library),
+                "packages": len(package.packages),
             }
         elif args.command == "plan":
             package = load_package(args.package)

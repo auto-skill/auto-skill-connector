@@ -95,6 +95,7 @@ def test_quality_accepts_real_skill_content() -> None:
         "name": "spreadsheet-router",
         "description": "Create spreadsheet reports with formulas, formatting, and validation.",
         "source": "github_skill_file",
+        "package_completeness": "complete",
         "raw": {"stars": 12},
     }
 
@@ -103,6 +104,19 @@ def test_quality_accepts_real_skill_content() -> None:
     assert result["quality_status"] == "active"
     assert result["quality_score"] >= 70
     assert result["content_hash"]
+
+
+def test_quality_rejects_github_body_without_complete_package() -> None:
+    result = evaluate_quality(
+        {
+            "name": "spreadsheet-router",
+            "description": "Create spreadsheet reports with formulas, formatting, and validation.",
+            "source": "skillsmp",
+        },
+        VALID_SKILL,
+    )
+    assert result["quality_status"] == "rejected"
+    assert "package-incomplete" in result["quality_reasons"]
 
 
 def test_capability_flags_separate_static_from_review_required_content() -> None:

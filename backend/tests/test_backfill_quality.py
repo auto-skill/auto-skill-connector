@@ -113,7 +113,7 @@ class BackfillQualityTests(unittest.TestCase):
                         "valid",
                         "spreadsheet-reporter",
                         "Build spreadsheet reports with formulas and charts.",
-                        "github_skill_file",
+                        "curated_local",
                         valid_url,
                         "[]",
                         "{}",

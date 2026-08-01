@@ -7,6 +7,7 @@ from unittest.mock import patch
 import scraper
 from scraper import (
     RunBudget,
+    IncompleteSkillBundle,
     _format_mcp_tools,
     _is_probably_binary,
     _skill_bundle_sibling_paths,
@@ -81,6 +82,7 @@ class ScraperSafetyTests(unittest.TestCase):
             "description": "Build spreadsheet reports with formulas and charts.",
             "source": "github_skill_file",
             "url": "https://github.com/example/repo/blob/main/SKILL.md",
+            "package_completeness": "complete",
             "content_hash": "old-content-hash",
             "embedding": [1.0] * 384,
             "embedding_text_hash": "old-embedding-hash",
@@ -169,6 +171,17 @@ class ScraperSafetyTests(unittest.TestCase):
         content = asyncio.run(fetch_github_raw_content(client, "acme", "tool"))
 
         self.assertEqual(content, "")
+
+    def test_fetch_github_raw_content_fails_closed_when_bundle_exceeds_file_cap(self) -> None:
+        tree = [{"path": f"skills/report/ref-{i}.md", "type": "blob"} for i in range(scraper.MAX_BUNDLE_FILES + 1)]
+        client = _FakeClient({
+            "https://api.github.com/repos/acme/tool/git/trees/HEAD": _FakeResponse(
+                200, json_data={"tree": tree}
+            ),
+        })
+
+        with self.assertRaises(IncompleteSkillBundle):
+            asyncio.run(fetch_github_raw_content(client, "acme", "tool"))
 
     def test_fetch_smithery_tool_list_parses_detail_endpoint(self) -> None:
         client = _FakeClient({
@@ -303,6 +316,7 @@ class ScraperSafetyTests(unittest.TestCase):
             "description": "Build spreadsheet reports with formulas and charts.",
             "source": "github_skill_file",
             "url": "https://github.com/example/repo/blob/main/SKILL.md",
+            "package_completeness": "complete",
             "_content": valid_content,
         }
 
@@ -325,6 +339,7 @@ class ScraperSafetyTests(unittest.TestCase):
             "description": "Build spreadsheet reports with formulas and charts.",
             "source": "github_skill_file",
             "url": "https://github.com/example/repo/blob/main/SKILL.md",
+            "package_completeness": "complete",
             "content_hash": quality_content_hash(canonicalize_skill_content(valid_content)),
             "capability_summary": "Already summarized.",
             "_content": valid_content,
@@ -405,19 +420,11 @@ class ScraperSafetyTests(unittest.TestCase):
 
         # pick_canonical prefers the higher quality_score; the loser is marked
         # a duplicate. Both being metadata_only must not exempt them from dedup.
-        statuses = {id(a): a.get("quality_status"), id(b): b.get("quality_status")}
         self.assertIn("duplicate", (a.get("quality_status"), b.get("quality_status")))
         self.assertNotEqual(a.get("quality_status"), b.get("quality_status"))
 
-    def test_missing_package_is_informational_not_a_status_override(self) -> None:
-        """Reconciliation decision: a GitHub-sourced skill fetched without an
-        immutable package snapshot (no commit-pinned provenance) is NOT
-        downgraded to a separate quality_status and does NOT lose its
-        embedding eligibility -- package_completeness is tracked as an
-        honest, separate metadata field. quality.tier_for_ranked_candidates
-        (active/metadata_only + score/risk/similarity gates) stays the sole
-        tier decision; package completeness is provenance information, not a
-        second gate on top of it."""
+    def test_missing_package_is_rejected_for_instruction_delivery(self) -> None:
+        """Unpinned GitHub content remains discovery metadata, never active instructions."""
         skill = {
             "name": "spreadsheet-reporter",
             "description": "Build spreadsheet reports with formulas and charts.",
@@ -428,7 +435,8 @@ class ScraperSafetyTests(unittest.TestCase):
 
         asyncio.run(scan_skill(None, skill))
 
-        self.assertEqual(skill["quality_status"], "active")
+        self.assertEqual(skill["quality_status"], "rejected")
+        self.assertIn("package-incomplete", skill["quality_reasons"])
         self.assertEqual(skill["package_completeness"], "missing")
 
     def test_skills_sh_curated_capture_keeps_full_package_separate_from_entrypoint(self) -> None:
