@@ -197,6 +197,7 @@ class _PersistentMirror:
                 continue
             if isinstance(value, dict):
                 self._attach_source(conn=None, value=value)
+                self._apply_source_integrity(value)
                 value["retrieval_backend"] = "skills_sh_mirror"
                 fresh = float(row["expires_at"]) >= now
                 value["mirror_fresh"] = fresh
@@ -226,6 +227,7 @@ class _PersistentMirror:
                 continue
             if isinstance(value, dict):
                 self._attach_source(None, value)
+                self._apply_source_integrity(value)
                 value["retrieval_backend"] = "skills_sh_mirror"
                 fresh = float(row["expires_at"]) >= now
                 value["mirror_fresh"] = fresh
@@ -249,6 +251,58 @@ class _PersistentMirror:
                 seen.add(key)
             result.append(row)
         return result
+
+    @staticmethod
+    def _source_files_complete(
+        value: dict[str, Any], files: list[dict[str, Any]], content: str = ""
+    ) -> bool:
+        """Check that the immutable source table still has every captured file.
+
+        Older mirror snapshots stored the entrypoint body and a *metadata-only*
+        file manifest.  Those rows must not be considered warm/active: the
+        manifest is evidence that additional package files existed upstream,
+        but ``files_json=[]`` means they cannot be delivered or audited locally.
+        Compare path, byte count, and digest rather than trusting a count alone.
+        """
+        expected = ((value.get("raw") or {}).get("file_manifest") if isinstance(value.get("raw"), dict) else None)
+        if not isinstance(expected, list) or not expected:
+            expected_count = int(value.get("source_file_count") or 0)
+            if expected_count == 1 and not files:
+                return bool(content) and len(content.encode("utf-8")) == int(
+                    value.get("source_total_bytes") or 0
+                )
+            return expected_count > 0 and len(files) == expected_count
+        if len(expected) == 1 and not files:
+            item = expected[0] if isinstance(expected[0], dict) else {}
+            return (
+                bool(content)
+                and hashlib.sha256(content.encode("utf-8")).hexdigest()
+                == str(item.get("sha256") or "")
+                and len(content.encode("utf-8")) == int(item.get("bytes") or 0)
+            )
+        expected_by_path = {
+            str(item.get("path") or ""): (str(item.get("sha256") or ""), int(item.get("bytes") or 0))
+            for item in expected
+            if isinstance(item, dict) and item.get("path")
+        }
+        actual_by_path = {
+            str(item.get("path") or ""): (str(item.get("sha256") or ""), int(item.get("bytes") or 0))
+            for item in files
+            if isinstance(item, dict) and item.get("path")
+        }
+        return bool(expected_by_path) and actual_by_path == expected_by_path
+
+    @staticmethod
+    def _apply_source_integrity(value: dict[str, Any]) -> None:
+        """Demote legacy rows whose manifest is not actually retained."""
+        if str(value.get("registry") or "").casefold() != "skills_sh":
+            return
+        if value.get("content_hash") and not bool(value.get("_source_files_complete")):
+            value["package_completeness"] = "incomplete"
+            value["quality_status"] = "metadata_only"
+            value["quality_reasons"] = sorted(
+                set([*(value.get("quality_reasons") or []), "skills-sh-source-files-incomplete"])
+            )
 
     def _attach_source(self, conn: sqlite3.Connection | None, value: dict[str, Any]) -> None:
         """Join compact mirror metadata to its immutable source blob.
@@ -275,6 +329,11 @@ class _PersistentMirror:
                     value["_source_files"] = json.loads(source["files_json"] or "[]")
                 except (TypeError, ValueError):
                     value["_source_files"] = []
+                value["_source_files_complete"] = self._source_files_complete(
+                    value, value["_source_files"], value["_content"]
+                )
+            else:
+                value["_source_files_complete"] = False
         finally:
             if close:
                 owned.close()
@@ -1244,7 +1303,13 @@ class SkillsShCatalog:
                 "license_spdx": license_spdx,
                 "source_file_count": len(source_files),
                 "source_total_bytes": sum(int(item.get("bytes") or 0) for item in source_files),
-                "package_completeness": "complete" if source_files and detail_snapshot else "unknown",
+                "package_completeness": (
+                    "complete"
+                    if source_files and detail_snapshot and not entrypoint_truncated
+                    else "partial"
+                    if source_files or detail_snapshot
+                    else "unknown"
+                ),
                 "dependency_closure_status": (
                     "resolved" if source_files and not unresolved_references else
                     "captured_unresolved" if source_files else "unresolved"

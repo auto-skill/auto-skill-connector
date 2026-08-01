@@ -26,6 +26,7 @@ class _FakeCatalog:
             "mirror_fresh": True,
             "quality_status": "active",
             "content_hash": "a" * 64,
+            "_source_files_complete": True,
         }]
 
     async def hydrate_listings(self, listings, limit):
@@ -48,6 +49,29 @@ def test_sync_is_bounded_resumable_and_prefers_curated(monkeypatch):
     assert result["already_fresh"] == 1
     assert result["pending"] == 1
     assert result["hydrated"] == 1
+
+
+def test_sync_rehydrates_active_row_with_incomplete_source_files(monkeypatch):
+    class IncompleteCatalog(_FakeCatalog):
+        async def cached_ids(self, ids):
+            rows = await super().cached_ids(ids)
+            rows[0]["_source_files_complete"] = False
+            return rows
+
+    monkeypatch.setattr(sync, "default_catalog", lambda: IncompleteCatalog())
+    args = Namespace(
+        view="trending",
+        pages=1,
+        per_page=50,
+        max_skills=2,
+        batch_size=2,
+        delay_seconds=0,
+        no_curated=False,
+    )
+    result = asyncio.run(sync.sync_mirror(args))
+    assert result["already_fresh"] == 0
+    assert result["pending"] == 2
+    assert result["hydrated"] == 2
 
 
 def test_all_listings_indexes_every_page_but_hydrates_only_bounded_top(monkeypatch):

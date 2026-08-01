@@ -2487,7 +2487,24 @@ async def scan_skill(client: httpx.AsyncClient, skill: dict):
                 extra = _format_mcp_tools(mcp_tools)
 
             if content:
-                pass
+                # Tree crawls already fetched the complete sibling bundle into
+                # ``content``.  Still snapshot the commit-pinned package before
+                # curation; otherwise these GitHub/SkillsMP rows had a full
+                # transient body but no durable package and were rejected as
+                # ``package-incomplete``.  The snapshot helper refetches only
+                # the entrypoint for its manifest, so restore the full bundle
+                # for the safety/curation stages afterward.
+                if (
+                    client is not None
+                    and GITHUB_TREE_URL_RE.search(str(url))
+                    and not skill.get("_package_manifest")
+                ):
+                    bundle_content = content
+                    skill["_content"] = content
+                    try:
+                        await _snapshot_github_tree_url_package(client, skill)
+                    finally:
+                        skill["_content"] = bundle_content
             elif GITHUB_TREE_URL_RE.search(url):
                 # A marketplace-style pinned path (e.g. skillsmp's githubUrl =
                 # .../tree/main/skills/foo): hydrate it into a commit-pinned,

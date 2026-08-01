@@ -198,6 +198,29 @@ def test_mirror_keeps_source_blobs_separate_and_rehydrates_by_id(tmp_path: Path)
     assert asyncio.run(catalog.content_by_hash(row["content_hash"])) == row["_content"]
 
 
+def test_mirror_demotes_manifest_only_legacy_source(tmp_path: Path) -> None:
+    mirror_path = tmp_path / "legacy-source.db"
+    catalog = SkillsShCatalog(
+        api_url="https://skills.test/api/v1",
+        oidc_token="test-token",
+        mirror_db_path=str(mirror_path),
+        mirror_enabled=True,
+        transport=httpx.MockTransport(_catalog_transport),
+    )
+    rows = asyncio.run(catalog.retrieve("create spreadsheet report", limit=1))
+    skill_id = rows[0]["skills_sh_id"]
+    # Simulate the legacy snapshot shape: the entrypoint body survived, but
+    # its multi-file manifest was not retained in skills_sh_sources.
+    with sqlite3.connect(mirror_path) as conn:
+        conn.execute("UPDATE skills_sh_sources SET files_json='[]'")
+        conn.commit()
+
+    cached = asyncio.run(catalog.cached_ids([skill_id]))
+    assert cached[0]["_source_files_complete"] is False
+    assert cached[0]["quality_status"] == "metadata_only"
+    assert "skills-sh-source-files-incomplete" in cached[0]["quality_reasons"]
+
+
 def test_metadata_only_mirror_row_does_not_block_authenticated_hydration(tmp_path: Path) -> None:
     mirror = str(tmp_path / "metadata-only.db")
     seed = SkillsShCatalog(

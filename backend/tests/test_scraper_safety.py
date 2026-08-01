@@ -439,6 +439,30 @@ class ScraperSafetyTests(unittest.TestCase):
         self.assertIn("package-incomplete", skill["quality_reasons"])
         self.assertEqual(skill["package_completeness"], "missing")
 
+    def test_tree_crawl_bundle_gets_durable_package_before_curation(self) -> None:
+        bundle = VALID_CONTENT + "\n## Reference\nKeep the workbook reproducible.\n"
+        captured = []
+
+        async def fake_snapshot(_client, skill):
+            captured.append(skill["_content"])
+            skill["_package_manifest"] = {"package_hash": "a" * 64}
+            skill["package_completeness"] = "complete"
+
+        skill = {
+            "name": "spreadsheet-reporter",
+            "description": "Build spreadsheet reports with formulas and charts.",
+            "source": "github_skill_file",
+            "url": "https://github.com/example/repo/tree/main/skills/spreadsheet-reporter",
+            "raw": {"path": "skills/spreadsheet-reporter/SKILL.md"},
+            "_content": bundle,
+        }
+        with patch.object(scraper, "_snapshot_github_tree_url_package", fake_snapshot):
+            asyncio.run(scan_skill(_FakeClient({}), skill))
+
+        self.assertEqual(captured, [bundle])
+        self.assertEqual(skill["quality_status"], "active")
+        self.assertIn("Keep the workbook reproducible", skill["_library_content"])
+
     def test_skills_sh_curated_capture_keeps_full_package_separate_from_entrypoint(self) -> None:
         class Response:
             def __init__(self, payload):

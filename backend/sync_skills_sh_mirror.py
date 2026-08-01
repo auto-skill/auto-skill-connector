@@ -146,6 +146,7 @@ async def sync_mirror(args: argparse.Namespace) -> dict[str, Any]:
         if row.get("mirror_fresh") is not False
         and row.get("quality_status") == "active"
         and row.get("content_hash")
+        and row.get("_source_files_complete") is True
     }
     cached_by_id = {
         str(row.get("skills_sh_id") or row.get("id") or ""): row for row in cached
