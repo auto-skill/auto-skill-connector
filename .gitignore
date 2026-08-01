@@ -14,6 +14,8 @@ local_skills.db-shm
 backend/.skills_sh_mirror.db
 backend/.skills_sh_mirror.db-wal
 backend/.skills_sh_mirror.db-shm
+backend/.skills_sh_mirror*.db
+backend/.skills_sh_mirror*.db.*
 skills_library/
 content_blobs/
 migrate_state.json

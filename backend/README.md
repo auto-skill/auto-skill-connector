@@ -284,6 +284,40 @@ with per-skill ingestion attempts and reason-level counters. Permanent failures
 are skipped on later runs unless `--retry-failed` is supplied; transient detail,
 audit, and stale-mirror failures remain eligible for retry.
 
+### Seeding a production mirror
+
+Do not copy the mirror into `skills_library` or a client skill directory. The
+shared runtime database is the host file
+`/opt/auto-skill-connector/backend/data/local_skills.db`, mounted into the
+containers as `/data/local_skills.db`. The normal code deploy deliberately
+excludes `backend/data/` so it cannot overwrite live state.
+
+Before transfer, rebuild a verified snapshot. The compactor preserves every
+canonical mirror row, source package, manifest, hash, provenance field, and
+ingestion attempt while rebuilding the FTS index once:
+
+```bash
+python backend/compact_skills_sh_mirror.py \
+  backend/.skills_sh_mirror.db \
+  backend/.skills_sh_mirror.compacted.db
+```
+
+The explicit seed operator compresses that snapshot, verifies SHA-256 on both
+ends, validates SQLite integrity, stops readers, checkpoints old WAL state,
+atomically swaps the database, keeps a rollback backup, and only then starts
+the readers again:
+
+```bash
+DEPLOY_HOST=... \
+DEPLOY_USER=... \
+DEPLOY_SSH_KEY_PATH=... \
+bash backend/deploy/seed-skills-sh-mirror.sh \
+  backend/.skills_sh_mirror.compacted.db
+```
+
+It requires real SSH access and `sudo` on the droplet; it never runs as part
+of an ordinary Git archive deploy.
+
 ## Evals
 
 Track retrieval quality, route latency, and token churn across changes:
