@@ -492,6 +492,16 @@ def evaluate_quality(skill: dict[str, Any], content: str = "") -> dict[str, Any]
     content = canonicalize_skill_content(content) if content else ""
     valid_frontmatter = has_valid_skill_frontmatter(content) if content else False
     content_reasons: list[str] = []
+    # A skills.sh detail response is only eligible for active use when the
+    # provider returned the complete entrypoint and package manifest. The
+    # retrieval record may be compact, but a provider-side truncation marker
+    # is a hard integrity failure, never a best-effort body.
+    if str(skill.get("registry") or "").casefold() == "skills_sh":
+        if bool(skill.get("entrypoint_truncated")):
+            reasons.append("entrypoint-truncated")
+        package_state = skill.get("package_completeness")
+        if content and package_state is not None and str(package_state).casefold() != "complete":
+            reasons.append("package-incomplete")
     if content:
         chash = content_hash(content)
         content_reasons = skill_content_rejection_reasons(
@@ -519,7 +529,8 @@ def evaluate_quality(skill: dict[str, Any], content: str = "") -> dict[str, Any]
         else:
             reasons.append("missing-content")
 
-    if content and content_reasons:
+    integrity_reasons = {"entrypoint-truncated", "package-incomplete"}
+    if content and (content_reasons or integrity_reasons.intersection(reasons)):
         status = "rejected"
     elif content and not valid_frontmatter:
         status = "metadata_only"

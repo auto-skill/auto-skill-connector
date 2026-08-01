@@ -72,6 +72,24 @@ def test_quality_keeps_oversized_skills_sh_entrypoints_active() -> None:
     assert "content-too-large" not in result["quality_reasons"]
 
 
+def test_quality_rejects_truncated_or_incomplete_skills_sh_packages() -> None:
+    base = {
+        "name": "catalog-demo",
+        "description": "A complete skills.sh entrypoint retained for isolated delivery.",
+        "source": "acme/skills",
+        "registry": "skills_sh",
+        "package_completeness": "complete",
+        "entrypoint_truncated": 0,
+    }
+    truncated = evaluate_quality({**base, "entrypoint_truncated": 1}, VALID_SKILL)
+    assert truncated["quality_status"] == "rejected"
+    assert "entrypoint-truncated" in truncated["quality_reasons"]
+
+    incomplete = evaluate_quality({**base, "package_completeness": "unknown"}, VALID_SKILL)
+    assert incomplete["quality_status"] == "rejected"
+    assert "package-incomplete" in incomplete["quality_reasons"]
+
+
 def test_quality_accepts_real_skill_content() -> None:
     skill = {
         "name": "spreadsheet-router",

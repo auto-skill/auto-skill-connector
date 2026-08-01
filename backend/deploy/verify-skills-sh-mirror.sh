@@ -32,6 +32,20 @@ try:
     ).fetchone()[0] if table else 0
     sources = conn.execute("select count(*) from skills_sh_sources").fetchone()[0] if table else 0
     source_bytes = conn.execute("select coalesce(sum(byte_count), 0) from skills_sh_sources").fetchone()[0] if table else 0
+    source_byte_mismatches = conn.execute(
+        "select count(*) from skills_sh_sources "
+        "where byte_count != length(cast(content as blob))"
+    ).fetchone()[0] if table else 0
+    active_truncated = conn.execute(
+        "select count(*) from skills_sh_mirror "
+        "where json_extract(row_json, '$.quality_status')='active' "
+        "and coalesce(json_extract(row_json, '$.entrypoint_truncated'), 0) != 0"
+    ).fetchone()[0] if table else 0
+    active_incomplete = conn.execute(
+        "select count(*) from skills_sh_mirror "
+        "where json_extract(row_json, '$.quality_status')='active' "
+        "and coalesce(json_extract(row_json, '$.package_completeness'), '') != 'complete'"
+    ).fetchone()[0] if table else 0
     attempts = conn.execute("select count(*) from skills_sh_ingestion_attempts").fetchone()[0] if table else 0
 finally:
     conn.close()
@@ -45,9 +59,14 @@ result = {
     "rejected": rejected,
     "source_blobs": sources,
     "source_bytes": source_bytes,
+    "source_byte_mismatches": source_byte_mismatches,
+    "active_truncated": active_truncated,
+    "active_incomplete": active_incomplete,
     "ingestion_attempts": attempts,
 }
 print(json.dumps(result, sort_keys=True))
 if not table or rows < 1:
     raise SystemExit("skills.sh mirror is absent or empty")
+if source_byte_mismatches or active_truncated or active_incomplete:
+    raise SystemExit("skills.sh mirror contains incomplete or truncated active packages")
 PY

@@ -27,5 +27,8 @@ def test_refresh_and_verify_scripts_are_present() -> None:
     refresh_and_sync = (deploy / "refresh-and-sync-skills-sh.sh").read_text(encoding="utf-8")
     assert 'VERCEL_PROJECT="${VERCEL_PROJECT:-}"' in refresh
     assert 'docker compose -f "$COMPOSE_FILE" run' in verify
+    assert "source_byte_mismatches" in verify
+    assert "active_truncated" in verify
+    assert "active_incomplete" in verify
     assert "--all-listings" in refresh_and_sync
     assert "refresh-skills-sh-oidc.sh" in refresh_and_sync
