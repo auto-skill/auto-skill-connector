@@ -148,6 +148,9 @@ def test_seed_script_has_hash_atomic_swap_and_rollback_guards() -> None:
     assert "sha256sum" in script
     assert "gzip -t" in script
     assert "PRAGMA integrity_check" in script
+    assert "target.backup(staging)" in script
+    assert "ATTACH DATABASE ? AS mirror_src" in script
+    assert "must never replace it wholesale" in script
     assert "mv -- \"$STAGING\" \"$TARGET\"" in script
     assert "BACKUP=\"$DATA_DIR/backups/local_skills.db.preseed" in script
     assert "rollback()" in script

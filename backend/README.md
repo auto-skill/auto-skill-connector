@@ -303,9 +303,14 @@ python backend/compact_skills_sh_mirror.py \
 ```
 
 The explicit seed operator compresses that snapshot, verifies SHA-256 on both
-ends, validates SQLite integrity, stops readers, checkpoints old WAL state,
-atomically swaps the database, keeps a rollback backup, and only then starts
-the readers again:
+ends, validates SQLite integrity, stops readers and Litestream, checkpoints
+old WAL state, copies the existing application database into a staging file,
+replaces only the `skills_sh_*` mirror tables, rebuilds FTS, validates the
+merged database, atomically swaps the complete staged application database,
+keeps a rollback backup, and only then starts the readers again. It refuses to
+run if the existing application database is missing or its mirror schema does
+not match; it never replaces the application database with the mirror snapshot
+wholesale.
 
 ```bash
 DEPLOY_HOST=... \

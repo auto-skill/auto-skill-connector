@@ -59,10 +59,11 @@ DATA_DIR="$REMOTE_DIR/backend/data"
 TARGET="$DATA_DIR/local_skills.db"
 COMPOSE=(docker compose -f "$REMOTE_DIR/backend/deploy/docker-compose.yml")
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+SNAPSHOT="$DATA_DIR/.skills-sh-mirror.snapshot.${STAMP}.$$"
 STAGING="$DATA_DIR/.local_skills.db.seed.${STAMP}.$$"
 BACKUP="$DATA_DIR/backups/local_skills.db.preseed.${STAMP}"
 
-cleanup() { rm -f -- "$ARCHIVE" "$STAGING"; }
+cleanup() { rm -f -- "$ARCHIVE" "$SNAPSHOT" "$STAGING"; }
 trap cleanup EXIT
 
 mkdir -p "$DATA_DIR" "$DATA_DIR/backups"
@@ -72,9 +73,9 @@ if [[ "$ACTUAL_SHA256" != "$EXPECTED_SHA256" ]]; then
   exit 1
 fi
 gzip -t -- "$ARCHIVE"
-gzip -dc -- "$ARCHIVE" >"$STAGING"
+gzip -dc -- "$ARCHIVE" >"$SNAPSHOT"
 
-python3 - "$STAGING" <<'PY'
+python3 - "$SNAPSHOT" <<'PY'
 import sqlite3
 import sys
 
@@ -87,11 +88,13 @@ finally:
     conn.close()
 PY
 
-chown 10001:10001 "$STAGING"
-chmod 0640 "$STAGING"
+if [[ ! -f "$TARGET" ]]; then
+  echo "refusing to seed without the existing application database: $TARGET" >&2
+  exit 1
+fi
 
-# Stop readers before replacing the inode. Checkpoint any old WAL first so a
-# rollback/backup represents the complete old database, not just its main file.
+# Stop readers and Litestream before touching the inode. Checkpoint any old
+# WAL first so a rollback/backup represents the complete old database.
 if ! "${COMPOSE[@]}" stop api admin-local mcp litestream >/dev/null; then
   echo "could not stop database readers; refusing to replace the mirror" >&2
   exit 1
@@ -111,9 +114,77 @@ PY
   mv -- "$TARGET" "$BACKUP"
   rm -f -- "${TARGET}-wal" "${TARGET}-shm"
 fi
-mv -- "$STAGING" "$TARGET"
-chown 10001:10001 "$TARGET"
-chmod 0640 "$TARGET"
+
+# Build a complete application database staging copy, then replace only the
+# skills.sh mirror tables from the verified snapshot. The compact snapshot is
+# not itself the application DB and must never replace it wholesale.
+if ! python3 - "$BACKUP" "$SNAPSHOT" "$STAGING" <<'PY'
+import os
+import sqlite3
+import sys
+
+target_path, snapshot_path, staging_path = sys.argv[1:]
+if os.path.exists(staging_path):
+    os.unlink(staging_path)
+
+target = sqlite3.connect(target_path, timeout=120)
+staging = sqlite3.connect(staging_path, timeout=120)
+try:
+    target.backup(staging)
+    staging.execute("PRAGMA foreign_keys=ON")
+    staging.execute("ATTACH DATABASE ? AS mirror_src", (snapshot_path,))
+    tables = ("skills_sh_mirror", "skills_sh_sources", "skills_sh_ingestion_attempts")
+
+    def table_columns(conn, schema, table):
+        return [row[1] for row in conn.execute(f'PRAGMA {schema}.table_info("{table}")')]
+
+    for table in tables:
+        source_columns = table_columns(staging, "mirror_src", table)
+        target_columns = table_columns(staging, "main", table)
+        if target_columns and target_columns != source_columns:
+            raise SystemExit(
+                f"target schema mismatch for {table}: "
+                f"target={target_columns} snapshot={source_columns}"
+            )
+        if not target_columns:
+            create_sql = staging.execute(
+                "SELECT sql FROM mirror_src.sqlite_master "
+                "WHERE type='table' AND name=?",
+                (table,),
+            ).fetchone()[0]
+            staging.execute(create_sql)
+        quoted = ", ".join(f'"{column}"' for column in source_columns)
+        staging.execute(f'DELETE FROM main."{table}"')
+        staging.execute(
+            f'INSERT INTO main."{table}" ({quoted}) '
+            f'SELECT {quoted} FROM mirror_src."{table}"'
+        )
+
+    expected_fts = table_columns(staging, "mirror_src", "skills_sh_mirror_fts")
+    actual_fts = table_columns(staging, "main", "skills_sh_mirror_fts")
+    if actual_fts != expected_fts:
+        raise SystemExit(
+            f"target FTS schema mismatch: target={actual_fts} snapshot={expected_fts}"
+        )
+    staging.execute(
+        "INSERT INTO main.skills_sh_mirror_fts(skills_sh_mirror_fts) VALUES ('rebuild')"
+    )
+    staging.commit()
+    staging.execute("DETACH DATABASE mirror_src")
+    staging.commit()
+    result = staging.execute("PRAGMA integrity_check").fetchone()[0]
+    if result != "ok":
+        raise SystemExit(f"merged application database integrity check failed: {result}")
+finally:
+    staging.close()
+    target.close()
+PY
+then
+  echo "mirror merge failed; restoring the previous application database" >&2
+  rm -f -- "$STAGING"
+  mv -- "$BACKUP" "$TARGET"
+  exit 1
+fi
 
 rollback() {
   echo "seed verification failed; rolling back" >&2
@@ -126,6 +197,16 @@ rollback() {
   fi
   "${COMPOSE[@]}" up -d api admin-local mcp litestream >/dev/null 2>&1 || true
 }
+
+if ! mv -- "$STAGING" "$TARGET"; then
+  echo "atomic replacement failed; restoring the previous application database" >&2
+  mv -- "$BACKUP" "$TARGET" || true
+  exit 1
+fi
+if ! chown 10001:10001 "$TARGET" || ! chmod 0640 "$TARGET"; then
+  rollback
+  exit 1
+fi
 
 if ! "${COMPOSE[@]}" up -d api >/dev/null; then
   rollback
