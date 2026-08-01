@@ -345,6 +345,23 @@ def main() -> int:
                     finally:
                         conn.close()
                     counts["incomplete"] += 1
+                elif result == "not-github":
+                    # The source gate selected this row because its registry
+                    # claims GitHub-backed instructions, but the URL is not a
+                    # verifiable GitHub tree.  Leaving it active would make
+                    # the package audit impossible to bring to zero forever.
+                    state["failed"][url] = result
+                    conn = store.get_conn()
+                    try:
+                        conn.execute(
+                            "UPDATE skills SET quality_status='rejected', package_completeness='incomplete', "
+                            "quality_reasons=? WHERE id=?",
+                            (json.dumps(["package-incomplete", "not-github-source"], sort_keys=True), row["id"]),
+                        )
+                        conn.commit()
+                    finally:
+                        conn.close()
+                    counts["not-github"] += 1
                 else:
                     state["failed"][url] = result
                     counts[result] += 1
