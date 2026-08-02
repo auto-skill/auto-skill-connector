@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import contextmanager
 import hashlib
 import io
 import json
@@ -25,6 +26,11 @@ from pathlib import Path, PurePosixPath
 from urllib.parse import quote
 
 import httpx
+
+try:  # Linux production workers share row locks; Windows tests remain portable.
+    import fcntl
+except ImportError:  # pragma: no cover - platform-specific fallback
+    fcntl = None
 
 import local_store as store
 from capsule_compiler import strip_unsafe_content
@@ -561,7 +567,48 @@ def _write_curated_body(library_dir: Path, skill: dict, body: str) -> None:
     Path(index_temp).replace(index_path)
 
 
-def hydrate_row(
+def _row_is_complete(row_id: str) -> bool:
+    conn = store.get_conn()
+    try:
+        row = conn.execute(
+            "SELECT package_hash,package_completeness,dependency_closure_status,entrypoint_truncated "
+            "FROM skills WHERE id=?",
+            (row_id,),
+        ).fetchone()
+        return bool(
+            row
+            and row["package_hash"]
+            and str(row["package_completeness"] or "").casefold() == "complete"
+            and str(row["dependency_closure_status"] or "").casefold() == "complete"
+            and not bool(row["entrypoint_truncated"])
+        )
+    finally:
+        conn.close()
+
+
+@contextmanager
+def _hydration_row_lock(url: str, library_dir: Path):
+    """Serialize duplicate observations of one URL across worker containers."""
+    if fcntl is None:
+        yield
+        return
+    lock_root = Path(os.getenv("HYDRATION_LOCK_DIR") or "/data/hydration-row-locks")
+    try:
+        lock_root.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        lock_root = Path(library_dir) / ".hydration-row-locks"
+        lock_root.mkdir(parents=True, exist_ok=True)
+    digest = hashlib.sha256(str(url).encode("utf-8")).hexdigest()
+    path = lock_root / f"{digest}.lock"
+    with path.open("a+") as handle:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def _hydrate_row_unlocked(
     client: httpx.Client,
     row: sqlite3.Row,
     library_dir: Path,
@@ -751,6 +798,22 @@ def hydrate_row(
     return "hydrated"
 
 
+def hydrate_row(
+    client: httpx.Client,
+    row: sqlite3.Row,
+    library_dir: Path,
+    archive_cache: dict[tuple[str, str, str, str, str], dict[str, bytes]] | None = None,
+    commit_cache: dict[tuple[str, str, str], str] | None = None,
+) -> str:
+    """Hydrate one row while preventing cross-lane duplicate writes."""
+    with _hydration_row_lock(str(row["url"]), library_dir):
+        if _row_is_complete(str(row["id"])):
+            return "already-complete"
+        return _hydrate_row_unlocked(
+            client, row, library_dir, archive_cache, commit_cache
+        )
+
+
 def _hydrate_in_worker(row: sqlite3.Row, library_dir: Path) -> str:
     """Hydrate one row with a thread-local client/cache pair.
 
@@ -907,9 +970,9 @@ def main() -> int:
             url = str(row["url"])
             try:
                 result = future.result()
-                if result == "hydrated":
+                if result in {"hydrated", "already-complete"}:
                     state["done"][url] = result
-                    counts[result] += 1
+                    counts["hydrated"] += 1
                 elif result.startswith("incomplete:"):
                     state["failed"][url] = result
                     conn = store.get_conn()
