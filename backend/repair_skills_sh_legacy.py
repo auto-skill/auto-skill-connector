@@ -208,6 +208,13 @@ def main() -> int:
     rows = conn.execute("SELECT id,row_json FROM skills_sh_mirror WHERE json_extract(row_json,'$.quality_status')='active'")
     selected = []
     for row in rows:
+        try:
+            value = json.loads(row["row_json"])
+            package_hash = str((value.get("raw") or {}).get("package_hash") or "")
+        except (TypeError, ValueError):
+            package_hash = ""
+        if _package_materialized(args.package_root, package_hash):
+            continue
         selected.append(row)
         if len(selected) >= max(1, args.limit):
             break
