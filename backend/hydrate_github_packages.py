@@ -157,7 +157,10 @@ def read_archive(raw: bytes, scope: str = "") -> dict[str, bytes]:
             extracted = archive.extractfile(member)
             if extracted is None:
                 raise ValueError(f"could not read archive entry: {member.name}")
-            files[relative] = extracted.read()
+            content = extracted.read()
+            if len(content) != int(member.size or 0):
+                raise ValueError(f"archive member size mismatch: {member.name}")
+            files[relative] = content
     return files
 
 
