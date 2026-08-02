@@ -592,6 +592,11 @@ def main() -> int:
     parser.add_argument("--limit", type=int, default=100)
     parser.add_argument("--retry-failed", action="store_true")
     parser.add_argument(
+        "--only-pending",
+        action="store_true",
+        help="select only rows currently marked pending (for transient retry lanes)",
+    )
+    parser.add_argument(
         "--retry-closure",
         action="store_true",
         help="rehydrate active packages whose stored dependency closure is partial",
@@ -636,6 +641,8 @@ def main() -> int:
             sources,
         )
         for row in rows:
+            if args.only_pending and str(row["quality_status"] or "") != "pending":
+                continue
             url = str(row["url"])
             retry_closure = (
                 args.retry_closure
