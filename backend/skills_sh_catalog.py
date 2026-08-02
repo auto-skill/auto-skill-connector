@@ -284,10 +284,12 @@ class _PersistentMirror:
             for item in manifest.get("files") or []:
                 digest = str(item.get("raw_sha256") or "")
                 path = root / digest[:2] / digest
+                declared_size = item.get("size")
                 if (
                     not re.fullmatch(r"[a-f0-9]{64}", digest)
                     or not path.is_file()
-                    or path.stat().st_size != int(item.get("size") or -1)
+                    or declared_size is None
+                    or path.stat().st_size != int(declared_size)
                     or hashlib.sha256(path.read_bytes()).hexdigest() != digest
                 ):
                     return False
