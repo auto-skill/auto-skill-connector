@@ -856,6 +856,17 @@ def tier_for_ranked_candidates(candidates: list[dict[str, Any]]) -> str:
         return "hint"
     if (top.get("quality_status") or "active") != FULL_ROUTE_STATUS:
         return "hint"
+    # GitHub/SkillsMP/curated listings are only discovery metadata until their
+    # immutable source package has been captured and audited.  Older rows can
+    # predate this gate and still carry an ``active`` status, so enforce the
+    # package boundary at delivery time as well as during ingestion.  A
+    # missing/partial package may remain searchable as a hint, but it must
+    # never become an injected instruction route.
+    if (
+        str(top.get("source") or "") in PACKAGE_REQUIRED_SOURCES
+        and str(top.get("package_completeness") or "").casefold() != "complete"
+    ):
+        return "hint"
     if int(top.get("quality_score") or 0) < MIN_QUALITY_FOR_FULL:
         return "hint"
     if int(top.get("risk_score") or 0) > 0:

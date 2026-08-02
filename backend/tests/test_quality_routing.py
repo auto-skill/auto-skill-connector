@@ -358,6 +358,25 @@ class RoutingTierTests(unittest.TestCase):
 
         self.assertEqual(tier_for_prompt(prompt, [candidate]), "full")
 
+    def test_package_required_source_without_complete_package_is_hint_only(self):
+        prompt = "build a landing page on Landingi for an AI automation agency"
+        candidate = {
+            "name": "sales-landingi",
+            "description": "Landingi platform help for landing pages, leads, CRM sync, API keys, and publishing.",
+            "tags": ["landingi", "landing-page"],
+            "platforms": ["landingi"],
+            "source": "skillsmp",
+            "package_completeness": "missing",
+            "quality_status": "active",
+            "quality_score": 90,
+            "meaningfulness_score": 0.9,
+            "trust_signal": True,
+            "rank": 1.0,
+            "similarity": 0.95,
+        }
+
+        self.assertEqual(tier_for_prompt(prompt, [candidate]), "hint")
+
     def test_selected_candidate_must_own_the_similarity_score(self):
         prompt = "create an excel spreadsheet report with formulas"
         lexical_but_no_vector = {
@@ -455,6 +474,7 @@ class RoutingTierTests(unittest.TestCase):
                 "description": "Shopify platform help for storefronts, liquid themes, and API keys.",
                 "platforms": ["shopify"],
                 "quality_status": "active",
+                "package_completeness": "complete",
                 "quality_score": 90,
                 "rank": 1.0,
                 "similarity": 0.95,
@@ -466,6 +486,7 @@ class RoutingTierTests(unittest.TestCase):
                 "description": "Create ecommerce storefronts for handmade goods launches with catalogs.",
                 "platforms": [],
                 "quality_status": "active",
+                "package_completeness": "complete",
                 "quality_score": 90,
                 "rank": 0.03,
                 "similarity": 0.90,
