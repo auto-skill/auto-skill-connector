@@ -930,7 +930,7 @@ def init_db() -> None:
                      source NOT IN ('github', 'github_skill_file', 'skillsmp', 'awesome_list')
                      OR (
                          package_completeness = 'complete'
-                         AND dependency_closure_status IN ('complete', 'resolved')
+                         AND dependency_closure_status = 'complete'
                      )
                  ) THEN 'full-ready'
                 WHEN quality_status IN ('active', 'metadata_only')
