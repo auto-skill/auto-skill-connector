@@ -27,6 +27,7 @@ from pathlib import Path
 import httpx
 
 from quality import content_hash, evaluate_quality
+from package_store import ImmutablePackageStore
 
 
 DEFAULT_API_URL = "https://skills.sh/api/v1"
@@ -257,6 +258,44 @@ class _PersistentMirror:
         return result
 
     @staticmethod
+    def _package_cas_complete(value: dict[str, Any]) -> bool:
+        """Accept a metadata-only legacy manifest only when its CAS package
+        contains every immutable object.
+
+        ``repair_skills_sh_legacy`` intentionally rewrote older
+        ``files_json`` rows to path/hash metadata after materializing the full
+        bytes in the package CAS.  The metadata is not itself deliverable, but
+        the CAS package is.  Treating that state as incomplete would demote
+        every repaired row even though the complete source is safely stored.
+        """
+        raw = value.get("raw") if isinstance(value.get("raw"), dict) else {}
+        package_hash = str(raw.get("package_hash") or value.get("package_hash") or "")
+        if not re.fullmatch(r"[a-f0-9]{64}", package_hash):
+            return False
+        try:
+            manifest = ImmutablePackageStore(Path(__file__).parent / "skills_library" / "packages").read_manifest(
+                package_hash
+            )
+            if not manifest or manifest.get("completeness_status") != "complete":
+                return False
+            if manifest.get("entrypoint_truncated"):
+                return False
+            root = Path(__file__).parent / "skills_library" / "packages" / "objects"
+            for item in manifest.get("files") or []:
+                digest = str(item.get("raw_sha256") or "")
+                path = root / digest[:2] / digest
+                if (
+                    not re.fullmatch(r"[a-f0-9]{64}", digest)
+                    or not path.is_file()
+                    or path.stat().st_size != int(item.get("size") or -1)
+                    or hashlib.sha256(path.read_bytes()).hexdigest() != digest
+                ):
+                    return False
+            return bool(manifest.get("files"))
+        except (OSError, TypeError, ValueError):
+            return False
+
+    @staticmethod
     def _source_files_complete(
         value: dict[str, Any], files: list[dict[str, Any]], content: str = ""
     ) -> bool:
@@ -284,6 +323,22 @@ class _PersistentMirror:
                 == str(item.get("sha256") or "")
                 and len(content.encode("utf-8")) == int(item.get("bytes") or 0)
             )
+        expected_by_path = {
+            str(item.get("path") or ""): (str(item.get("sha256") or ""), int(item.get("bytes") or 0))
+            for item in expected
+            if isinstance(item, dict) and item.get("path")
+        } if isinstance(expected, list) else {}
+        actual_by_path = {
+            str(item.get("path") or ""): (str(item.get("sha256") or ""), int(item.get("bytes") or 0))
+            for item in files
+            if isinstance(item, dict) and item.get("path")
+        }
+        # Older repaired rows retain a metadata-only manifest while the full
+        # bytes live in the immutable CAS. Verify the manifest against the
+        # row and then verify every CAS object before accepting that form.
+        if files and all(isinstance(item, dict) and item.get("contents") is None for item in files):
+            return bool(expected_by_path) and actual_by_path == expected_by_path and _PersistentMirror._package_cas_complete(value)
+
         # Verify the retained bytes themselves, not only the copied manifest.
         # A corrupted/tampered ``files_json`` entry with its old digest would
         # otherwise pass a path/size comparison and later be treated as a
@@ -297,16 +352,6 @@ class _PersistentMirror:
                 or len(body.encode("utf-8")) != int(item.get("bytes") or 0)
             ):
                 return False
-        expected_by_path = {
-            str(item.get("path") or ""): (str(item.get("sha256") or ""), int(item.get("bytes") or 0))
-            for item in expected
-            if isinstance(item, dict) and item.get("path")
-        }
-        actual_by_path = {
-            str(item.get("path") or ""): (str(item.get("sha256") or ""), int(item.get("bytes") or 0))
-            for item in files
-            if isinstance(item, dict) and item.get("path")
-        }
         return bool(expected_by_path) and actual_by_path == expected_by_path
 
     @staticmethod
