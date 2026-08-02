@@ -30,6 +30,10 @@ _BACKTICK_PATH_RE = re.compile(
     re.I,
 )
 _SCHEME_RE = re.compile(r"^[a-z][a-z0-9+.-]*:", re.I)
+_COMMON_HOST_TLDS = {
+    "app", "ai", "biz", "co", "com", "dev", "edu", "gov", "io", "me",
+    "net", "org", "sh", "site", "tech", "tv", "uk", "us", "xyz",
+}
 
 
 @dataclass(frozen=True)
@@ -97,6 +101,15 @@ def _relative_references(path: str, text: str) -> set[str]:
     for raw in values:
         value = raw.strip(" <>\"'").split("#", 1)[0].split("?", 1)[0]
         if not value or value.startswith("#") or _SCHEME_RE.match(value):
+            continue
+        # Markdown frequently links to a bare host (``www.example.com`` or
+        # ``claude.ai``) without a URI scheme. Those are external citations,
+        # not package paths. Ignore obvious hosts while retaining ordinary
+        # local filenames such as ``guide.md``.
+        host = value.split("/", 1)[0].split(":", 1)[0].casefold()
+        if host.startswith("www.") or ("." in host and host.rsplit(".", 1)[-1] in _COMMON_HOST_TLDS):
+            continue
+        if value.startswith(("${", "*", "...")):
             continue
         try:
             combined = parent / value

@@ -62,6 +62,10 @@ _FRONTMATTER_RE = re.compile(r"\A\ufeff?---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\
 _FIELD_RE = re.compile(r"^(name|description):[ \t]*(.*)$", re.I)
 _TOKEN_RE = re.compile(r"[a-z0-9]+", re.I)
 _REFERENCE_RE = re.compile(r"\]\(([^)#\s]+)|(?<![\w])((?:\.{0,2}/)[^\s)`>]+)", re.I)
+_COMMON_HOST_TLDS = {
+    "app", "ai", "biz", "co", "com", "dev", "edu", "gov", "io", "me",
+    "net", "org", "sh", "site", "tech", "tv", "uk", "us", "xyz",
+}
 
 
 class SkillsShCatalogError(RuntimeError):
@@ -603,6 +607,13 @@ def _reference_closure(files: list[dict[str, Any]], entrypoint: str) -> tuple[li
         for match in _REFERENCE_RE.finditer(text):
             reference = (match.group(1) or match.group(2) or "").strip().strip("`'\"")
             if not reference or reference.startswith(("http://", "https://", "mailto:")):
+                continue
+            host = reference.split("/", 1)[0].split(":", 1)[0].casefold()
+            if host.startswith("www.") or (
+                "." in host and host.rsplit(".", 1)[-1] in _COMMON_HOST_TLDS
+            ):
+                continue
+            if reference.startswith(("${", "*", "...")):
                 continue
             base = Path(str(item.get("path") or "").replace("\\", "/")).parent
             normalized = (base / reference).as_posix().lstrip("./")
