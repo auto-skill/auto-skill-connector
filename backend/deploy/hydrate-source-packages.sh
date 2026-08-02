@@ -10,6 +10,7 @@ COMPOSE_FILE="${COMPOSE_FILE:-$DEPLOY_DIR/docker-compose.yml}"
 STATE_PATH="${STATE_PATH:-/data/github_package_hydration_state.json}"
 LIMIT="${LIMIT:-100}"
 BATCHES="${BATCHES:-1}"
+WORKERS="${WORKERS:-1}"
 RETRY_FAILED="${RETRY_FAILED:-0}"
 AUDIT_REQUIRE_COMPLETE="${AUDIT_REQUIRE_COMPLETE:-0}"
 STOP_SERVICES="${STOP_SERVICES:-1}"
@@ -49,6 +50,7 @@ for batch in $(seq 1 "$BATCHES"); do
     --library-dir /app/skills_library \
     --state "$STATE_PATH" \
     --limit "$LIMIT" \
+    --workers "$WORKERS" \
     "${retry_args[@]}"
 done
 

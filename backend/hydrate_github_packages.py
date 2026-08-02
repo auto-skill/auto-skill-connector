@@ -10,14 +10,17 @@ limits are incomplete.
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import hashlib
 import io
 import json
+import os
 import re
 import sqlite3
 import subprocess
 import tarfile
 import tempfile
+import threading
 from pathlib import Path, PurePosixPath
 from urllib.parse import quote
 
@@ -42,6 +45,8 @@ GITHUB_URL_RE = re.compile(
 PACKAGE_SOURCES = {"github", "github_skill_file", "skillsmp", "awesome_list"}
 STATE_NAME = "github_package_hydration_state.json"
 MAX_ARCHIVE_BYTES = 100 * 1024 * 1024
+_LIBRARY_WRITE_LOCK = threading.Lock()
+_THREAD_LOCAL = threading.local()
 
 
 def parse_github_url(url: str) -> dict | None:
@@ -270,7 +275,11 @@ def hydrate_row(
         }
     )
     assessed = evaluate_quality(skill, body)
-    _write_curated_body(library_dir, skill, body)
+    # The content-addressed package store is atomic, but the legacy curated
+    # index is a single JSON file. Serialize only that compatibility write so
+    # bounded concurrent fetchers cannot lose each other's index entry.
+    with _LIBRARY_WRITE_LOCK:
+        _write_curated_body(library_dir, skill, body)
     conn = store.get_conn()
     try:
         conn.execute(
@@ -295,6 +304,32 @@ def hydrate_row(
     return "hydrated"
 
 
+def _hydrate_in_worker(row: sqlite3.Row, library_dir: Path) -> str:
+    """Hydrate one row with a thread-local client/cache pair.
+
+    Codeload and ref resolution are network-bound. A small worker pool cuts
+    wall-clock time without sharing httpx clients or mutable archive caches
+    across threads; package writes and per-row SQLite transactions remain
+    independently atomic.
+    """
+    client = getattr(_THREAD_LOCAL, "client", None)
+    if client is None:
+        client = httpx.Client(
+            follow_redirects=True,
+            limits=httpx.Limits(max_connections=4, max_keepalive_connections=2),
+        )
+        _THREAD_LOCAL.client = client
+        _THREAD_LOCAL.archive_cache = {}
+        _THREAD_LOCAL.commit_cache = {}
+    return hydrate_row(
+        client,
+        row,
+        library_dir,
+        _THREAD_LOCAL.archive_cache,
+        _THREAD_LOCAL.commit_cache,
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--db", type=Path, default=store.DB_PATH)
@@ -302,6 +337,12 @@ def main() -> int:
     parser.add_argument("--state", type=Path, default=Path(__file__).parent / STATE_NAME)
     parser.add_argument("--limit", type=int, default=100)
     parser.add_argument("--retry-failed", action="store_true")
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=max(1, int(os.getenv("HYDRATOR_WORKERS", "1"))),
+        help="bounded concurrent network workers (default: 1)",
+    )
     args = parser.parse_args()
     store.DB_PATH = args.db
     store.init_db()
@@ -322,13 +363,17 @@ def main() -> int:
         and (args.retry_failed or str(row["url"]) not in state["failed"])
     ][: max(1, args.limit)]
     counts = {"hydrated": 0, "incomplete": 0, "failed": 0, "not-github": 0}
-    with httpx.Client(follow_redirects=True) as client:
-        archive_cache: dict[tuple[str, str, str], dict[str, bytes]] = {}
-        commit_cache: dict[tuple[str, str, str], str] = {}
-        for row in selected:
+    worker_count = max(1, min(int(args.workers), 8))
+    with ThreadPoolExecutor(max_workers=worker_count) as executor:
+        futures = {
+            executor.submit(_hydrate_in_worker, row, args.library_dir): row
+            for row in selected
+        }
+        for future in as_completed(futures):
+            row = futures[future]
             url = str(row["url"])
             try:
-                result = hydrate_row(client, row, args.library_dir, archive_cache, commit_cache)
+                result = future.result()
                 if result == "hydrated":
                     state["done"][url] = result
                     counts[result] += 1
