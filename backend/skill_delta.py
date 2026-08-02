@@ -415,8 +415,27 @@ def load_package(path: Path) -> LoadedPackage:
     if set(library) != seen_urls:
         missing = sorted(seen_urls - set(library))
         raise SkillDeltaError(f"active skill is missing reviewed library content: {missing[0]}")
+
+    packages: dict[str, dict] = {}
+    package_urls: set[str] = set()
+    package_by_url: dict[str, dict] = {}
+    for record in package_records:
+        package_hash, package = _validate_package_record(record)
+        if package_hash in packages:
+            raise SkillDeltaError(f"duplicate package hash: {package_hash}")
+        if package_urls.intersection(package["skill_urls"]):
+            raise SkillDeltaError("a skill URL is linked to multiple packages")
+        unknown_urls = set(package["skill_urls"]) - seen_urls
+        if unknown_urls:
+            raise SkillDeltaError(f"package references an unshipped skill: {sorted(unknown_urls)[0]}")
+        package_urls.update(package["skill_urls"])
+        for url in package["skill_urls"]:
+            package_by_url[url] = package
+        packages[package_hash] = package
+
     for skill in skills:
         content = library[skill["url"]]
+        package_manifest = (package_by_url.get(skill["url"]) or {}).get("manifest") or {}
         assessed = quality.evaluate_quality(
             {
                 "name": skill["name"],
@@ -424,7 +443,15 @@ def load_package(path: Path) -> LoadedPackage:
                 "source": skill["source"] if version == FORMAT_VERSION else "legacy-delta",
                 "url": skill["url"],
                 "tags": skill.get("tags") or [],
-                "package_completeness": "complete" if version == FORMAT_VERSION else None,
+                "package_completeness": package_manifest.get("completeness_status")
+                if version == FORMAT_VERSION
+                else None,
+                "dependency_closure_status": package_manifest.get("dependency_closure_status")
+                if version == FORMAT_VERSION
+                else None,
+                "entrypoint_truncated": package_manifest.get("entrypoint_truncated")
+                if version == FORMAT_VERSION
+                else None,
             },
             content,
         )
@@ -436,19 +463,6 @@ def load_package(path: Path) -> LoadedPackage:
         if skill.get("embedding_text_hash") != expected_embedding_hash:
             raise SkillDeltaError(f"embedding text hash does not match packaged content: {skill['url']}")
         skill.update(assessed)
-    packages: dict[str, dict] = {}
-    package_urls: set[str] = set()
-    for record in package_records:
-        package_hash, package = _validate_package_record(record)
-        if package_hash in packages:
-            raise SkillDeltaError(f"duplicate package hash: {package_hash}")
-        if package_urls.intersection(package["skill_urls"]):
-            raise SkillDeltaError("a skill URL is linked to multiple packages")
-        unknown_urls = set(package["skill_urls"]) - seen_urls
-        if unknown_urls:
-            raise SkillDeltaError(f"package references an unshipped skill: {sorted(unknown_urls)[0]}")
-        package_urls.update(package["skill_urls"])
-        packages[package_hash] = package
     if version == FORMAT_VERSION:
         missing = [
             skill["url"]

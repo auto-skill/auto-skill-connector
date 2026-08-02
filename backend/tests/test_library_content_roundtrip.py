@@ -137,6 +137,7 @@ class LibraryContentRoundTripTests(unittest.TestCase):
         # quarantined by the evidence gate.
         skill["_package_manifest"] = {"package_hash": "a" * 64}
         skill["package_completeness"] = "complete"
+        skill["dependency_closure_status"] = "complete"
 
         asyncio.run(scan_skill(None, skill))
 

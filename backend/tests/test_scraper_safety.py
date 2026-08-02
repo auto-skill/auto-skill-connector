@@ -83,6 +83,7 @@ class ScraperSafetyTests(unittest.TestCase):
             "source": "github_skill_file",
             "url": "https://github.com/example/repo/blob/main/SKILL.md",
             "package_completeness": "complete",
+            "dependency_closure_status": "complete",
             "content_hash": "old-content-hash",
             "embedding": [1.0] * 384,
             "embedding_text_hash": "old-embedding-hash",
@@ -317,6 +318,7 @@ class ScraperSafetyTests(unittest.TestCase):
             "source": "github_skill_file",
             "url": "https://github.com/example/repo/blob/main/SKILL.md",
             "package_completeness": "complete",
+            "dependency_closure_status": "complete",
             "_content": valid_content,
         }
 
@@ -340,6 +342,7 @@ class ScraperSafetyTests(unittest.TestCase):
             "source": "github_skill_file",
             "url": "https://github.com/example/repo/blob/main/SKILL.md",
             "package_completeness": "complete",
+            "dependency_closure_status": "complete",
             "content_hash": quality_content_hash(canonicalize_skill_content(valid_content)),
             "capability_summary": "Already summarized.",
             "_content": valid_content,
@@ -447,6 +450,7 @@ class ScraperSafetyTests(unittest.TestCase):
             captured.append(skill["_content"])
             skill["_package_manifest"] = {"package_hash": "a" * 64}
             skill["package_completeness"] = "complete"
+            skill["dependency_closure_status"] = "complete"
 
         skill = {
             "name": "spreadsheet-reporter",
