@@ -77,6 +77,39 @@ def _find_prefix(files: dict[str, bytes], expected: list[dict]) -> str:
     raise ValueError("manifest does not match any GitHub package root")
 
 
+def _package_materialized(package_root: Path, package_hash: str) -> bool:
+    """Return true only when the CAS contains every byte in the manifest.
+
+    Older skills.sh rows used ``files_json`` as a metadata-only manifest.  A
+    matching path/hash list is not enough for delivery: every referenced CAS
+    object must exist, have the declared byte count, and hash to its digest.
+    """
+    if not re.fullmatch(r"[a-f0-9]{64}", str(package_hash or "")):
+        return False
+    manifest_path = package_root / "manifests" / f"{package_hash}.json"
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, TypeError, ValueError):
+        return False
+    if manifest.get("package_hash") != package_hash or manifest.get("completeness_status") != "complete":
+        return False
+    files = manifest.get("files") or []
+    if not files:
+        return False
+    for item in files:
+        digest = str(item.get("raw_sha256") or "")
+        if not re.fullmatch(r"[a-f0-9]{64}", digest):
+            return False
+        object_path = package_root / "objects" / digest[:2] / digest
+        try:
+            content = object_path.read_bytes()
+        except OSError:
+            return False
+        if len(content) != int(item.get("size") or -1) or hashlib.sha256(content).hexdigest() != digest:
+            return False
+    return True
+
+
 def repair_row(client: httpx.Client, conn: sqlite3.Connection, row: sqlite3.Row, package_root: Path) -> str:
     value = json.loads(row["row_json"])
     expected = _expected_files(value)
@@ -172,7 +205,12 @@ def main() -> int:
                 files = json.loads(source[1] or "[]") if source else []
             except (TypeError, json.JSONDecodeError):
                 pass
-            if source and _PersistentMirror._source_files_complete(value, files, str(source[0] or "")):
+            package_hash = str((value.get("raw") or {}).get("package_hash") or "")
+            if (
+                source
+                and _PersistentMirror._source_files_complete(value, files, str(source[0] or ""))
+                and _package_materialized(args.package_root, package_hash)
+            ):
                 continue
             try:
                 repair_row(client, conn, row, args.package_root)
