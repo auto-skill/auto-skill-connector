@@ -381,14 +381,23 @@ def main() -> int:
     try:
         rows = conn.execute(
             "SELECT * FROM skills WHERE quality_status IN ('active','metadata_only','pending') "
-            f"AND source IN ({placeholders}) ORDER BY id",
+            f"AND source IN ({placeholders}) ORDER BY url, id",
             sources,
         )
         for row in rows:
             url = str(row["url"])
             if url in state["done"] or (not args.retry_failed and url in state["failed"]):
                 continue
-            selected.append(row)
+            # Hydration only needs identity/quality fields. Do not retain
+            # large raw manifests, embeddings, or retrieval text for every
+            # queued row; those remain authoritative in SQLite.
+            compact = {
+                key: row[key]
+                for key in row.keys()
+                if key not in {"raw", "embedding", "retrieval_text"}
+            }
+            compact["raw"] = "{}"
+            selected.append(compact)
             if len(selected) >= max(1, args.limit):
                 break
         rows.close()
