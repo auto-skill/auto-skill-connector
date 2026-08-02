@@ -69,7 +69,12 @@ def audit(db_path: Path, package_root: Path) -> dict:
                 bucket["missing"] += 1
                 report["active_missing_package"] += 1
                 continue
-            if manifest.get("completeness_status") != "complete" or bool(row[3]) or bool(manifest.get("entrypoint_truncated")):
+            if (
+                manifest.get("completeness_status") != "complete"
+                or manifest.get("dependency_closure_status") != "complete"
+                or bool(row[3])
+                or bool(manifest.get("entrypoint_truncated"))
+            ):
                 bucket["incomplete"] += 1
                 report["active_incomplete_package"] += 1
             for file_info in manifest.get("files") or []:
