@@ -357,6 +357,11 @@ def main() -> int:
         default=max(1, int(os.getenv("HYDRATOR_WORKERS", "1"))),
         help="bounded concurrent network workers (default: 1)",
     )
+    parser.add_argument(
+        "--sources",
+        default="",
+        help="comma-separated source partitions (default: all package-backed sources)",
+    )
     args = parser.parse_args()
     store.DB_PATH = args.db
     store.init_db()
@@ -366,12 +371,18 @@ def main() -> int:
     # Stream the catalog cursor instead of materializing every large raw row;
     # this keeps memory bounded even when the mirror contains hundreds of
     # thousands of source observations.
+    requested_sources = tuple(
+        item.strip() for item in str(args.sources or "").split(",") if item.strip()
+    )
+    sources = tuple(item for item in requested_sources if item in PACKAGE_SOURCES) or tuple(sorted(PACKAGE_SOURCES))
+    placeholders = ",".join("?" for _ in sources)
     conn = store.get_conn()
     selected = []
     try:
         rows = conn.execute(
             "SELECT * FROM skills WHERE quality_status IN ('active','metadata_only','pending') "
-            "AND source IN ('github','github_skill_file','skillsmp','awesome_list') ORDER BY id"
+            f"AND source IN ({placeholders}) ORDER BY id",
+            sources,
         )
         for row in rows:
             url = str(row["url"])

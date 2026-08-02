@@ -12,6 +12,7 @@ LIMIT="${LIMIT:-100}"
 BATCHES="${BATCHES:-1}"
 WORKERS="${WORKERS:-1}"
 RETRY_FAILED="${RETRY_FAILED:-0}"
+SOURCES="${SOURCES:-}"
 AUDIT_REQUIRE_COMPLETE="${AUDIT_REQUIRE_COMPLETE:-0}"
 STOP_SERVICES="${STOP_SERVICES:-1}"
 HYDRATOR_SERVICE="${HYDRATOR_SERVICE:-hydrator}"
@@ -41,6 +42,10 @@ retry_args=()
 if [[ "$RETRY_FAILED" == "1" ]]; then
   retry_args+=(--retry-failed)
 fi
+source_args=()
+if [[ -n "$SOURCES" ]]; then
+  source_args+=(--sources "$SOURCES")
+fi
 
 for batch in $(seq 1 "$BATCHES"); do
   echo "==> Hydration batch $batch/$BATCHES (limit=$LIMIT)"
@@ -51,7 +56,8 @@ for batch in $(seq 1 "$BATCHES"); do
     --state "$STATE_PATH" \
     --limit "$LIMIT" \
     --workers "$WORKERS" \
-    "${retry_args[@]}"
+    "${retry_args[@]}" \
+    "${source_args[@]}"
 done
 
 if [[ "$STOP_SERVICES" != "1" ]]; then
