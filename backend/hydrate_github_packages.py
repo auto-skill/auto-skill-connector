@@ -878,7 +878,6 @@ def main() -> int:
                     not args.retry_fallback
                     or not _is_scoped_fallback_failure(state["failed"][url])
                     or not parsed_url
-                    or not parsed_url["scope"]
                 ):
                     continue
             # Hydration only needs identity/quality fields. Do not retain
