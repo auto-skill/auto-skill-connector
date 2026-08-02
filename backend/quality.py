@@ -55,6 +55,46 @@ PACKAGE_REQUIRED_SOURCES = {
     "awesome_list",
 }
 
+# Readiness is deliberately separate from ``quality_status``.  The latter is
+# an ingest/quality decision used by existing callers; readiness describes
+# what the router may honestly do with the record right now.
+READINESS_CATALOG = "catalog-ready"
+READINESS_HINT = "hint-ready"
+READINESS_FULL = "full-ready"
+READINESS_REJECTED = "rejected"
+
+
+def readiness_for_skill(skill: dict[str, Any]) -> str:
+    """Return the least-surprising delivery state for a skill record.
+
+    Catalog discovery must not wait for hydration, while full delivery still
+    requires the immutable package and dependency-closure gates.  This helper
+    is intentionally deterministic and side-effect free so ingestion, API
+    responses, and audits report the same state.
+    """
+    status = str(skill.get("quality_status") or "pending").casefold()
+    if status in {"rejected", "duplicate"}:
+        return READINESS_REJECTED
+    if bool(skill.get("entrypoint_truncated")):
+        return READINESS_REJECTED
+
+    source = str(skill.get("source") or "")
+    package_required = source in PACKAGE_REQUIRED_SOURCES or str(skill.get("registry") or "").casefold() == "skills_sh"
+    has_content = bool(skill.get("content_hash")) or bool(skill.get("_content"))
+    package_complete = str(skill.get("package_completeness") or "").casefold() == "complete"
+    closure = str(skill.get("dependency_closure_status") or "").casefold()
+    closure_complete = closure == "complete" or (
+        str(skill.get("registry") or "").casefold() == "skills_sh" and closure == "resolved"
+    )
+
+    if status == "active" and has_content and (not package_required or (package_complete and closure_complete)):
+        return READINESS_FULL
+    if status == "metadata_only" and str(skill.get("name") or "").strip() and str(skill.get("description") or "").strip():
+        return READINESS_HINT
+    if status in {"active", "metadata_only"} and (has_content or str(skill.get("description") or "").strip()):
+        return READINESS_HINT
+    return READINESS_CATALOG
+
 PLATFORM_ALIASES: dict[str, tuple[str, ...]] = {
     "airtable": ("airtable",),
     "aws": ("aws", "amazon web services"),
@@ -570,7 +610,7 @@ def evaluate_quality(skill: dict[str, Any], content: str = "") -> dict[str, Any]
 
     score = max(0, min(score, 100))
     components = meaningfulness_components(skill, score)
-    return {
+    result = {
         "content_hash": chash,
         "quality_status": status,
         "quality_reasons": sorted(set(reasons)),
@@ -581,6 +621,8 @@ def evaluate_quality(skill: dict[str, Any], content: str = "") -> dict[str, Any]
         "platforms": platforms,
         "category": "integration" if platforms else "capability",
     }
+    result["readiness"] = readiness_for_skill({**skill, **result})
+    return result
 
 
 def _tokens(text: str) -> list[str]:

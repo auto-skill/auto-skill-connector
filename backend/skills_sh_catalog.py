@@ -26,7 +26,7 @@ from pathlib import Path
 
 import httpx
 
-from quality import content_hash, evaluate_quality
+from quality import content_hash, evaluate_quality, readiness_for_skill
 from package_store import ImmutablePackageStore
 
 
@@ -1428,6 +1428,7 @@ class SkillsShCatalog:
             if status == "fail":
                 row["quality_status"] = "rejected"
                 row["quality_reasons"] = sorted(set([*row.get("quality_reasons", []), "skills-sh-audit-fail"]))
+            row["readiness"] = readiness_for_skill(row)
             rows.append(row)
         return rows
 

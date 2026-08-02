@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS skills (
     content_hash TEXT,
     canonical_id TEXT,
     quality_status TEXT DEFAULT 'pending',
+    readiness TEXT DEFAULT 'catalog-ready',
     quality_reasons TEXT DEFAULT '[]',
     quality_score INTEGER DEFAULT 0,
     prominence_score REAL DEFAULT 0,
@@ -484,6 +485,7 @@ SKILL_COLUMN_DEFAULTS = {
     "content_hash": "TEXT",
     "canonical_id": "TEXT",
     "quality_status": "TEXT DEFAULT 'pending'",
+    "readiness": "TEXT DEFAULT 'catalog-ready'",
     "quality_reasons": "TEXT DEFAULT '[]'",
     "quality_score": "INTEGER DEFAULT 0",
     "prominence_score": "REAL DEFAULT 0",
@@ -525,6 +527,7 @@ SKILL_RETRIEVAL_COLUMNS = (
     "content_hash",
     "canonical_id",
     "quality_status",
+    "readiness",
     "quality_reasons",
     "quality_score",
     "prominence_score",
@@ -912,6 +915,31 @@ def init_db() -> None:
         # A missing status must never become silently routable because an old
         # SQLite table still has the historical DEFAULT 'active'.
         conn.execute("UPDATE skills SET quality_status='pending' WHERE quality_status IS NULL")
+        # Backfill the explicit delivery state for rows written before the
+        # readiness column existed.  This is metadata-only and does not touch
+        # source bodies or embeddings.
+        conn.execute(
+            """
+            UPDATE skills
+            SET readiness = CASE
+                WHEN quality_status IN ('rejected', 'duplicate') OR entrypoint_truncated = 1
+                    THEN 'rejected'
+                WHEN quality_status = 'active'
+                 AND content_hash IS NOT NULL
+                 AND (
+                     source NOT IN ('github', 'github_skill_file', 'skillsmp', 'awesome_list')
+                     OR (
+                         package_completeness = 'complete'
+                         AND dependency_closure_status IN ('complete', 'resolved')
+                     )
+                 ) THEN 'full-ready'
+                WHEN quality_status IN ('active', 'metadata_only')
+                 AND (name IS NOT NULL OR description IS NOT NULL) THEN 'hint-ready'
+                ELSE 'catalog-ready'
+            END
+            WHERE readiness IS NULL OR readiness = 'catalog-ready'
+            """
+        )
         _stale_duplicate_running_scrapes(conn)
         conn.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS scrape_runs_one_running_idx "
@@ -1059,6 +1087,12 @@ def upsert_skill_package(
                     skill_id,
                 ),
             )
+            updated = conn.execute("SELECT * FROM skills WHERE id=?", (skill_id,)).fetchone()
+            if updated:
+                conn.execute(
+                    "UPDATE skills SET readiness=? WHERE id=?",
+                    (quality.readiness_for_skill(dict(updated)), skill_id),
+                )
         conn.commit()
     except Exception:
         conn.rollback()
@@ -2060,12 +2094,21 @@ def readiness_stats() -> dict:
     conn = get_conn()
     try:
         counts = _index_counts(conn)
+        readiness_rows = conn.execute(
+            """
+            SELECT COALESCE(readiness, 'catalog-ready') AS readiness, COUNT(*) AS count
+            FROM skills
+            GROUP BY COALESCE(readiness, 'catalog-ready')
+            """
+        ).fetchall()
     finally:
         conn.close()
+    readiness = {str(row["readiness"]): int(row["count"] or 0) for row in readiness_rows}
     return {
         "total_skills": counts["total_skills"],
         "active_skills": counts["active_skills"],
         "embedded_skills": counts["embedded_skills"],
+        "readiness": readiness,
         "vector_index": vector_index_stats(),
     }
 

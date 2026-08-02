@@ -7,6 +7,7 @@ from quality import (
     rerank_candidates,
     skill_capability_flags,
     tier_for_prompt,
+    readiness_for_skill,
 )
 
 
@@ -105,6 +106,22 @@ def test_quality_accepts_real_skill_content() -> None:
     assert result["quality_status"] == "active"
     assert result["quality_score"] >= 70
     assert result["content_hash"]
+    assert result["readiness"] == "full-ready"
+
+
+def test_readiness_separates_catalog_hint_full_and_rejected() -> None:
+    assert readiness_for_skill({"quality_status": "pending", "name": "x"}) == "catalog-ready"
+    assert readiness_for_skill({"quality_status": "metadata_only", "name": "x", "description": "discover me"}) == "hint-ready"
+    assert readiness_for_skill(
+        {
+            "quality_status": "active",
+            "source": "github_skill_file",
+            "content_hash": "a" * 64,
+            "package_completeness": "complete",
+            "dependency_closure_status": "complete",
+        }
+    ) == "full-ready"
+    assert readiness_for_skill({"quality_status": "rejected", "name": "bad"}) == "rejected"
 
 
 def test_quality_rejects_body_with_partial_dependency_closure() -> None:

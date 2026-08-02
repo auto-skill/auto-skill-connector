@@ -80,6 +80,9 @@ Fresh ingest writes deterministic quality metadata:
 
 - `quality_status`: `pending`, `active`, `metadata_only`, `rejected`, or
   `duplicate`.
+- `readiness`: `catalog-ready`, `hint-ready`, `full-ready`, or `rejected`.
+  Catalog records can be discovered before hydration; only `full-ready`
+  records may pass the full delivery gate.
 - `quality_reasons`: machine-readable gate reasons.
 - `quality_score`: 0-100 structural/content score.
 - `content_hash`: normalized SHA-256 used for integrity checks and dedupe.
