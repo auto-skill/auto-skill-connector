@@ -125,35 +125,92 @@ def _safe_member_name(name: str) -> str:
     return "/".join(parts)
 
 
-def read_archive(raw: bytes, scope: str = "") -> dict[str, bytes]:
+def read_archive(
+    raw: bytes,
+    scope: str = "",
+    *,
+    entrypoint: str | None = None,
+    skill_name: str = "",
+    repo: str = "",
+) -> dict[str, bytes]:
     if len(raw) > MAX_ARCHIVE_BYTES:
         raise ValueError(f"archive exceeds {MAX_ARCHIVE_BYTES} byte safety limit")
-    files: dict[str, bytes] = {}
-    scoped_prefix = scope.strip("/")
-    total_bytes = 0
-    with tarfile.open(fileobj=io.BytesIO(raw), mode="r|gz") as archive:
-        wrapper = ""
+    # Scan names first so a root/broad archive can be narrowed to one named
+    # skill before any unrelated file bytes are extracted. The raw tarball is
+    # already bounded, so a second pass is safe and deterministic.
+    members: list[tuple[str, int, bool]] = []
+    wrapper = ""
+    with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as archive:
         for member in archive:
             name = _safe_member_name(member.name)
-            # codeload wraps files in one top-level ``repo-ref`` directory.
             if not wrapper:
                 wrapper = name.split("/", 1)[0]
             if not name.startswith(wrapper + "/"):
                 continue
             relative = name[len(wrapper) + 1:]
-            if scoped_prefix and not (
-                relative == scoped_prefix or relative.startswith(scoped_prefix + "/")
-            ):
+            unsupported = member.issym() or member.islnk() or not (
+                member.isfile() or member.isdir()
+            )
+            members.append((relative, int(member.size or 0), unsupported))
+
+    effective_scope = scope.strip("/")
+    effective_entrypoint = entrypoint
+    candidate_paths = [
+        path for path, _size, unsupported in members
+        if not unsupported and (path.casefold().endswith("/skill.md") or path.casefold() == "skill.md")
+    ]
+    scoped_candidates = [
+        path for path in candidate_paths
+        if not effective_scope
+        or path == effective_scope
+        or path.startswith(effective_scope.rstrip("/") + "/")
+    ]
+    if skill_name and scoped_candidates and (
+        not effective_scope
+        or len(scoped_candidates) != 1
+        or len(members) > MAX_PACKAGE_FILES
+    ):
+        effective_entrypoint = _choose_skill_entrypoint(scoped_candidates, skill_name, repo)
+        parent = str(PurePosixPath(effective_entrypoint).parent)
+        effective_scope = "" if parent == "." else parent
+    if skill_name and effective_entrypoint and not scoped_candidates:
+        raise ValueError("package has no SKILL.md entrypoint")
+    if not effective_entrypoint and scoped_candidates and skill_name:
+        effective_entrypoint = _choose_skill_entrypoint(scoped_candidates, skill_name, repo)
+        parent = str(PurePosixPath(effective_entrypoint).parent)
+        effective_scope = "" if parent == "." else parent
+
+    def selected(path: str) -> bool:
+        if effective_scope:
+            return path == effective_scope or path.startswith(effective_scope.rstrip("/") + "/")
+        if effective_entrypoint:
+            return path == effective_entrypoint
+        return not scope or path == scope or path.startswith(scope.rstrip("/") + "/")
+
+    selected_members = [item for item in members if selected(item[0])]
+    if len(selected_members) > MAX_PACKAGE_FILES:
+        raise ValueError("scoped tree exceeds package file limit")
+    total_bytes = sum(size for _path, size, unsupported in selected_members if not unsupported)
+    if total_bytes > MAX_PACKAGE_BYTES:
+        raise ValueError("scoped tree exceeds package byte limit")
+
+    files: dict[str, bytes] = {}
+    selected_paths = {path for path, _size, _unsupported in selected_members}
+    with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as archive:
+        wrapper = ""
+        for member in archive:
+            name = _safe_member_name(member.name)
+            if not wrapper:
+                wrapper = name.split("/", 1)[0]
+            if not name.startswith(wrapper + "/"):
+                continue
+            relative = name[len(wrapper) + 1:]
+            if relative not in selected_paths:
                 continue
             if member.issym() or member.islnk() or not (member.isfile() or member.isdir()):
                 raise ValueError(f"unsupported archive entry: {member.name}")
             if not member.isfile():
                 continue
-            if len(files) >= MAX_PACKAGE_FILES:
-                raise ValueError("scoped tree exceeds package file limit")
-            total_bytes += int(member.size or 0)
-            if total_bytes > MAX_PACKAGE_BYTES:
-                raise ValueError("scoped tree exceeds package byte limit")
             extracted = archive.extractfile(member)
             if extracted is None:
                 raise ValueError(f"could not read archive entry: {member.name}")
@@ -264,6 +321,52 @@ def _expand_git_dependency_closure(
             queue.append(reference)
 
 
+def _normalise_skill_label(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", str(value or "").casefold())
+
+
+def _choose_skill_entrypoint(paths: list[str], skill_name: str, repo: str) -> str:
+    """Choose one unambiguous SKILL.md from a repo/broad scope.
+
+    Root-repository catalog rows often point at a multi-skill repository rather
+    than the exact directory.  Capturing that entire repository is both
+    wasteful and unsafe (it can exceed package limits).  We narrow only when
+    the catalog name gives a unique, explainable match; ties remain rejected.
+    """
+    candidates = sorted(set(paths))
+    if not candidates:
+        raise ValueError("package has no SKILL.md entrypoint")
+    if len(candidates) == 1:
+        return candidates[0]
+    targets = {
+        label for label in (_normalise_skill_label(skill_name), _normalise_skill_label(repo))
+        if label
+    }
+    scored: list[tuple[int, str]] = []
+    for path in candidates:
+        parent = PurePosixPath(path).parent
+        labels = [_normalise_skill_label(part) for part in parent.parts]
+        parent_label = labels[-1] if labels else ""
+        score = 0
+        for target in targets:
+            if parent_label == target:
+                score = max(score, 100)
+            elif not labels and target == _normalise_skill_label(repo):
+                score = max(score, 90)
+            elif target and target in labels:
+                score = max(score, 70)
+            elif target and any(target in label or label in target for label in labels if label):
+                score = max(score, 35)
+        # Prefer a shallower exact match only after label evidence, never by
+        # depth alone; arbitrary lexical selection could capture the wrong skill.
+        score = score * 100 - len(parent.parts)
+        scored.append((score, path))
+    scored.sort(reverse=True)
+    if scored[0][0] <= 0 or scored[0][0] == scored[1][0]:
+        raise ValueError("package has ambiguous SKILL.md entrypoint")
+    return scored[0][1]
+
+
 def read_git_scope(
     owner: str,
     repo: str,
@@ -271,6 +374,7 @@ def read_git_scope(
     scope: str = "",
     *,
     entrypoint: str | None = None,
+    skill_name: str = "",
 ) -> dict[str, bytes]:
     """Capture a complete scoped tree without downloading an oversized repo.
 
@@ -311,7 +415,7 @@ def read_git_scope(
         if len(listing) > MAX_GIT_TREE_LIST_BYTES:
             raise ValueError("scoped Git tree listing exceeds safety limit")
 
-        entries: list[tuple[str, str, str, int]] = []
+        all_entries: list[tuple[str, str, str, int]] = []
         for item in listing.split(b"\0"):
             if not item:
                 continue
@@ -329,9 +433,54 @@ def read_git_scope(
                 raise ValueError(f"unsupported Git tree entry: {mode} {kind} {path}")
             if size < 0 or size > MAX_FILE_BYTES:
                 raise ValueError(f"scoped tree file exceeds safety limit: {path}")
-            entries.append((path, mode, sha, size))
-            if len(entries) > MAX_PACKAGE_FILES:
-                raise ValueError("scoped tree exceeds package file limit")
+            all_entries.append((path, mode, sha, size))
+
+        effective_scope = scope.strip("/")
+        effective_entrypoint = entrypoint
+        candidate_paths = [
+            path for path, _mode, _sha, _size in all_entries
+            if path.casefold().endswith("/skill.md") or path.casefold() == "skill.md"
+        ]
+        scoped_candidates = [
+            path for path in candidate_paths
+            if not effective_scope
+            or path == effective_scope
+            or path.startswith(effective_scope.rstrip("/") + "/")
+        ]
+        if effective_entrypoint and not scoped_candidates:
+            raise ValueError("package has no SKILL.md entrypoint")
+        # A root URL or broad scope may describe many skills. Select the one
+        # matching the catalog row, then capture only its directory. For a
+        # root-level SKILL.md, retain the entrypoint and expand references
+        # lazily; unrelated repository files are not part of this package.
+        if scoped_candidates and (
+            not effective_scope
+            or len(scoped_candidates) != 1
+            or len(all_entries) > MAX_PACKAGE_FILES
+        ):
+            effective_entrypoint = _choose_skill_entrypoint(scoped_candidates, skill_name, repo)
+            parent = str(PurePosixPath(effective_entrypoint).parent)
+            effective_scope = "" if parent == "." else parent
+        elif effective_entrypoint and effective_entrypoint not in {path for path, *_ in all_entries}:
+            effective_entrypoint = None
+
+        if not effective_entrypoint and scoped_candidates:
+            effective_entrypoint = _choose_skill_entrypoint(scoped_candidates, skill_name, repo)
+            parent = str(PurePosixPath(effective_entrypoint).parent)
+            effective_scope = "" if parent == "." else parent
+
+        if effective_scope:
+            entries = [
+                item for item in all_entries
+                if item[0] == effective_scope
+                or item[0].startswith(effective_scope.rstrip("/") + "/")
+            ]
+        elif effective_entrypoint:
+            entries = [item for item in all_entries if item[0] == effective_entrypoint]
+        else:
+            entries = all_entries
+        if len(entries) > MAX_PACKAGE_FILES:
+            raise ValueError("scoped tree exceeds package file limit")
 
         files: dict[str, bytes] = {}
         total_bytes = 0
@@ -344,14 +493,22 @@ def read_git_scope(
                 raise ValueError("scoped tree exceeds package byte limit")
             files[path] = content
         if entrypoint:
-            _expand_git_dependency_closure(root, commit_sha, entrypoint, files)
+            _expand_git_dependency_closure(root, commit_sha, effective_entrypoint or entrypoint or "", files)
         return files
 
 
 def _is_scoped_fallback_failure(value: object) -> bool:
     """Return whether a prior codeload failure is fixed by partial-clone."""
     message = str(value or "").casefold()
-    return "archive exceeds" in message or "unsupported archive entry" in message
+    return any(
+        marker in message
+        for marker in (
+            "archive exceeds",
+            "unsupported archive entry",
+            "scoped tree exceeds package file limit",
+            "scoped tree exceeds package byte limit",
+        )
+    )
 
 
 def select_package_files(files: dict[str, bytes], scope: str, entrypoint: str) -> tuple[str, dict[str, bytes]]:
@@ -408,59 +565,103 @@ def hydrate_row(
     client: httpx.Client,
     row: sqlite3.Row,
     library_dir: Path,
-    archive_cache: dict[tuple[str, str, str], dict[str, bytes]] | None = None,
+    archive_cache: dict[tuple[str, str, str, str, str], dict[str, bytes]] | None = None,
     commit_cache: dict[tuple[str, str, str], str] | None = None,
 ) -> str:
     parsed = parse_github_url(str(row["url"] or ""))
     if not parsed:
         return "not-github"
-    cache_key = (parsed["owner"], parsed["repo"], parsed["ref"])
+    commit_key = (parsed["owner"], parsed["repo"], parsed["ref"])
+    # The same repository can expose multiple skills. Include the requested
+    # scope/name so a narrowed root capture is never reused for another row.
+    archive_key = (*commit_key, parsed["scope"], str(row["name"] or ""))
     commit_cache = commit_cache if commit_cache is not None else {}
     archive_cache = archive_cache if archive_cache is not None else {}
-    commit_sha = commit_cache.get(cache_key)
+    commit_sha = commit_cache.get(commit_key)
     if commit_sha is None:
-        commit_sha = resolve_commit(client, *cache_key)
-        commit_cache[cache_key] = commit_sha
-    files = archive_cache.get(cache_key)
-    capture_method = "codeload"
+        commit_sha = resolve_commit(client, *commit_key)
+        commit_cache[commit_key] = commit_sha
+    files = archive_cache.get(archive_key)
+    # Root URLs are commonly repositories containing many skills. Start with
+    # the immutable partial clone so we can select the matching entrypoint
+    # without downloading or storing unrelated repository files.
+    capture_method = "partial-clone" if not parsed["scope"] else "codeload"
     if files is None:
-        archive_url = (
-            f"https://codeload.github.com/{parsed['owner']}/{parsed['repo']}/tar.gz/"
-            f"{quote(parsed['ref'], safe='')}"
-        )
-        try:
-            files = read_archive(download_archive(client, archive_url), parsed["scope"])
-        except ValueError as archive_error:
-            # A repository-wide codeload archive can be too large or contain
-            # an unrelated unsupported entry while the requested skill tree is
-            # small and valid.  Capture the immutable scoped tree instead.  We
-            # deliberately do not fall back for package-limit failures: those
-            # mean the requested package itself is too large and must be
-            # quarantined rather than shortened.
-            archive_message = str(archive_error).casefold()
-            if (
-                not parsed["scope"]
-                or (
-                    "archive exceeds" not in archive_message
-                    and "unsupported archive entry" not in archive_message
+        if not parsed["scope"]:
+            try:
+                files = read_git_scope(
+                    parsed["owner"], parsed["repo"], commit_sha, parsed["scope"],
+                    entrypoint=parsed["entrypoint"], skill_name=str(row["name"] or ""),
                 )
-            ):
-                raise
-            files = read_git_scope(
-                parsed["owner"], parsed["repo"], commit_sha, parsed["scope"],
-                entrypoint=parsed["entrypoint"],
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                archive_url = (
+                    f"https://codeload.github.com/{parsed['owner']}/{parsed['repo']}/tar.gz/"
+                    f"{quote(parsed['ref'], safe='')}"
+                )
+                files = read_archive(
+                    download_archive(client, archive_url),
+                    parsed["scope"],
+                    entrypoint=parsed["entrypoint"],
+                    skill_name=str(row["name"] or ""),
+                    repo=parsed["repo"],
+                )
+                capture_method = "codeload-narrowed"
+        else:
+            archive_url = (
+                f"https://codeload.github.com/{parsed['owner']}/{parsed['repo']}/tar.gz/"
+                f"{quote(parsed['ref'], safe='')}"
             )
-            capture_method = "partial-clone"
-        except httpx.HTTPError:
-            # Retry a failed codeload through the immutable Git transport; the
-            # same complete-tree checks apply to both paths.
-            files = read_git_scope(
-                parsed["owner"], parsed["repo"], commit_sha, parsed["scope"],
-                entrypoint=parsed["entrypoint"],
-            )
-            capture_method = "partial-clone"
-        archive_cache[cache_key] = files
-    entrypoint, scoped = select_package_files(files, parsed["scope"], parsed["entrypoint"])
+            try:
+                files = read_archive(
+                    download_archive(client, archive_url),
+                    parsed["scope"],
+                    entrypoint=parsed["entrypoint"],
+                    skill_name=str(row["name"] or ""),
+                    repo=parsed["repo"],
+                )
+            except ValueError as archive_error:
+                # A broad scoped archive can exceed package limits because it
+                # contains unrelated skills. Re-enumerate the immutable Git
+                # tree and narrow to the row's matching entrypoint.
+                archive_message = str(archive_error).casefold()
+                if not any(
+                    marker in archive_message
+                    for marker in (
+                        "archive exceeds",
+                        "unsupported archive entry",
+                        "scoped tree exceeds package file limit",
+                        "scoped tree exceeds package byte limit",
+                    )
+                ):
+                    raise
+                files = read_git_scope(
+                    parsed["owner"], parsed["repo"], commit_sha, parsed["scope"],
+                    entrypoint=parsed["entrypoint"], skill_name=str(row["name"] or ""),
+                )
+                capture_method = "partial-clone"
+            except httpx.HTTPError:
+                files = read_git_scope(
+                    parsed["owner"], parsed["repo"], commit_sha, parsed["scope"],
+                    entrypoint=parsed["entrypoint"], skill_name=str(row["name"] or ""),
+                )
+                capture_method = "partial-clone"
+        archive_cache[archive_key] = files
+        archive_cache[archive_key] = files
+    try:
+        entrypoint, scoped = select_package_files(files, parsed["scope"], parsed["entrypoint"])
+    except ValueError as selection_error:
+        if "ambiguous" not in str(selection_error).casefold() or parsed["scope"]:
+            raise
+        files = read_git_scope(
+            parsed["owner"], parsed["repo"], commit_sha, parsed["scope"],
+            entrypoint=parsed["entrypoint"], skill_name=str(row["name"] or ""),
+        )
+        capture_method = "partial-clone"
+        archive_cache[archive_key] = files
+        entrypoint, scoped = select_package_files(files, parsed["scope"], parsed["entrypoint"])
+    captured_root = str(PurePosixPath(entrypoint).parent)
+    if captured_root == ".":
+        captured_root = ""
     def build_manifest() -> tuple[dict, dict[str, bytes]]:
         package_files = [
             PackageFileInput(path=path, content=content, expected_size=len(content))
@@ -473,7 +674,7 @@ def hydrate_row(
                 "repo": parsed["repo"],
                 "requested_ref": parsed["ref"],
                 "commit_sha": commit_sha,
-                "root_path": parsed["scope"],
+                "root_path": captured_root,
             },
             source_url=str(row["url"]),
             entrypoint=entrypoint,
@@ -491,7 +692,7 @@ def hydrate_row(
     if manifest.get("dependency_closure_status") != "complete":
         expanded = read_git_scope(
             parsed["owner"], parsed["repo"], commit_sha, parsed["scope"],
-            entrypoint=entrypoint,
+            entrypoint=entrypoint, skill_name=str(row["name"] or ""),
         )
         for path, content in expanded.items():
             scoped.setdefault(path, content)
@@ -630,15 +831,21 @@ def main() -> int:
         item.strip() for item in str(args.sources or "").split(",") if item.strip()
     )
     sources = tuple(item for item in requested_sources if item in PACKAGE_SOURCES) or tuple(sorted(PACKAGE_SOURCES))
+    statuses = ["active", "metadata_only", "pending"]
+    if args.retry_fallback:
+        # Scoped partial-clone capture can recover repositories previously
+        # rejected only because codeload saw an unrelated oversized tree.
+        statuses.append("rejected")
+    status_placeholders = ",".join("?" for _ in statuses)
     placeholders = ",".join("?" for _ in sources)
     conn = store.get_conn()
     selected = []
     try:
         rows = conn.execute(
-            "SELECT * FROM skills WHERE quality_status IN ('active','metadata_only','pending') "
+            f"SELECT * FROM skills WHERE quality_status IN ({status_placeholders}) "
             f"AND source IN ({placeholders}) "
             "ORDER BY CASE quality_status WHEN 'active' THEN 0 WHEN 'pending' THEN 1 ELSE 2 END, url, id",
-            sources,
+            (*statuses, *sources),
         )
         for row in rows:
             if args.only_pending and str(row["quality_status"] or "") != "pending":
@@ -651,6 +858,19 @@ def main() -> int:
                 and bool(row["package_hash"])
             )
             if url in state["done"] and not retry_closure:
+                continue
+            if (
+                str(row["quality_status"] or "") == "rejected"
+                and not args.retry_fallback
+            ):
+                continue
+            if (
+                str(row["quality_status"] or "") == "rejected"
+                and (
+                    url not in state["failed"]
+                    or not _is_scoped_fallback_failure(state["failed"].get(url))
+                )
+            ):
                 continue
             if url in state["failed"] and not args.retry_failed and not retry_closure:
                 parsed_url = parse_github_url(url)

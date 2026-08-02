@@ -36,6 +36,22 @@ def test_read_archive_strips_codeload_wrapper() -> None:
     assert files == {"SKILL.md": b"body", "ref.md": b"ref"}
 
 
+def test_read_archive_narrows_broad_repository_to_named_skill() -> None:
+    files = read_archive(
+        _archive(
+            {
+                "repo-main/skills/foo/SKILL.md": b"foo",
+                "repo-main/skills/foo/ref.md": b"ref",
+                "repo-main/skills/bar/SKILL.md": b"bar",
+            }
+        ),
+        entrypoint="SKILL.md",
+        skill_name="foo",
+        repo="repo",
+    )
+    assert files == {"skills/foo/SKILL.md": b"foo", "skills/foo/ref.md": b"ref"}
+
+
 def test_select_package_files_rejects_missing_entrypoint() -> None:
     with pytest.raises(ValueError, match="no SKILL.md"):
         select_package_files({"skills/report/README.md": b"readme"}, "skills/report", "skills/report/SKILL.md")
@@ -47,6 +63,23 @@ def test_select_package_files_rejects_ambiguous_entrypoint() -> None:
             {"one/SKILL.md": b"one", "two/SKILL.md": b"two"},
             "",
             "SKILL.md",
+        )
+
+
+def test_choose_skill_entrypoint_narrows_broad_repository_by_catalog_name() -> None:
+    assert hydrator._choose_skill_entrypoint(
+        ["skills/report/SKILL.md", "skills/browser/SKILL.md"],
+        "report",
+        "multi-skill-repo",
+    ) == "skills/report/SKILL.md"
+
+
+def test_choose_skill_entrypoint_refuses_unmatched_ambiguity() -> None:
+    with pytest.raises(ValueError, match="ambiguous"):
+        hydrator._choose_skill_entrypoint(
+            ["skills/one/SKILL.md", "skills/two/SKILL.md"],
+            "unrelated",
+            "multi-skill-repo",
         )
 
 
@@ -63,6 +96,35 @@ def test_read_git_scope_returns_each_declared_blob(monkeypatch: pytest.MonkeyPat
 
     monkeypatch.setattr(hydrator, "_git_run", fake_git_run)
     assert hydrator.read_git_scope("acme", "repo", "0" * 40) == {"SKILL.md": b"body"}
+
+
+def test_read_git_scope_narrows_root_repository_to_named_skill(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entries = {
+        "skills/foo/SKILL.md": (b"foo", "a" * 40),
+        "skills/foo/ref.md": (b"ref", "b" * 40),
+        "skills/bar/SKILL.md": (b"bar", "c" * 40),
+    }
+    by_sha = {sha: body for body, sha in entries.values()}
+
+    def fake_git_run(args: list[str], *, cwd, timeout=hydrator.GIT_FALLBACK_TIMEOUT):
+        del cwd, timeout
+        if "ls-tree" in args:
+            output = b"".join(
+                f"100644 blob {sha} {len(body)}\t{path}\0".encode()
+                for path, (body, sha) in entries.items()
+            )
+        elif args[:3] == ["git", "cat-file", "blob"]:
+            output = by_sha[args[-1]]
+        else:
+            output = b""
+        return subprocess.CompletedProcess(args, 0, stdout=output, stderr=b"")
+
+    monkeypatch.setattr(hydrator, "_git_run", fake_git_run)
+    assert hydrator.read_git_scope(
+        "acme", "repo", "0" * 40, entrypoint="SKILL.md", skill_name="foo"
+    ) == {"skills/foo/SKILL.md": b"foo", "skills/foo/ref.md": b"ref"}
 
 
 def test_read_git_scope_expands_relative_reference_outside_scope(
