@@ -23,6 +23,7 @@ class DeployTransportTests(unittest.TestCase):
         self.assertIn("AUTOSKILL_DEPLOY_REMOTE_SUDO", script)
         self.assertIn("remote_sudo_ssh()", script)
         self.assertIn('SSH=(remote_sudo_ssh "${SSH_OPTIONS[@]}" "${DEPLOY_USER}@${DEPLOY_HOST}")', script)
+        self.assertIn("bash backend/deploy/drain-hydrators.sh", script)
         self.assertIn("sudo -n bash -lc", script)
         self.assertIn('bash -s --', script)
         self.assertIn("Verifying bind-mounted runtime ownership", script)

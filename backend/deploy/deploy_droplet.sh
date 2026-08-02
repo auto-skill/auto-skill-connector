@@ -198,6 +198,12 @@ if ! "${SSH[@]}" "cd ${REMOTE_DIR} && python3 backend/deploy/compose_preflight.p
   exit 1
 fi
 
+echo "==> Draining stale hydrator containers before rebuilding production"
+if ! "${SSH[@]}" "cd ${REMOTE_DIR} && bash backend/deploy/drain-hydrators.sh"; then
+  echo "FAILED: could not drain stale hydrator containers" >&2
+  exit 1
+fi
+
 # Tag whatever is currently running as :previous before rebuilding, so a
 # failed smoke check can restore it. `|| true` covers the very first deploy,
 # when no :latest image exists yet to tag.
