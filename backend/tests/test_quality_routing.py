@@ -36,6 +36,7 @@ class QualityGateTests(unittest.TestCase):
                 "description": "Build spreadsheet reports with formulas and charts.",
                 "source": "github_skill_file",
                 "package_completeness": "complete",
+                "dependency_closure_status": "complete",
                 "tags": [],
                 "raw": {"stars": 12},
             },
@@ -261,6 +262,22 @@ class RoutingTierTests(unittest.TestCase):
 
         self.assertEqual(tier_for_ranked_candidates(ranked), tier_for_prompt(prompt, [candidate]))
 
+    def test_package_with_partial_dependency_closure_is_hint_only(self):
+        candidate = {
+            "name": "spreadsheet-router",
+            "description": "Create spreadsheet reports with formulas, formatting, and validation.",
+            "source": "github_skill_file",
+            "package_completeness": "complete",
+            "dependency_closure_status": "partial",
+            "quality_status": "active",
+            "quality_score": 90,
+            "meaningfulness_score": 0.9,
+            "trust_signal": True,
+            "rank": 1.0,
+            "similarity": 0.95,
+        }
+        self.assertEqual(tier_for_ranked_candidates([candidate]), "hint")
+
     def test_platform_traps_cap_all_known_platforms_to_hint(self):
         generic_prompt = "build a customer dashboard and publish it"
         for platform in sorted(PLATFORM_ALIASES):
@@ -475,6 +492,7 @@ class RoutingTierTests(unittest.TestCase):
                 "platforms": ["shopify"],
                 "quality_status": "active",
                 "package_completeness": "complete",
+                "dependency_closure_status": "complete",
                 "quality_score": 90,
                 "rank": 1.0,
                 "similarity": 0.95,
@@ -487,6 +505,7 @@ class RoutingTierTests(unittest.TestCase):
                 "platforms": [],
                 "quality_status": "active",
                 "package_completeness": "complete",
+                "dependency_closure_status": "complete",
                 "quality_score": 90,
                 "rank": 0.03,
                 "similarity": 0.90,

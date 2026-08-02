@@ -96,6 +96,7 @@ def test_quality_accepts_real_skill_content() -> None:
         "description": "Create spreadsheet reports with formulas, formatting, and validation.",
         "source": "github_skill_file",
         "package_completeness": "complete",
+        "dependency_closure_status": "complete",
         "raw": {"stars": 12},
     }
 
@@ -104,6 +105,21 @@ def test_quality_accepts_real_skill_content() -> None:
     assert result["quality_status"] == "active"
     assert result["quality_score"] >= 70
     assert result["content_hash"]
+
+
+def test_quality_rejects_body_with_partial_dependency_closure() -> None:
+    result = evaluate_quality(
+        {
+            "name": "spreadsheet-router",
+            "description": "Create spreadsheet reports with formulas, formatting, and validation.",
+            "source": "github_skill_file",
+            "package_completeness": "complete",
+            "dependency_closure_status": "partial",
+        },
+        VALID_SKILL,
+    )
+    assert result["quality_status"] == "rejected"
+    assert "dependency-closure-incomplete" in result["quality_reasons"]
 
 
 def test_quality_rejects_github_body_without_complete_package() -> None:

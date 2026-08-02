@@ -510,12 +510,18 @@ def evaluate_quality(skill: dict[str, Any], content: str = "") -> dict[str, Any]
         if bool(skill.get("entrypoint_truncated")):
             reasons.append("entrypoint-truncated")
         package_state = skill.get("package_completeness")
+        closure_state = skill.get("dependency_closure_status")
         if content and package_state is not None and str(package_state).casefold() != "complete":
             reasons.append("package-incomplete")
+        if content and closure_state is not None and str(closure_state).casefold() != "complete":
+            reasons.append("dependency-closure-incomplete")
     elif source in PACKAGE_REQUIRED_SOURCES and content:
         package_state = str(skill.get("package_completeness") or "missing").casefold()
         if package_state != "complete":
             reasons.append("package-incomplete")
+        closure_state = str(skill.get("dependency_closure_status") or "missing").casefold()
+        if closure_state != "complete":
+            reasons.append("dependency-closure-incomplete")
     if content:
         chash = content_hash(content)
         content_reasons = skill_content_rejection_reasons(
@@ -543,7 +549,11 @@ def evaluate_quality(skill: dict[str, Any], content: str = "") -> dict[str, Any]
         else:
             reasons.append("missing-content")
 
-    integrity_reasons = {"entrypoint-truncated", "package-incomplete"}
+    integrity_reasons = {
+        "entrypoint-truncated",
+        "package-incomplete",
+        "dependency-closure-incomplete",
+    }
     if content and (content_reasons or integrity_reasons.intersection(reasons)):
         status = "rejected"
     elif content and not valid_frontmatter:
@@ -862,11 +872,13 @@ def tier_for_ranked_candidates(candidates: list[dict[str, Any]]) -> str:
     # package boundary at delivery time as well as during ingestion.  A
     # missing/partial package may remain searchable as a hint, but it must
     # never become an injected instruction route.
-    if (
-        str(top.get("source") or "") in PACKAGE_REQUIRED_SOURCES
-        and str(top.get("package_completeness") or "").casefold() != "complete"
-    ):
-        return "hint"
+    if str(top.get("source") or "") in PACKAGE_REQUIRED_SOURCES:
+        if str(top.get("package_completeness") or "").casefold() != "complete":
+            return "hint"
+        if str(top.get("dependency_closure_status") or "").casefold() != "complete":
+            return "hint"
+        if bool(top.get("entrypoint_truncated")):
+            return "hint"
     if int(top.get("quality_score") or 0) < MIN_QUALITY_FOR_FULL:
         return "hint"
     if int(top.get("risk_score") or 0) > 0:
