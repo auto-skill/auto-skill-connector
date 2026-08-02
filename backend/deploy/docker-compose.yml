@@ -10,12 +10,14 @@ services:
       - ../data:/data
       - ../skills_library:/app/skills_library
     working_dir: /app
-    # Hydration may hold two bounded codeload archives while hashing; keep
-    # this isolated one-shot service above that peak without changing API
-    # memory limits.
-    mem_limit: 1g
-    cpus: "0.75"
-    pids_limit: 128
+    # Hydration is deliberately a small, one-shot neighbor of the API.  The
+    # host-side guard permits only one of these containers at a time; these
+    # limits are the last line of defense if an operator bypasses that guard.
+    mem_limit: ${HYDRATOR_MEMORY_LIMIT:-512m}
+    cpus: "${HYDRATOR_CPU_LIMIT:-0.50}"
+    pids_limit: ${HYDRATOR_PIDS_LIMIT:-96}
+    init: true
+    restart: "no"
 
   api:
     build:

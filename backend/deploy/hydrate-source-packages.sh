@@ -18,8 +18,28 @@ AUDIT_REQUIRE_COMPLETE="${AUDIT_REQUIRE_COMPLETE:-0}"
 STOP_SERVICES="${STOP_SERVICES:-1}"
 HYDRATOR_SERVICE="${HYDRATOR_SERVICE:-hydrator}"
 BUILD_HYDRATOR="${BUILD_HYDRATOR:-0}"
+LOCK_FILE="${AUTOSKILL_HYDRATOR_LOCK:-$ROOT_DIR/backend/data/hydrator.global.lock}"
+API_HEALTH_URL="${AUTOSKILL_API_HEALTH_URL:-http://127.0.0.1:8000/healthz}"
 
 cd "$ROOT_DIR"
+
+# All hydration lanes share this lock.  Their old per-lane locks allowed the
+# main, closure-repair, and transient-retry supervisors to each start a
+# one-shot container, which multiplied the memory ceiling and OOM-killed API.
+mkdir -p "$(dirname "$LOCK_FILE")"
+exec 9>"$LOCK_FILE"
+if ! flock -n 9; then
+  echo "another hydrator lane is already running; exiting without starting a container" >&2
+  exit 0
+fi
+
+# Multiple Python workers multiply archive buffers and SQLite/package-store
+# state.  Keep production hydration single-threaded; throughput comes from
+# repository-level caching and sequential batches, not concurrent containers.
+if [[ "$WORKERS" != "1" ]]; then
+  echo "forcing WORKERS=1 for the production memory budget (requested=$WORKERS)" >&2
+  WORKERS=1
+fi
 
 restart_services() {
   docker compose -f "$COMPOSE_FILE" up -d api admin-local mcp litestream >/dev/null
@@ -33,6 +53,10 @@ if [[ "$STOP_SERVICES" == "1" ]]; then
   docker compose -f "$COMPOSE_FILE" stop api admin-local mcp litestream >/dev/null
 else
   echo "warning: running with readers online; SQLite writes remain transactional but API caches refresh only after restart" >&2
+  if ! curl -fsS --max-time 5 "$API_HEALTH_URL" >/dev/null; then
+    echo "API health check failed; refusing to start online hydration" >&2
+    exit 2
+  fi
 fi
 
 if [[ "$BUILD_HYDRATOR" == "1" ]]; then
@@ -52,6 +76,10 @@ if [[ -n "$SOURCES" ]]; then
 fi
 
 for batch in $(seq 1 "$BATCHES"); do
+  if [[ "$STOP_SERVICES" != "1" ]] && ! curl -fsS --max-time 5 "$API_HEALTH_URL" >/dev/null; then
+    echo "API became unhealthy; stopping before the next hydration batch" >&2
+    exit 2
+  fi
   echo "==> Hydration batch $batch/$BATCHES (limit=$LIMIT)"
   docker compose --profile hydrator -f "$COMPOSE_FILE" run --rm --no-deps "$HYDRATOR_SERVICE" \
     python hydrate_github_packages.py \

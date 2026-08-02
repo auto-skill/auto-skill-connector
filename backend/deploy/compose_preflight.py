@@ -408,6 +408,19 @@ def check_compose_runtime_contract(compose_file: Path, checks: list[Check]) -> N
         ),
     )
     require("compose worker no embedded app loops", "worker", ("AUTO_START_SCRAPER: \"0\"", "AUTO_START_EMBEDDER: \"0\""))
+    if "hydrator" in service_blocks:
+        require(
+            "compose hydrator is bounded and one-shot",
+            "hydrator",
+            (
+                'profiles: ["hydrator"]',
+                'restart: "no"',
+                "mem_limit:",
+                "cpus:",
+                "pids_limit:",
+                "init: true",
+            ),
+        )
     require(
         "compose production resource guards",
         None,
