@@ -513,7 +513,10 @@ def evaluate_quality(skill: dict[str, Any], content: str = "") -> dict[str, Any]
         closure_state = skill.get("dependency_closure_status")
         if content and package_state is not None and str(package_state).casefold() != "complete":
             reasons.append("package-incomplete")
-        if content and closure_state is not None and str(closure_state).casefold() != "complete":
+        if content and closure_state is not None and str(closure_state).casefold() not in {
+            "complete",
+            "resolved",
+        }:
             reasons.append("dependency-closure-incomplete")
     elif source in PACKAGE_REQUIRED_SOURCES and content:
         package_state = str(skill.get("package_completeness") or "missing").casefold()
