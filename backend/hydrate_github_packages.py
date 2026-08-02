@@ -614,6 +614,7 @@ def _hydrate_row_unlocked(
     library_dir: Path,
     archive_cache: dict[tuple[str, str, str, str, str], dict[str, bytes]] | None = None,
     commit_cache: dict[tuple[str, str, str], str] | None = None,
+    raw_archive_cache: dict[tuple[str, str, str], bytes] | None = None,
 ) -> str:
     parsed = parse_github_url(str(row["url"] or ""))
     if not parsed:
@@ -624,6 +625,7 @@ def _hydrate_row_unlocked(
     archive_key = (*commit_key, parsed["scope"], str(row["name"] or ""))
     commit_cache = commit_cache if commit_cache is not None else {}
     archive_cache = archive_cache if archive_cache is not None else {}
+    raw_archive_cache = raw_archive_cache if raw_archive_cache is not None else {}
     commit_sha = commit_cache.get(commit_key)
     if commit_sha is None:
         commit_sha = resolve_commit(client, *commit_key)
@@ -645,8 +647,12 @@ def _hydrate_row_unlocked(
                     f"https://codeload.github.com/{parsed['owner']}/{parsed['repo']}/tar.gz/"
                     f"{quote(parsed['ref'], safe='')}"
                 )
+                archive_raw = raw_archive_cache.get(commit_key)
+                if archive_raw is None:
+                    archive_raw = download_archive(client, archive_url)
+                    raw_archive_cache[commit_key] = archive_raw
                 files = read_archive(
-                    download_archive(client, archive_url),
+                    archive_raw,
                     parsed["scope"],
                     entrypoint=parsed["entrypoint"],
                     skill_name=str(row["name"] or ""),
@@ -659,8 +665,12 @@ def _hydrate_row_unlocked(
                 f"{quote(parsed['ref'], safe='')}"
             )
             try:
+                archive_raw = raw_archive_cache.get(commit_key)
+                if archive_raw is None:
+                    archive_raw = download_archive(client, archive_url)
+                    raw_archive_cache[commit_key] = archive_raw
                 files = read_archive(
-                    download_archive(client, archive_url),
+                    archive_raw,
                     parsed["scope"],
                     entrypoint=parsed["entrypoint"],
                     skill_name=str(row["name"] or ""),
@@ -804,13 +814,14 @@ def hydrate_row(
     library_dir: Path,
     archive_cache: dict[tuple[str, str, str, str, str], dict[str, bytes]] | None = None,
     commit_cache: dict[tuple[str, str, str], str] | None = None,
+    raw_archive_cache: dict[tuple[str, str, str], bytes] | None = None,
 ) -> str:
     """Hydrate one row while preventing cross-lane duplicate writes."""
     with _hydration_row_lock(str(row["url"]), library_dir):
         if _row_is_complete(str(row["id"])):
             return "already-complete"
         return _hydrate_row_unlocked(
-            client, row, library_dir, archive_cache, commit_cache
+            client, row, library_dir, archive_cache, commit_cache, raw_archive_cache
         )
 
 
@@ -831,6 +842,7 @@ def _hydrate_in_worker(row: sqlite3.Row, library_dir: Path) -> str:
         _THREAD_LOCAL.client = client
         _THREAD_LOCAL.archive_cache = {}
         _THREAD_LOCAL.commit_cache = {}
+        _THREAD_LOCAL.raw_archive_cache = {}
     try:
         return hydrate_row(
             client,
@@ -838,12 +850,17 @@ def _hydrate_in_worker(row: sqlite3.Row, library_dir: Path) -> str:
             library_dir,
             _THREAD_LOCAL.archive_cache,
             _THREAD_LOCAL.commit_cache,
+            _THREAD_LOCAL.raw_archive_cache,
         )
     finally:
         # A batch can contain hundreds of distinct repositories. Keep only a
         # small LRU-like tail per thread so archive bytes cannot exhaust the
         # hydrator cgroup; package objects are already persisted atomically.
-        for cache in (_THREAD_LOCAL.archive_cache, _THREAD_LOCAL.commit_cache):
+        for cache in (
+            _THREAD_LOCAL.archive_cache,
+            _THREAD_LOCAL.commit_cache,
+            _THREAD_LOCAL.raw_archive_cache,
+        ):
             while len(cache) > MAX_THREAD_CACHE_ENTRIES:
                 cache.pop(next(iter(cache)))
 
