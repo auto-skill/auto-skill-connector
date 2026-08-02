@@ -10,7 +10,10 @@ services:
       - ../data:/data
       - ../skills_library:/app/skills_library
     working_dir: /app
-    mem_limit: 768m
+    # Hydration may hold two bounded codeload archives while hashing; keep
+    # this isolated one-shot service above that peak without changing API
+    # memory limits.
+    mem_limit: 1g
     cpus: "0.75"
     pids_limit: 128
 
