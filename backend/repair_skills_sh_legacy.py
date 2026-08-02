@@ -123,6 +123,9 @@ def _package_materialized(package_root: Path, package_hash: str) -> bool:
 def repair_row(client: httpx.Client, conn: sqlite3.Connection, row: sqlite3.Row, package_root: Path) -> str:
     value = json.loads(row["row_json"])
     expected = _expected_files(value)
+    expected_bytes = sum(int(item.get("bytes") or 0) for item in expected)
+    if len(expected) > MAX_ARCHIVE_FILES or expected_bytes > MAX_EXTRACTED_BYTES:
+        raise ValueError("manifest exceeds repair safety limit")
     url = str(value.get("url") or "")
     match = GITHUB_RE.match(url)
     if not expected or not match:
@@ -197,14 +200,20 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--db", type=Path, default=Path("/data/local_skills.db"))
     parser.add_argument("--package-root", type=Path, default=Path("/app/skills_library/packages"))
+    parser.add_argument("--limit", type=int, default=50)
     args = parser.parse_args()
     store.DB_PATH = args.db
     conn = sqlite3.connect(args.db, timeout=60)
     conn.row_factory = sqlite3.Row
-    rows = conn.execute("SELECT id,row_json FROM skills_sh_mirror WHERE json_extract(row_json,'$.quality_status')='active'").fetchall()
+    rows = conn.execute("SELECT id,row_json FROM skills_sh_mirror WHERE json_extract(row_json,'$.quality_status')='active'")
+    selected = []
+    for row in rows:
+        selected.append(row)
+        if len(selected) >= max(1, args.limit):
+            break
     repaired = failed = 0
     with httpx.Client(follow_redirects=True) as client:
-        for row in rows:
+        for row in selected:
             value = json.loads(row["row_json"])
             source = conn.execute(
                 "SELECT content,files_json FROM skills_sh_sources WHERE content_hash=?",
@@ -233,7 +242,7 @@ def main() -> int:
                 conn.execute("UPDATE skills_sh_mirror SET row_json=? WHERE id=?", (json.dumps(value, separators=(",", ":")), row["id"]))
             conn.commit()
     conn.close()
-    print(json.dumps({"repaired": repaired, "failed": failed}))
+    print(json.dumps({"selected": len(selected), "repaired": repaired, "failed": failed}))
     return 0
 
 
