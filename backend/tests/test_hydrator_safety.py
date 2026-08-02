@@ -29,3 +29,10 @@ def test_every_hydration_lane_uses_shared_lock_and_api_guard() -> None:
         assert "flock -n" in text
         assert "AUTOSKILL_API_HEALTH_URL" in text
         assert "curl -fsS --max-time 5" in text
+
+
+def test_emergency_drain_only_targets_hydrator_labels() -> None:
+    text = (DEPLOY / "drain-hydrators.sh").read_text(encoding="utf-8")
+    assert "com.docker.compose.service=hydrator" in text
+    assert "docker rm -f" in text
+    assert "docker volume" not in text
