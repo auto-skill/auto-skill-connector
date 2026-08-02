@@ -44,7 +44,10 @@ GITHUB_URL_RE = re.compile(
 )
 PACKAGE_SOURCES = {"github", "github_skill_file", "skillsmp", "awesome_list"}
 STATE_NAME = "github_package_hydration_state.json"
-MAX_ARCHIVE_BYTES = 100 * 1024 * 1024
+# Keep the compressed transfer bounded near the package CAS limit.  A larger
+# tarball can expand into a memory spike before the 25 MiB package validator
+# gets a chance to reject it, repeatedly killing the isolated worker.
+MAX_ARCHIVE_BYTES = 32 * 1024 * 1024
 _LIBRARY_WRITE_LOCK = threading.Lock()
 _THREAD_LOCAL = threading.local()
 # URLs are overwhelmingly unique in the catalog; retaining more than the
