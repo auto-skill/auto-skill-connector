@@ -134,7 +134,7 @@ def repair_row(client: httpx.Client, conn: sqlite3.Connection, row: sqlite3.Row,
     commit_sha = resolve_commit(client, owner, repo, "HEAD")
     response = client.get(
         f"https://codeload.github.com/{owner}/{repo}/tar.gz/{quote(commit_sha, safe='')}",
-        timeout=180,
+        timeout=45,
     )
     response.raise_for_status()
     files = read_full_archive(response.content)
