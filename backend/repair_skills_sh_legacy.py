@@ -218,6 +218,9 @@ def main() -> int:
         selected.append(row)
         if len(selected) >= max(1, args.limit):
             break
+    # Release the selector's read transaction before upsert_skill_package()
+    # opens its own IMMEDIATE write connection.
+    rows.close()
     repaired = failed = 0
     with httpx.Client(follow_redirects=True) as client:
         for row in selected:
