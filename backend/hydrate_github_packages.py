@@ -47,6 +47,7 @@ STATE_NAME = "github_package_hydration_state.json"
 MAX_ARCHIVE_BYTES = 100 * 1024 * 1024
 _LIBRARY_WRITE_LOCK = threading.Lock()
 _THREAD_LOCAL = threading.local()
+MAX_THREAD_CACHE_ENTRIES = 16
 
 
 def parse_github_url(url: str) -> dict | None:
@@ -321,13 +322,21 @@ def _hydrate_in_worker(row: sqlite3.Row, library_dir: Path) -> str:
         _THREAD_LOCAL.client = client
         _THREAD_LOCAL.archive_cache = {}
         _THREAD_LOCAL.commit_cache = {}
-    return hydrate_row(
-        client,
-        row,
-        library_dir,
-        _THREAD_LOCAL.archive_cache,
-        _THREAD_LOCAL.commit_cache,
-    )
+    try:
+        return hydrate_row(
+            client,
+            row,
+            library_dir,
+            _THREAD_LOCAL.archive_cache,
+            _THREAD_LOCAL.commit_cache,
+        )
+    finally:
+        # A batch can contain hundreds of distinct repositories. Keep only a
+        # small LRU-like tail per thread so archive bytes cannot exhaust the
+        # hydrator cgroup; package objects are already persisted atomically.
+        for cache in (_THREAD_LOCAL.archive_cache, _THREAD_LOCAL.commit_cache):
+            while len(cache) > MAX_THREAD_CACHE_ENTRIES:
+                cache.pop(next(iter(cache)))
 
 
 def main() -> int:
