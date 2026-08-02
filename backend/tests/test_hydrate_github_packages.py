@@ -63,3 +63,37 @@ def test_read_git_scope_returns_each_declared_blob(monkeypatch: pytest.MonkeyPat
 
     monkeypatch.setattr(hydrator, "_git_run", fake_git_run)
     assert hydrator.read_git_scope("acme", "repo", "0" * 40) == {"SKILL.md": b"body"}
+
+
+def test_read_git_scope_expands_relative_reference_outside_scope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entrypoint = "skills/foo/SKILL.md"
+    commit = "0" * 40
+    entry_content = b"---\nname: foo\ndescription: foo skill\n---\n[shared](../shared.md)"
+
+    def fake_git_run(args: list[str], *, cwd, timeout=hydrator.GIT_FALLBACK_TIMEOUT):
+        del cwd, timeout
+        if "ls-tree" in args:
+            output = (
+                b"100644 blob " + b"a" * 40 + f" {len(entry_content)}\t".encode()
+                + entrypoint.encode() + b"\0"
+            )
+        elif args[:3] == ["git", "cat-file", "blob"] and args[-1] == "a" * 40:
+            output = entry_content
+        elif args[:2] == ["git", "rev-parse"]:
+            output = b"b" * 40 + b"\n"
+        elif args[:3] == ["git", "cat-file", "-t"]:
+            output = b"blob\n"
+        elif args[:3] == ["git", "cat-file", "-s"]:
+            output = b"6\n"
+        elif "cat-file" in args:
+            output = b"shared"
+        else:
+            output = b""
+        return subprocess.CompletedProcess(args, 0, stdout=output, stderr=b"")
+
+    monkeypatch.setattr(hydrator, "_git_run", fake_git_run)
+    files = hydrator.read_git_scope("acme", "repo", commit, "skills/foo", entrypoint=entrypoint)
+    assert files[entrypoint].endswith(b"../shared.md)")
+    assert files["skills/shared.md"] == b"shared"

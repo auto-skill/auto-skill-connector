@@ -34,6 +34,8 @@ from package_store import (
     MAX_PACKAGE_FILES,
     ImmutablePackageStore,
     PackageFileInput,
+    _is_text,
+    _relative_references,
     build_package_manifest,
 )
 from quality import canonicalize_skill_content, content_hash, evaluate_quality
@@ -190,7 +192,83 @@ def _git_run(args: list[str], *, cwd: Path, timeout: int = GIT_FALLBACK_TIMEOUT)
     )
 
 
-def read_git_scope(owner: str, repo: str, commit_sha: str, scope: str = "") -> dict[str, bytes]:
+def _git_reference_blob(root: Path, commit_sha: str, path: str) -> bytes | None:
+    """Read one immutable blob referenced by a captured file.
+
+    A scoped skill may legitimately link to ``../shared.md`` outside its
+    directory.  The first tree listing intentionally avoids the rest of a
+    large repository, so resolve those paths lazily through the already
+    fetched immutable commit.  Missing/glob-like references remain unresolved
+    and are reported by ``build_package_manifest``; they are never replaced by
+    a truncated or synthetic file.
+    """
+    try:
+        blob_sha = _git_run(["git", "rev-parse", f"{commit_sha}:{path}"], cwd=root).stdout.decode("ascii").strip()
+        if not re.fullmatch(r"[0-9a-f]{40}", blob_sha):
+            return None
+        kind = _git_run(["git", "cat-file", "-t", blob_sha], cwd=root).stdout.decode("ascii").strip()
+        if kind != "blob":
+            return None
+        size_text = _git_run(["git", "cat-file", "-s", blob_sha], cwd=root).stdout.decode("ascii").strip()
+        expected_size = int(size_text)
+        if expected_size < 0 or expected_size > MAX_FILE_BYTES:
+            raise ValueError(f"referenced file exceeds safety limit: {path}")
+        content = _git_run(["git", "cat-file", "blob", blob_sha], cwd=root).stdout
+        if len(content) != expected_size:
+            raise ValueError(f"Git blob size mismatch: {path}")
+        return content
+    except (subprocess.CalledProcessError, UnicodeDecodeError, ValueError):
+        return None
+
+
+def _expand_git_dependency_closure(
+    root: Path,
+    commit_sha: str,
+    entrypoint: str,
+    files: dict[str, bytes],
+) -> None:
+    """Add resolvable relative references outside the initial skill scope.
+
+    This mutates ``files`` only with complete, hashable Git blobs.  A missing
+    or non-literal reference is intentionally left for the manifest to mark as
+    unresolved rather than guessed or partially fetched.
+    """
+    queue = [entrypoint]
+    seen: set[str] = set()
+    total_bytes = sum(len(value) for value in files.values())
+    while queue:
+        path = queue.pop(0)
+        if path in seen:
+            continue
+        seen.add(path)
+        content = files.get(path)
+        if content is None or not _is_text(content):
+            continue
+        text = content.decode("utf-8", errors="replace")
+        for reference in _relative_references(path, text):
+            if reference.startswith("UNRESOLVED_OUTSIDE:"):
+                continue
+            if reference not in files:
+                fetched = _git_reference_blob(root, commit_sha, reference)
+                if fetched is None:
+                    continue
+                if len(files) >= MAX_PACKAGE_FILES:
+                    raise ValueError("dependency closure exceeds package file limit")
+                total_bytes += len(fetched)
+                if total_bytes > MAX_PACKAGE_BYTES:
+                    raise ValueError("dependency closure exceeds package byte limit")
+                files[reference] = fetched
+            queue.append(reference)
+
+
+def read_git_scope(
+    owner: str,
+    repo: str,
+    commit_sha: str,
+    scope: str = "",
+    *,
+    entrypoint: str | None = None,
+) -> dict[str, bytes]:
     """Capture a complete scoped tree without downloading an oversized repo.
 
     GitHub codeload returns an archive for the whole repository.  For large
@@ -262,6 +340,8 @@ def read_git_scope(owner: str, repo: str, commit_sha: str, scope: str = "") -> d
             if total_bytes > MAX_PACKAGE_BYTES:
                 raise ValueError("scoped tree exceeds package byte limit")
             files[path] = content
+        if entrypoint:
+            _expand_git_dependency_closure(root, commit_sha, entrypoint, files)
         return files
 
 
@@ -363,36 +443,65 @@ def hydrate_row(
                 )
             ):
                 raise
-            files = read_git_scope(parsed["owner"], parsed["repo"], commit_sha, parsed["scope"])
+            files = read_git_scope(
+                parsed["owner"], parsed["repo"], commit_sha, parsed["scope"],
+                entrypoint=parsed["entrypoint"],
+            )
             capture_method = "partial-clone"
         except httpx.HTTPError:
             # Retry a failed codeload through the immutable Git transport; the
             # same complete-tree checks apply to both paths.
-            files = read_git_scope(parsed["owner"], parsed["repo"], commit_sha, parsed["scope"])
+            files = read_git_scope(
+                parsed["owner"], parsed["repo"], commit_sha, parsed["scope"],
+                entrypoint=parsed["entrypoint"],
+            )
             capture_method = "partial-clone"
         archive_cache[cache_key] = files
     entrypoint, scoped = select_package_files(files, parsed["scope"], parsed["entrypoint"])
-    package_files = [
-        PackageFileInput(path=path, content=content, expected_size=len(content))
-        for path, content in scoped.items()
-    ]
-    manifest, objects = build_package_manifest(
-        source={
-            "provider": "github",
-            "owner": parsed["owner"],
-            "repo": parsed["repo"],
-            "requested_ref": parsed["ref"],
-            "commit_sha": commit_sha,
-            "root_path": parsed["scope"],
-        },
-        source_url=str(row["url"]),
-        entrypoint=entrypoint,
-        files=package_files,
-        tree_complete=True,
-        provenance={"collector": f"github-{capture_method}", "immutable_ref": commit_sha},
-    )
-    if manifest.get("completeness_status") != "complete" or manifest.get("entrypoint_truncated"):
-        return f"incomplete:{','.join(manifest.get('completeness_reasons') or [])}"
+    def build_manifest() -> tuple[dict, dict[str, bytes]]:
+        package_files = [
+            PackageFileInput(path=path, content=content, expected_size=len(content))
+            for path, content in scoped.items()
+        ]
+        return build_package_manifest(
+            source={
+                "provider": "github",
+                "owner": parsed["owner"],
+                "repo": parsed["repo"],
+                "requested_ref": parsed["ref"],
+                "commit_sha": commit_sha,
+                "root_path": parsed["scope"],
+            },
+            source_url=str(row["url"]),
+            entrypoint=entrypoint,
+            files=package_files,
+            tree_complete=True,
+            provenance={"collector": f"github-{capture_method}", "immutable_ref": commit_sha},
+        )
+
+    manifest, objects = build_manifest()
+    # Codeload's scoped archive deliberately omits files outside the skill
+    # directory. If the entrypoint references one, use the immutable Git
+    # transport to fetch only the missing closure paths and rebuild the
+    # manifest. Never claim a package is complete while references remain
+    # unresolved.
+    if manifest.get("dependency_closure_status") != "complete":
+        expanded = read_git_scope(
+            parsed["owner"], parsed["repo"], commit_sha, parsed["scope"],
+            entrypoint=entrypoint,
+        )
+        for path, content in expanded.items():
+            scoped.setdefault(path, content)
+        manifest, objects = build_manifest()
+    if (
+        manifest.get("completeness_status") != "complete"
+        or manifest.get("entrypoint_truncated")
+        or manifest.get("dependency_closure_status") != "complete"
+    ):
+        reasons = list(manifest.get("completeness_reasons") or [])
+        if manifest.get("dependency_closure_status") != "complete":
+            reasons.append("dependency-closure-unresolved")
+        return f"incomplete:{','.join(sorted(set(reasons)))}"
     ImmutablePackageStore(library_dir / "packages").put(manifest, objects)
     body = canonicalize_skill_content(scoped[entrypoint].decode("utf-8", errors="replace"))
     stripped = strip_unsafe_content(body)
@@ -480,6 +589,11 @@ def main() -> int:
     parser.add_argument("--limit", type=int, default=100)
     parser.add_argument("--retry-failed", action="store_true")
     parser.add_argument(
+        "--retry-closure",
+        action="store_true",
+        help="rehydrate active packages whose stored dependency closure is partial",
+    )
+    parser.add_argument(
         "--retry-fallback",
         action="store_true",
         help="retry only archive/unsupported-entry failures handled by scoped Git capture",
@@ -520,9 +634,15 @@ def main() -> int:
         )
         for row in rows:
             url = str(row["url"])
-            if url in state["done"]:
+            retry_closure = (
+                args.retry_closure
+                and str(row["quality_status"] or "") == "active"
+                and str(row["dependency_closure_status"] or "").casefold() != "complete"
+                and bool(row["package_hash"])
+            )
+            if url in state["done"] and not retry_closure:
                 continue
-            if url in state["failed"] and not args.retry_failed:
+            if url in state["failed"] and not args.retry_failed and not retry_closure:
                 parsed_url = parse_github_url(url)
                 if (
                     not args.retry_fallback
