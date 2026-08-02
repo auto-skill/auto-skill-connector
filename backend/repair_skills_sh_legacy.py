@@ -28,7 +28,9 @@ from skills_sh_catalog import _PersistentMirror
 
 
 GITHUB_RE = re.compile(r"^https?://github\.com/(?P<owner>[^/]+)/(?P<repo>[^/#?]+)")
-MAX_ARCHIVE_BYTES = 100 * 1024 * 1024
+MAX_ARCHIVE_BYTES = 32 * 1024 * 1024
+MAX_EXTRACTED_BYTES = 25 * 1024 * 1024
+MAX_MEMBER_BYTES = 5 * 1024 * 1024
 MAX_ARCHIVE_FILES = 20_000
 
 
@@ -36,6 +38,7 @@ def read_full_archive(raw: bytes) -> dict[str, bytes]:
     if len(raw) > MAX_ARCHIVE_BYTES:
         raise ValueError("archive exceeds safety limit")
     files: dict[str, bytes] = {}
+    total_bytes = 0
     with tarfile.open(fileobj=io.BytesIO(raw), mode="r|gz") as archive:
         wrapper = ""
         for member in archive:
@@ -50,10 +53,17 @@ def read_full_archive(raw: bytes) -> dict[str, bytes]:
             relative = name[len(wrapper) + 1 :]
             if len(files) >= MAX_ARCHIVE_FILES:
                 raise ValueError("archive file limit exceeded")
+            member_size = int(member.size or 0)
+            if member_size > MAX_MEMBER_BYTES or total_bytes + member_size > MAX_EXTRACTED_BYTES:
+                raise ValueError("archive extracted content exceeds safety limit")
             handle = archive.extractfile(member)
             if handle is None:
                 raise ValueError(f"could not read {relative}")
-            files[relative] = handle.read()
+            content = handle.read()
+            if len(content) != member_size:
+                raise ValueError(f"short read for {relative}")
+            total_bytes += len(content)
+            files[relative] = content
     return files
 
 
