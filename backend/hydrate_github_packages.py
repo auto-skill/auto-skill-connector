@@ -47,7 +47,9 @@ STATE_NAME = "github_package_hydration_state.json"
 MAX_ARCHIVE_BYTES = 100 * 1024 * 1024
 _LIBRARY_WRITE_LOCK = threading.Lock()
 _THREAD_LOCAL = threading.local()
-MAX_THREAD_CACHE_ENTRIES = 16
+# URLs are overwhelmingly unique in the catalog; retaining more than the
+# current archive only increases memory pressure without meaningful reuse.
+MAX_THREAD_CACHE_ENTRIES = 1
 
 
 def parse_github_url(url: str) -> dict | None:
