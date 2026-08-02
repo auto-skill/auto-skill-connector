@@ -363,19 +363,26 @@ def main() -> int:
     state = json.loads(args.state.read_text()) if args.state.exists() else {"done": {}, "failed": {}}
     state.setdefault("done", {})
     state.setdefault("failed", {})
+    # Stream the catalog cursor instead of materializing every large raw row;
+    # this keeps memory bounded even when the mirror contains hundreds of
+    # thousands of source observations.
     conn = store.get_conn()
+    selected = []
     try:
         rows = conn.execute(
             "SELECT * FROM skills WHERE quality_status IN ('active','metadata_only','pending') "
             "AND source IN ('github','github_skill_file','skillsmp','awesome_list') ORDER BY id"
-        ).fetchall()
+        )
+        for row in rows:
+            url = str(row["url"])
+            if url in state["done"] or (not args.retry_failed and url in state["failed"]):
+                continue
+            selected.append(row)
+            if len(selected) >= max(1, args.limit):
+                break
+        rows.close()
     finally:
         conn.close()
-    selected = [
-        row for row in rows
-        if str(row["url"]) not in state["done"]
-        and (args.retry_failed or str(row["url"]) not in state["failed"])
-    ][: max(1, args.limit)]
     counts = {"hydrated": 0, "incomplete": 0, "failed": 0, "not-github": 0}
     worker_count = max(1, min(int(args.workers), 8))
     with ThreadPoolExecutor(max_workers=worker_count) as executor:
@@ -452,7 +459,7 @@ def main() -> int:
                 counts["failed"] += 1
             args.state.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")
             print(url, counts, flush=True)
-    print(json.dumps({"selected": len(selected), "counts": counts, "remaining": len(rows) - len(state["done"])}, indent=2))
+    print(json.dumps({"selected": len(selected), "counts": counts}, indent=2))
     return 0
 
 
