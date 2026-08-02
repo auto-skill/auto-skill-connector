@@ -29,6 +29,7 @@ import httpx
 import local_store as store
 from capsule_compiler import strip_unsafe_content
 from package_store import (
+    MAX_FILE_BYTES,
     MAX_PACKAGE_BYTES,
     MAX_PACKAGE_FILES,
     ImmutablePackageStore,
@@ -48,6 +49,13 @@ STATE_NAME = "github_package_hydration_state.json"
 # tarball can expand into a memory spike before the 25 MiB package validator
 # gets a chance to reject it, repeatedly killing the isolated worker.
 MAX_ARCHIVE_BYTES = 32 * 1024 * 1024
+# A large repository archive is not evidence that the scoped skill is large.
+# When codeload cannot be used, fetch only the immutable commit's requested
+# tree through Git's partial-clone protocol.  The fallback still refuses a
+# package that exceeds the package limits; it never clips a file or silently
+# drops a path.
+GIT_FALLBACK_TIMEOUT = 180
+MAX_GIT_TREE_LIST_BYTES = 8 * 1024 * 1024
 _LIBRARY_WRITE_LOCK = threading.Lock()
 _THREAD_LOCAL = threading.local()
 # URLs are overwhelmingly unique in the catalog; retaining more than the
@@ -168,6 +176,101 @@ def download_archive(client: httpx.Client, url: str) -> bytes:
     return b"".join(chunks)
 
 
+def _git_run(args: list[str], *, cwd: Path, timeout: int = GIT_FALLBACK_TIMEOUT) -> subprocess.CompletedProcess:
+    """Run a non-interactive Git command for the scoped capture fallback."""
+    env = os.environ.copy()
+    env["GIT_TERMINAL_PROMPT"] = "0"
+    return subprocess.run(
+        args,
+        cwd=str(cwd),
+        check=True,
+        capture_output=True,
+        timeout=timeout,
+        env=env,
+    )
+
+
+def read_git_scope(owner: str, repo: str, commit_sha: str, scope: str = "") -> dict[str, bytes]:
+    """Capture a complete scoped tree without downloading an oversized repo.
+
+    GitHub codeload returns an archive for the whole repository.  For large
+    repositories that archive can exceed our bounded transfer cap even when a
+    selected skill directory is small.  A blob-filtered fetch obtains the
+    immutable tree and lazily reads only the requested blobs.  The tree is
+    enumerated before any content is stored, and every returned blob is checked
+    against Git's declared size.
+    """
+    with tempfile.TemporaryDirectory(prefix="autoskill-git-") as temp_name:
+        root = Path(temp_name)
+        _git_run(["git", "init", "--quiet"], cwd=root)
+        _git_run(
+            ["git", "remote", "add", "origin", f"https://github.com/{owner}/{repo}.git"],
+            cwd=root,
+        )
+        _git_run(
+            [
+                "git",
+                "-c",
+                "protocol.version=2",
+                "fetch",
+                "--quiet",
+                "--filter=blob:none",
+                "--depth=1",
+                "--no-tags",
+                "origin",
+                commit_sha,
+            ],
+            cwd=root,
+        )
+        listing = _git_run(
+            ["git", "ls-tree", "-r", "-z", "-l", "FETCH_HEAD", "--", scope] if scope else
+            ["git", "ls-tree", "-r", "-z", "-l", "FETCH_HEAD"],
+            cwd=root,
+        ).stdout
+        if len(listing) > MAX_GIT_TREE_LIST_BYTES:
+            raise ValueError("scoped Git tree listing exceeds safety limit")
+
+        entries: list[tuple[str, str, str, int]] = []
+        for item in listing.split(b"\0"):
+            if not item:
+                continue
+            try:
+                metadata, raw_path = item.split(b"\t", 1)
+                mode_b, kind_b, sha_b, size_b = metadata.split(maxsplit=3)
+                path = raw_path.decode("utf-8")
+                mode = mode_b.decode("ascii")
+                kind = kind_b.decode("ascii")
+                sha = sha_b.decode("ascii")
+                size = int(size_b)
+            except (UnicodeDecodeError, ValueError) as exc:
+                raise ValueError("malformed Git tree entry") from exc
+            if kind != "blob" or mode not in {"100644", "100755"}:
+                raise ValueError(f"unsupported Git tree entry: {mode} {kind} {path}")
+            if size < 0 or size > MAX_FILE_BYTES:
+                raise ValueError(f"scoped tree file exceeds safety limit: {path}")
+            entries.append((path, mode, sha, size))
+            if len(entries) > MAX_PACKAGE_FILES:
+                raise ValueError("scoped tree exceeds package file limit")
+
+        files: dict[str, bytes] = {}
+        total_bytes = 0
+        for path, mode, sha, expected_size in entries:
+            content = _git_run(["git", "cat-file", "blob", sha], cwd=root).stdout
+            if len(content) != expected_size:
+                raise ValueError(f"Git blob size mismatch: {path}")
+            total_bytes += len(content)
+            if total_bytes > MAX_PACKAGE_BYTES:
+                raise ValueError("scoped tree exceeds package byte limit")
+            files[path] = content
+        return files
+
+
+def _is_scoped_fallback_failure(value: object) -> bool:
+    """Return whether a prior codeload failure is fixed by partial-clone."""
+    message = str(value or "").casefold()
+    return "archive exceeds" in message or "unsupported archive entry" in message
+
+
 def select_package_files(files: dict[str, bytes], scope: str, entrypoint: str) -> tuple[str, dict[str, bytes]]:
     scoped = {
         path: content
@@ -236,12 +339,37 @@ def hydrate_row(
         commit_sha = resolve_commit(client, *cache_key)
         commit_cache[cache_key] = commit_sha
     files = archive_cache.get(cache_key)
+    capture_method = "codeload"
     if files is None:
         archive_url = (
             f"https://codeload.github.com/{parsed['owner']}/{parsed['repo']}/tar.gz/"
             f"{quote(parsed['ref'], safe='')}"
         )
-        files = read_archive(download_archive(client, archive_url), parsed["scope"])
+        try:
+            files = read_archive(download_archive(client, archive_url), parsed["scope"])
+        except ValueError as archive_error:
+            # A repository-wide codeload archive can be too large or contain
+            # an unrelated unsupported entry while the requested skill tree is
+            # small and valid.  Capture the immutable scoped tree instead.  We
+            # deliberately do not fall back for package-limit failures: those
+            # mean the requested package itself is too large and must be
+            # quarantined rather than shortened.
+            archive_message = str(archive_error).casefold()
+            if (
+                not parsed["scope"]
+                or (
+                    "archive exceeds" not in archive_message
+                    and "unsupported archive entry" not in archive_message
+                )
+            ):
+                raise
+            files = read_git_scope(parsed["owner"], parsed["repo"], commit_sha, parsed["scope"])
+            capture_method = "partial-clone"
+        except httpx.HTTPError:
+            # Retry a failed codeload through the immutable Git transport; the
+            # same complete-tree checks apply to both paths.
+            files = read_git_scope(parsed["owner"], parsed["repo"], commit_sha, parsed["scope"])
+            capture_method = "partial-clone"
         archive_cache[cache_key] = files
     entrypoint, scoped = select_package_files(files, parsed["scope"], parsed["entrypoint"])
     package_files = [
@@ -261,7 +389,7 @@ def hydrate_row(
         entrypoint=entrypoint,
         files=package_files,
         tree_complete=True,
-        provenance={"collector": "github-codeload", "immutable_ref": commit_sha},
+        provenance={"collector": f"github-{capture_method}", "immutable_ref": commit_sha},
     )
     if manifest.get("completeness_status") != "complete" or manifest.get("entrypoint_truncated"):
         return f"incomplete:{','.join(manifest.get('completeness_reasons') or [])}"
@@ -352,6 +480,11 @@ def main() -> int:
     parser.add_argument("--limit", type=int, default=100)
     parser.add_argument("--retry-failed", action="store_true")
     parser.add_argument(
+        "--retry-fallback",
+        action="store_true",
+        help="retry only archive/unsupported-entry failures handled by scoped Git capture",
+    )
+    parser.add_argument(
         "--workers",
         type=int,
         default=max(1, int(os.getenv("HYDRATOR_WORKERS", "1"))),
@@ -381,13 +514,23 @@ def main() -> int:
     try:
         rows = conn.execute(
             "SELECT * FROM skills WHERE quality_status IN ('active','metadata_only','pending') "
-            f"AND source IN ({placeholders}) ORDER BY url, id",
+            f"AND source IN ({placeholders}) "
+            "ORDER BY CASE quality_status WHEN 'active' THEN 0 WHEN 'pending' THEN 1 ELSE 2 END, url, id",
             sources,
         )
         for row in rows:
             url = str(row["url"])
-            if url in state["done"] or (not args.retry_failed and url in state["failed"]):
+            if url in state["done"]:
                 continue
+            if url in state["failed"] and not args.retry_failed:
+                parsed_url = parse_github_url(url)
+                if (
+                    not args.retry_fallback
+                    or not _is_scoped_fallback_failure(state["failed"][url])
+                    or not parsed_url
+                    or not parsed_url["scope"]
+                ):
+                    continue
             # Hydration only needs identity/quality fields. Do not retain
             # large raw manifests, embeddings, or retrieval text for every
             # queued row; those remain authoritative in SQLite.

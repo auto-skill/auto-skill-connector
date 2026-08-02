@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import io
+import subprocess
 import tarfile
 
 import pytest
 
+import hydrate_github_packages as hydrator
 from hydrate_github_packages import parse_github_url, read_archive, select_package_files
 
 
@@ -46,3 +48,18 @@ def test_select_package_files_rejects_ambiguous_entrypoint() -> None:
             "",
             "SKILL.md",
         )
+
+
+def test_read_git_scope_returns_each_declared_blob(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_git_run(args: list[str], *, cwd, timeout=hydrator.GIT_FALLBACK_TIMEOUT):
+        del cwd, timeout
+        if "ls-tree" in args:
+            output = b"100644 blob deadbeef 4\tSKILL.md\0"
+        elif "cat-file" in args:
+            output = b"body"
+        else:
+            output = b""
+        return subprocess.CompletedProcess(args, 0, stdout=output, stderr=b"")
+
+    monkeypatch.setattr(hydrator, "_git_run", fake_git_run)
+    assert hydrator.read_git_scope("acme", "repo", "0" * 40) == {"SKILL.md": b"body"}

@@ -12,6 +12,7 @@ LIMIT="${LIMIT:-100}"
 BATCHES="${BATCHES:-1}"
 WORKERS="${WORKERS:-1}"
 RETRY_FAILED="${RETRY_FAILED:-0}"
+RETRY_FALLBACK="${RETRY_FALLBACK:-0}"
 SOURCES="${SOURCES:-}"
 AUDIT_REQUIRE_COMPLETE="${AUDIT_REQUIRE_COMPLETE:-0}"
 STOP_SERVICES="${STOP_SERVICES:-1}"
@@ -41,6 +42,9 @@ fi
 retry_args=()
 if [[ "$RETRY_FAILED" == "1" ]]; then
   retry_args+=(--retry-failed)
+fi
+if [[ "$RETRY_FALLBACK" == "1" ]]; then
+  retry_args+=(--retry-fallback)
 fi
 source_args=()
 if [[ -n "$SOURCES" ]]; then
