@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import sqlite3
 import time
 from pathlib import Path
@@ -219,6 +220,29 @@ def test_mirror_demotes_manifest_only_legacy_source(tmp_path: Path) -> None:
     assert cached[0]["_source_files_complete"] is False
     assert cached[0]["quality_status"] == "metadata_only"
     assert "skills-sh-source-files-incomplete" in cached[0]["quality_reasons"]
+
+
+def test_mirror_demotes_tampered_source_file_bytes(tmp_path: Path) -> None:
+    mirror_path = tmp_path / "tampered-source.db"
+    catalog = SkillsShCatalog(
+        api_url="https://skills.test/api/v1",
+        oidc_token="test-token",
+        mirror_db_path=str(mirror_path),
+        mirror_enabled=True,
+        transport=httpx.MockTransport(_catalog_transport),
+    )
+    rows = asyncio.run(catalog.retrieve("create spreadsheet report", limit=1))
+    skill_id = rows[0]["skills_sh_id"]
+    with sqlite3.connect(mirror_path) as conn:
+        files_json = conn.execute("SELECT files_json FROM skills_sh_sources").fetchone()[0]
+        files = json.loads(files_json)
+        files[1]["contents"] = "tampered"
+        conn.execute("UPDATE skills_sh_sources SET files_json=?", (json.dumps(files),))
+        conn.commit()
+
+    cached = asyncio.run(catalog.cached_ids([skill_id]))
+    assert cached[0]["_source_files_complete"] is False
+    assert cached[0]["quality_status"] == "metadata_only"
 
 
 def test_metadata_only_mirror_row_does_not_block_authenticated_hydration(tmp_path: Path) -> None:

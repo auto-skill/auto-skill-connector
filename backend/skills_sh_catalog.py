@@ -284,6 +284,19 @@ class _PersistentMirror:
                 == str(item.get("sha256") or "")
                 and len(content.encode("utf-8")) == int(item.get("bytes") or 0)
             )
+        # Verify the retained bytes themselves, not only the copied manifest.
+        # A corrupted/tampered ``files_json`` entry with its old digest would
+        # otherwise pass a path/size comparison and later be treated as a
+        # complete source package.
+        for item in files:
+            if not isinstance(item, dict) or item.get("contents") is None:
+                return False
+            body = str(item.get("contents"))
+            if (
+                hashlib.sha256(body.encode("utf-8")).hexdigest() != str(item.get("sha256") or "")
+                or len(body.encode("utf-8")) != int(item.get("bytes") or 0)
+            ):
+                return False
         expected_by_path = {
             str(item.get("path") or ""): (str(item.get("sha256") or ""), int(item.get("bytes") or 0))
             for item in expected
