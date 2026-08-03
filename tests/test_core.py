@@ -206,7 +206,7 @@ def test_route_task_payload_returns_router_decision(monkeypatch: pytest.MonkeyPa
     assert result["route_summary"]["selected_name"] == "spreadsheet-router"
     assert result["route_summary"]["metrics"]["skill_find_ms"] == 30
     assert "Generate the workbook" in result["skill_content"]
-    assert "apply it immediately" in result["instructions"]
+    assert "correct, complete way to do this task" in result["instructions"]
     assert "task" not in result
     assert "make a spreadsheet" not in json.dumps(result)
 
