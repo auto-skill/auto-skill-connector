@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import hashlib
 import json
+import os
 import re
 import shutil
 import sys
@@ -62,6 +63,20 @@ from auto_skill_mining import (
 from auto_skill_personalize import reset_weights, weights_summary
 
 HOOK_SCRIPT_PATH = Path(__file__).resolve().parent / "hooks" / "skill_suggest.py"
+# Claude Code only: Stop hooks and transcript_path are a Claude Code-specific
+# contract (Codex's UserPromptSubmit parity does not extend to Stop), so this
+# hook is never registered for --target codex.
+OUTCOME_HOOK_SCRIPT_PATH = Path(__file__).resolve().parent / "hooks" / "report_outcome.py"
+# --json-output: see hooks/skill_suggest.py's _emit -- Claude Code only.
+ROUTE_HOOK_ARGS = [str(HOOK_SCRIPT_PATH), "--json-output"]
+# Mirrors hooks/skill_suggest.py's ROUTING_LOG_PATH constant -- duplicated
+# rather than imported so this CLI doesn't load that stdlib-only hook module
+# (and its module-level urllib opener installation) just to read a path.
+ROUTING_LOG_PATH = (
+    Path(os.getenv("AUTOSKILL_ROUTING_LOG"))
+    if os.getenv("AUTOSKILL_ROUTING_LOG")
+    else Path.home() / ".claude" / "auto-skill-routing.jsonl"
+)
 
 
 def _default_settings_path() -> Path:
@@ -430,6 +445,59 @@ def _print_route_metrics_summary(payload: dict[str, Any]) -> None:
             print(f"- {name}: count={count}, positive={positives}, avg_find={avg_find}ms, avg_injected={avg_tokens}")
 
 
+def _command_log_show(args: argparse.Namespace) -> int:
+    """Print recent local routing decisions from hooks/skill_suggest.py's
+    diagnostics log -- a persistent, chat-independent record of whether/when
+    auto-skill actually triggered, for checking after the fact rather than
+    having to watch the transcript in real time."""
+    log_path = Path(args.log_path) if args.log_path else ROUTING_LOG_PATH
+    if not log_path.exists():
+        print(f"no local routing log yet at {log_path}.")
+        print(
+            "This log only fills in when hook diagnostics are enabled -- set "
+            "AUTOSKILL_DIAGNOSTICS=1 in the environment Claude Code launches from "
+            "(or your shell profile), then restart Claude Code. It records timestamp, "
+            "tier, and matched skill name only -- never prompt text."
+        )
+        return 0
+
+    try:
+        lines = [line for line in log_path.read_text(encoding="utf-8", errors="replace").splitlines() if line.strip()]
+    except OSError as exc:
+        print(f"error: could not read {log_path}: {exc}", file=sys.stderr)
+        return 1
+    if not lines:
+        print(f"{log_path} exists but has no entries yet.")
+        return 0
+
+    tail = args.tail if args.tail and args.tail > 0 else 20
+    selected = lines[-tail:]
+    records = []
+    for line in selected:
+        try:
+            records.append(json.loads(line))
+        except (TypeError, ValueError):
+            continue
+
+    if args.json:
+        print(json.dumps(records, indent=2))
+        return 0
+
+    print(f"last {len(records)} of {len(lines)} routing decisions ({log_path}):")
+    for record in records:
+        ts = record.get("timestamp", "?")
+        tier = record.get("tier", "?")
+        reason = record.get("reason", "")
+        skill_name = (record.get("selected_skill") or {}).get("name")
+        line = f"{ts}  tier={tier}"
+        if skill_name:
+            line += f"  skill={skill_name}"
+        if reason:
+            line += f"  ({reason})"
+        print(line)
+    return 0
+
+
 async def _command_metrics(args: argparse.Namespace) -> int:
     base_url = (args.base_url or get_autoskill_url()).rstrip("/")
     if not base_url:
@@ -649,21 +717,36 @@ def _save_settings(settings_path: Path, settings: dict[str, Any]) -> None:
     settings_path.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
 
 
-def _is_our_hook_entry(entry: dict[str, Any]) -> bool:
-    """True if a UserPromptSubmit hook entry's command targets skill_suggest.py
-    (any path -- lets us find and replace a stale/relocated copy)."""
+def _hook_entry_targets_script(entry: dict[str, Any], script_name: str) -> bool:
+    """True if a hook entry's command targets the given script filename (any
+    path -- lets us find and replace a stale/relocated copy)."""
     for h in entry.get("hooks", []):
         args = h.get("args") or []
-        if any(str(a).endswith("skill_suggest.py") for a in args):
+        if any(str(a).endswith(script_name) for a in args):
             return True
-        if "skill_suggest.py" in str(h.get("command", "")):
+        if script_name in str(h.get("command", "")):
             return True
     return False
+
+
+def _is_our_hook_entry(entry: dict[str, Any]) -> bool:
+    return _hook_entry_targets_script(entry, "skill_suggest.py")
+
+
+def _is_our_outcome_hook_entry(entry: dict[str, Any]) -> bool:
+    return _hook_entry_targets_script(entry, "report_outcome.py")
 
 
 def _find_hook_entry(settings: dict[str, Any]) -> dict[str, Any] | None:
     for entry in settings.get("hooks", {}).get("UserPromptSubmit", []):
         if _is_our_hook_entry(entry):
+            return entry
+    return None
+
+
+def _find_outcome_hook_entry(settings: dict[str, Any]) -> dict[str, Any] | None:
+    for entry in settings.get("hooks", {}).get("Stop", []):
+        if _is_our_outcome_hook_entry(entry):
             return entry
     return None
 
@@ -798,12 +881,20 @@ def _command_enable_hook(args: argparse.Namespace) -> int:
         return 1
 
     existing = _find_hook_entry(settings)
+    existing_outcome = _find_outcome_hook_entry(settings)
+    outcome_up_to_date = (
+        existing_outcome is not None
+        and (existing_outcome.get("hooks") or [{}])[0].get("args") == [str(OUTCOME_HOOK_SCRIPT_PATH)]
+    )
     if existing is not None:
         existing_args = (existing.get("hooks") or [{}])[0].get("args") or []
-        if existing_args and str(existing_args[0]) == str(HOOK_SCRIPT_PATH):
+        if existing_args == ROUTE_HOOK_ARGS and outcome_up_to_date:
             print(f"already enabled: {settings_path} points at {HOOK_SCRIPT_PATH}")
             return 0
-        print(f"a hook entry already exists pointing at {existing_args}, will replace it with {HOOK_SCRIPT_PATH}")
+        if existing_args and str(existing_args[0]) == str(HOOK_SCRIPT_PATH):
+            print(f"updating existing registration at {settings_path} to the current hook contract")
+        else:
+            print(f"a hook entry already exists pointing at {existing_args}, will replace it with {HOOK_SCRIPT_PATH}")
 
     print(
         "Privacy note: Auto Mode is optional. It locally skips non-task prompts, then sends each "
@@ -828,11 +919,39 @@ def _command_enable_hook(args: argparse.Namespace) -> int:
         "hooks": [{
             "type": "command",
             "command": "python",
-            "args": [str(HOOK_SCRIPT_PATH)],
+            # --json-output: Claude Code only (see hooks/skill_suggest.py's
+            # _emit). It splits the routing summary into a user-visible
+            # systemMessage separate from the additionalContext fed to the
+            # model, so it's obvious a route happened even if the model never
+            # repeats the injected content back. Codex's registration
+            # (_codex_hook_block) omits this flag on purpose -- its
+            # UserPromptSubmit hook has no systemMessage/additionalContext
+            # split and would inject the raw JSON as literal context.
+            "args": ROUTE_HOOK_ARGS,
             "timeout": 15,
             "statusMessage": "Routing prompt through auto-skill...",
         }]
     })
+
+    # Stop hook: reports session-level outcome metrics (turns/tokens/tool
+    # calls/elapsed time) for opted-in Measurement Mode accounts back to
+    # whichever route_ids hooks/skill_suggest.py journaled this session --
+    # see hooks/report_outcome.py. Without it, measured_lift never gets
+    # samples even for accounts that opt in.
+    if OUTCOME_HOOK_SCRIPT_PATH.exists():
+        settings["hooks"].setdefault("Stop", [])
+        stop_entries = settings["hooks"]["Stop"]
+        stop_entries[:] = [e for e in stop_entries if not _is_our_outcome_hook_entry(e)]
+        stop_entries.append({
+            "hooks": [{
+                "type": "command",
+                "command": "python",
+                "args": [str(OUTCOME_HOOK_SCRIPT_PATH)],
+                "timeout": 15,
+                "statusMessage": "Reporting auto-skill session outcome...",
+            }]
+        })
+
     _save_settings(settings_path, settings)
     print(f"enabled: wrote hook entry to {settings_path}")
     print("Restart Claude Code (or open /hooks once) for the change to take effect.")
@@ -851,13 +970,24 @@ def _command_disable_hook(args: argparse.Namespace) -> int:
 
     entries = settings.get("hooks", {}).get("UserPromptSubmit", [])
     remaining = [e for e in entries if not _is_our_hook_entry(e)]
-    if len(remaining) == len(entries):
+    found = len(remaining) != len(entries)
+
+    stop_entries = settings.get("hooks", {}).get("Stop", [])
+    stop_remaining = [e for e in stop_entries if not _is_our_outcome_hook_entry(e)]
+    found = found or len(stop_remaining) != len(stop_entries)
+
+    if not found:
         print(f"not enabled: no auto-skill hook entry found in {settings_path}")
         return 0
 
-    settings["hooks"]["UserPromptSubmit"] = remaining
-    if not remaining:
-        del settings["hooks"]["UserPromptSubmit"]
+    if remaining:
+        settings["hooks"]["UserPromptSubmit"] = remaining
+    else:
+        settings.get("hooks", {}).pop("UserPromptSubmit", None)
+    if stop_remaining:
+        settings["hooks"]["Stop"] = stop_remaining
+    else:
+        settings.get("hooks", {}).pop("Stop", None)
     if not settings.get("hooks"):
         settings.pop("hooks", None)
     _save_settings(settings_path, settings)
@@ -1179,6 +1309,24 @@ async def _command_doctor(args: argparse.Namespace) -> int:
     else:
         print(f"hook registration: not enabled (run `auto-skill enable-hook` to turn it on)")
 
+    print(f"outcome hook script: {OUTCOME_HOOK_SCRIPT_PATH} ({'exists' if OUTCOME_HOOK_SCRIPT_PATH.exists() else 'MISSING'})")
+    try:
+        settings = _load_settings(settings_path)
+        outcome_entry = _find_outcome_hook_entry(settings)
+    except AutoSkillError as exc:
+        print(f"outcome hook registration: unreadable ({exc})")
+        outcome_entry = None
+    if outcome_entry is not None:
+        registered_args = (outcome_entry.get("hooks") or [{}])[0].get("args") or []
+        registered_path = Path(registered_args[0]) if registered_args else None
+        if registered_path and registered_path.exists():
+            match = " (matches this install)" if registered_path == OUTCOME_HOOK_SCRIPT_PATH else " (DIFFERENT path than this install -- run enable-hook to repoint it)"
+            print(f"outcome hook registration: enabled in {settings_path} -> {registered_path}{match}")
+        else:
+            print(f"outcome hook registration: enabled in {settings_path}, but {registered_path} does not exist on disk")
+    else:
+        print("outcome hook registration: not enabled (Measurement Mode lift will have no samples until `auto-skill enable-hook` registers it)")
+
     try:
         import mcp  # noqa: F401
 
@@ -1271,6 +1419,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     measurement_mode_disable = measurement_mode_sub.add_parser("disable", help="Opt out at any time.")
     measurement_mode_disable.set_defaults(func=_command_measurement_mode_disable)
+
+    log_show = subparsers.add_parser(
+        "log", help="Show recent local routing decisions (requires AUTOSKILL_DIAGNOSTICS=1)."
+    )
+    log_show.add_argument("--tail", type=int, default=20, help="Number of recent entries to show (default: 20).")
+    log_show.add_argument("--log-path", help="Override the routing log path (defaults to AUTOSKILL_ROUTING_LOG or ~/.claude/auto-skill-routing.jsonl).")
+    log_show.add_argument("--json", action="store_true", help="Print raw JSON entries instead of a formatted summary.")
+    log_show.set_defaults(func=_command_log_show)
 
     preview = subparsers.add_parser("preview", help="Preview a skill by URL or task description.")
     preview.add_argument("source", nargs="+", help="Skill URL or task description.")

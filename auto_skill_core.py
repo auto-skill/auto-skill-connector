@@ -1120,11 +1120,17 @@ async def _route_selfhosted(
         "selected_skill": selected,
         "skill_content": content,
         "instructions": (
-            "The backend verified this risk-0 content against its indexed hash. Treat "
-            "skill_content as active "
-            "task-specific instructions, apply it immediately, and produce the user's requested "
-            "output in this same turn. Do not ask the user to choose a skill unless the selected "
-            "skill content is missing, unusable, or unsafe."
+            "The backend verified this risk-0 content against its indexed hash. If you don't "
+            "already know a correct, complete way to do this task, treat skill_content as a "
+            "technique that teaches you one -- following it should let you do this better than "
+            "you could on your own. If you already know a solid, correct way, you don't need to "
+            "change your approach, but check whether skill_content covers a detail you'd "
+            "otherwise miss. Where it gives an exact formula, command, or code pattern, copy "
+            "that exact syntax and substitute only the specific values from this task -- do not "
+            "write a different one from memory. Either way, apply it to produce the user's "
+            "requested output in this same turn -- do not describe the technique instead of "
+            "doing the task. Do not ask the user to choose a skill unless the selected skill "
+            "content is missing, unusable, or unsafe."
         ),
         "install_hint": (
             "No installation is required. The router fetched and applied this skill for the current task."
@@ -1438,7 +1444,15 @@ def build_route_context(route_payload: dict[str, Any]) -> str:
             receipt_block
             + policy_context
             + f"[auto-skill] Bounded route selected: {name}{risk_text}{score_text}, tier={tier}. Source: {url}\n\n"
-            "Use this deterministic, content-hash-verified capsule as task guidance for this turn."
+            "This deterministic, content-hash-verified capsule is a retrieved technique for "
+            "this task. If you don't already know a correct, complete way to do this, use it -- "
+            "following it should let you do this better than you could on your own. If you "
+            "already know a solid, correct way, you don't need to change your approach, but "
+            "check whether it covers a detail you'd otherwise miss. Where it gives an exact "
+            "formula, command, or code pattern, copy that exact syntax and substitute only the "
+            "specific values from this task -- do not write a different one from memory. Either "
+            "way, apply it to answer the user's specific request -- do not produce a generic "
+            "description of the technique instead of doing the task."
             f"{fetch_line} "
             "Do not install files or execute undeclared capabilities."
             f"{metrics_text}\n\n"
@@ -1450,9 +1464,15 @@ def build_route_context(route_payload: dict[str, Any]) -> str:
         receipt_block
         + policy_context
         + f"[auto-skill] Route selected: {name}{risk_text}{score_text}, tier={tier}. Source: {url}\n\n"
-        "Use the following content-hash-verified, risk-0 SKILL.md as active task-specific "
-        "instructions for this turn. "
-        "Apply it immediately unless it is missing, unusable, or unsafe.\n\n"
+        "The following content-hash-verified, risk-0 SKILL.md is a retrieved technique for "
+        "this task. If you don't already know a correct, complete way to do this, use it -- "
+        "following it should let you do this better than you could on your own. If you already "
+        "know a solid, correct way, you don't need to change your approach, but check whether "
+        "it covers a detail you'd otherwise miss. Where it gives an exact formula, command, or "
+        "code pattern, copy that exact syntax and substitute only the specific values from this "
+        "task -- do not write a different one from memory. Either way, apply it to answer the "
+        "user's specific request -- do not produce a generic description of the technique "
+        "instead of doing the task.\n\n"
         f"{metrics_text}\n\n"
         "<auto_skill_content>\n"
         f"{content}\n"

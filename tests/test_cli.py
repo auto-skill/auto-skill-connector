@@ -101,6 +101,177 @@ def test_disable_hook_codex_reports_not_enabled(
     assert "not enabled" in out
 
 
+def test_enable_hook_claude_registers_stop_outcome_hook_alongside_route_hook(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    settings_path = tmp_path / "settings.json"
+
+    result = cli._command_enable_hook(_hook_ns(settings_path, target="claude"))
+    out = capsys.readouterr().out
+
+    assert result == 0
+    assert "enabled: wrote hook entry" in out
+    settings = json.loads(settings_path.read_text(encoding="utf-8"))
+    route_args = settings["hooks"]["UserPromptSubmit"][0]["hooks"][0]["args"]
+    assert route_args == [str(cli.HOOK_SCRIPT_PATH), "--json-output"]
+    outcome_args = settings["hooks"]["Stop"][0]["hooks"][0]["args"]
+    assert outcome_args == [str(cli.OUTCOME_HOOK_SCRIPT_PATH)]
+
+
+def test_enable_hook_claude_is_idempotent_for_stop_hook(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    settings_path = tmp_path / "settings.json"
+    cli._command_enable_hook(_hook_ns(settings_path, target="claude"))
+    capsys.readouterr()
+
+    cli._command_enable_hook(_hook_ns(settings_path, target="claude"))
+
+    settings = json.loads(settings_path.read_text(encoding="utf-8"))
+    assert len(settings["hooks"]["Stop"]) == 1
+
+
+def test_disable_hook_claude_removes_both_route_and_outcome_hooks(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    settings_path = tmp_path / "settings.json"
+    cli._command_enable_hook(_hook_ns(settings_path, target="claude"))
+    capsys.readouterr()
+
+    result = cli._command_disable_hook(_hook_ns(settings_path, target="claude"))
+    out = capsys.readouterr().out
+
+    assert result == 0
+    assert "disabled: removed hook entry" in out
+    settings = json.loads(settings_path.read_text(encoding="utf-8"))
+    assert "hooks" not in settings
+
+
+def test_enable_hook_claude_upgrades_a_pre_json_output_registration(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A settings.json written before --json-output/the Stop hook existed
+    must not be treated as already up to date -- the old check only compared
+    args[0], which matched forever and silently skipped the Stop hook and
+    --json-output additions on every real machine that had already run
+    enable-hook once."""
+    settings_path = tmp_path / "settings.json"
+    settings_path.write_text(
+        json.dumps(
+            {
+                "hooks": {
+                    "UserPromptSubmit": [
+                        {
+                            "hooks": [
+                                {
+                                    "type": "command",
+                                    "command": "python",
+                                    "args": [str(cli.HOOK_SCRIPT_PATH)],
+                                    "timeout": 15,
+                                    "statusMessage": "Routing prompt through auto-skill...",
+                                }
+                            ]
+                        }
+                    ]
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = cli._command_enable_hook(_hook_ns(settings_path, target="claude"))
+    out = capsys.readouterr().out
+
+    assert result == 0
+    assert "already enabled" not in out
+    settings = json.loads(settings_path.read_text(encoding="utf-8"))
+    assert settings["hooks"]["UserPromptSubmit"][0]["hooks"][0]["args"] == [str(cli.HOOK_SCRIPT_PATH), "--json-output"]
+    assert settings["hooks"]["Stop"][0]["hooks"][0]["args"] == [str(cli.OUTCOME_HOOK_SCRIPT_PATH)]
+
+
+def test_disable_hook_claude_preserves_unrelated_stop_hooks(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    settings_path = tmp_path / "settings.json"
+    settings_path.write_text(
+        json.dumps({"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "python", "args": ["/other/hook.py"]}]}]}}),
+        encoding="utf-8",
+    )
+    cli._command_enable_hook(_hook_ns(settings_path, target="claude"))
+    capsys.readouterr()
+
+    cli._command_disable_hook(_hook_ns(settings_path, target="claude"))
+
+    settings = json.loads(settings_path.read_text(encoding="utf-8"))
+    assert len(settings["hooks"]["Stop"]) == 1
+    assert settings["hooks"]["Stop"][0]["hooks"][0]["args"] == ["/other/hook.py"]
+
+
+def _log_ns(log_path: Path | None, *, tail: int = 20, as_json: bool = False) -> argparse.Namespace:
+    return argparse.Namespace(log_path=str(log_path) if log_path else None, tail=tail, json=as_json)
+
+
+def test_log_show_reports_when_diagnostics_never_enabled(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    missing = tmp_path / "auto-skill-routing.jsonl"
+    result = cli._command_log_show(_log_ns(missing))
+    out = capsys.readouterr().out
+
+    assert result == 0
+    assert "no local routing log yet" in out
+    assert "AUTOSKILL_DIAGNOSTICS=1" in out
+
+
+def test_log_show_prints_recent_entries_most_recent_last(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    log_path = tmp_path / "routing.jsonl"
+    log_path.write_text(
+        json.dumps({"timestamp": "2026-07-31T10:00:00Z", "tier": "full", "selected_skill": {"name": "spreadsheet-router"}})
+        + "\n"
+        + json.dumps({"timestamp": "2026-07-31T10:05:00Z", "tier": "hint", "reason": "multiple candidates plausible"})
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = cli._command_log_show(_log_ns(log_path))
+    out = capsys.readouterr().out
+
+    assert result == 0
+    assert "last 2 of 2 routing decisions" in out
+    assert "tier=full  skill=spreadsheet-router" in out
+    assert "tier=hint  (multiple candidates plausible)" in out
+
+
+def test_log_show_respects_tail_limit(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    log_path = tmp_path / "routing.jsonl"
+    log_path.write_text(
+        "\n".join(json.dumps({"timestamp": f"t{i}", "tier": "full"}) for i in range(30)) + "\n",
+        encoding="utf-8",
+    )
+
+    result = cli._command_log_show(_log_ns(log_path, tail=5))
+    out = capsys.readouterr().out
+
+    assert result == 0
+    assert "last 5 of 30 routing decisions" in out
+    assert "t29" in out
+    assert "t25" in out
+    assert "t24" not in out
+
+
+def test_log_show_json_mode_prints_raw_entries(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    log_path = tmp_path / "routing.jsonl"
+    log_path.write_text(json.dumps({"timestamp": "t0", "tier": "full"}) + "\n", encoding="utf-8")
+
+    result = cli._command_log_show(_log_ns(log_path, as_json=True))
+    out = capsys.readouterr().out
+
+    assert result == 0
+    assert json.loads(out) == [{"timestamp": "t0", "tier": "full"}]
+
+
 def test_route_outputs_selected_skill(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

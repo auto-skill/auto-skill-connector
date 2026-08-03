@@ -570,6 +570,168 @@ def test_hook_injects_bounded_capsule_without_fetching_full_content(
     assert "<auto_skill_content>" not in out
 
 
+def test_hook_journals_route_id_when_measurement_arm_assigned(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    skill = {
+        "name": "spreadsheet-reporter",
+        "description": "Create spreadsheet reports.",
+        "url": "https://example.com/spreadsheet",
+        "risk_score": 0,
+    }
+    monkeypatch.setattr(hook, "SESSIONS_DIR", tmp_path)
+    monkeypatch.setattr(
+        hook,
+        "_selfhosted_route",
+        lambda prompt, session_id="": {
+            "tier": "hint",
+            "route_id": "route-123",
+            "skill": skill,
+            "candidates": [],
+            "context_guard": {"delivery": "hint", "reason": "measurement_holdout"},
+            "measurement": {"arm": "holdout", "stratum": "coding:auto-skill-hook:short"},
+            "score_debug": {"metrics": {}},
+        },
+    )
+    monkeypatch.setattr(
+        sys, "stdin", io.StringIO(json.dumps({"prompt": "make a spreadsheet report", "session_id": "sess-1"}))
+    )
+
+    hook.main()
+
+    journal = (tmp_path / "sess-1.jsonl").read_text(encoding="utf-8").strip()
+    record = json.loads(journal)
+    assert record["route_id"] == "route-123"
+    assert "ts" in record
+
+
+def test_hook_does_not_journal_when_no_measurement_arm_assigned(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    skill = {
+        "name": "spreadsheet-reporter",
+        "description": "Create spreadsheet reports.",
+        "url": "https://example.com/spreadsheet",
+        "risk_score": 0,
+    }
+    monkeypatch.setattr(hook, "SESSIONS_DIR", tmp_path)
+    monkeypatch.setattr(
+        hook,
+        "_selfhosted_route",
+        lambda prompt, session_id="": {
+            "tier": "hint",
+            "route_id": "route-123",
+            "skill": skill,
+            "candidates": [],
+            "context_guard": {"delivery": "hint", "reason": "confidence_or_safety_gate"},
+            "score_debug": {"metrics": {}},
+        },
+    )
+    monkeypatch.setattr(
+        sys, "stdin", io.StringIO(json.dumps({"prompt": "make a spreadsheet report", "session_id": "sess-1"}))
+    )
+
+    hook.main()
+
+    assert not (tmp_path / "sess-1.jsonl").exists()
+
+
+def test_hook_json_output_full_route(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    content = """---
+name: spreadsheet-router
+description: Create spreadsheet reports with formulas, charts, and validation.
+---
+
+## Workflow
+
+- Use this workflow when the user requests a spreadsheet report.
+- Inspect inputs, create formulas and charts, verify every result, and explain assumptions.
+- Return the validated workbook and a concise summary of the checks performed.
+"""
+    skill = {
+        "name": "spreadsheet-router",
+        "url": "https://example.com/spreadsheet",
+        "risk_score": 0,
+        "verification": {"content_hash_verified": True, "static_instruction_only": True},
+    }
+    monkeypatch.setattr(
+        hook, "_selfhosted_route", lambda prompt, session_id="": {"tier": "full", "skill": skill, "content": content}
+    )
+    monkeypatch.setattr(sys, "argv", ["skill_suggest.py", "--json-output"])
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps({"prompt": "make a spreadsheet report"})))
+
+    hook.main()
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["systemMessage"] == '\U0001f9e9 auto-skill: applied "spreadsheet-router"'
+    assert payload["hookSpecificOutput"]["hookEventName"] == "UserPromptSubmit"
+    assert "<auto_skill_content>" in payload["hookSpecificOutput"]["additionalContext"]
+    assert content in payload["hookSpecificOutput"]["additionalContext"]
+
+
+def test_hook_json_output_hint_route(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    skill = {
+        "name": "spreadsheet-router",
+        "description": "Create spreadsheet reports.",
+        "url": "https://example.com/spreadsheet",
+        "risk_score": 0,
+    }
+    monkeypatch.setattr(
+        hook,
+        "_selfhosted_route",
+        lambda prompt, session_id="": {
+            "tier": "hint",
+            "skill": skill,
+            "candidates": [],
+            "score_debug": {"metrics": {}},
+        },
+    )
+    monkeypatch.setattr(sys, "argv", ["skill_suggest.py", "--json-output"])
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps({"prompt": "make a spreadsheet report"})))
+
+    hook.main()
+
+    payload = json.loads(capsys.readouterr().out)
+    assert "spreadsheet-router" in payload["systemMessage"]
+    assert "not applied" in payload["systemMessage"]
+    assert "Candidate options" not in payload["systemMessage"]  # detail stays in additionalContext
+    assert "[auto-skill] Possible match" in payload["hookSpecificOutput"]["additionalContext"]
+
+
+def test_hook_without_json_output_flag_still_prints_plain_text(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    skill = {
+        "name": "spreadsheet-router",
+        "description": "Create spreadsheet reports.",
+        "url": "https://example.com/spreadsheet",
+        "risk_score": 0,
+    }
+    monkeypatch.setattr(
+        hook,
+        "_selfhosted_route",
+        lambda prompt, session_id="": {
+            "tier": "hint",
+            "skill": skill,
+            "candidates": [],
+            "score_debug": {"metrics": {}},
+        },
+    )
+    monkeypatch.setattr(sys, "argv", ["skill_suggest.py"])
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps({"prompt": "make a spreadsheet report"})))
+
+    hook.main()
+
+    out = capsys.readouterr().out
+    assert "[auto-skill] Possible match" in out
+    with pytest.raises(json.JSONDecodeError):
+        json.loads(out)
+
+
 def test_route_receipt_parity_for_full_plan() -> None:
     """Hook and core must emit the same homepage-style ordered-plan receipt/card."""
     from auto_skill_receipt import format_route_card_markdown, format_route_receipt

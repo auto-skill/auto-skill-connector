@@ -46,6 +46,11 @@ _opener.addheaders = [("User-Agent", f"{CLIENT_NAME}/{CLIENT_VERSION}")]
 urllib.request.install_opener(_opener)
 ROUTING_LOG_PATH = Path(os.getenv("AUTOSKILL_ROUTING_LOG", "")) if os.getenv("AUTOSKILL_ROUTING_LOG") else Path.home() / ".claude" / "auto-skill-routing.jsonl"
 MAX_LOG_LINES = 2000
+SESSIONS_DIR = (
+    Path(os.getenv("AUTOSKILL_SESSIONS_DIR"))
+    if os.getenv("AUTOSKILL_SESSIONS_DIR")
+    else Path.home() / ".autoskill" / "sessions"
+)
 TIMEOUT_SECONDS = float(os.getenv("AUTOSKILL_HOOK_TIMEOUT_SECONDS", "1.0"))
 MAX_CONTENT_CHARS = int(os.getenv("AUTOSKILL_HOOK_MAX_CHARS", "24000"))
 _BLOB_RE = re.compile(r"github\.com/([^/]+)/([^/]+)/blob/([^/]+)/(.*)")
@@ -161,7 +166,7 @@ def _safe_dedupe(skills: list[dict]) -> list[dict]:
     return result
 
 
-def _selfhosted_route(prompt: str) -> dict | None:
+def _selfhosted_route(prompt: str, session_id: str = "") -> dict | None:
     """Call the sole backend routing contract. Fail open on any error."""
     if not AUTOSKILL_URL:
         return None
@@ -177,6 +182,8 @@ def _selfhosted_route(prompt: str) -> dict | None:
             "max_inline_chars": 12000,
             "max_capsule_chars": 2400,
         }
+        if session_id:
+            body_data["session_id"] = session_id
         if not headers:
             anonymous_id = _anonymous_installation_id()
             if anonymous_id:
@@ -376,6 +383,58 @@ def _report_outcome(route: dict | None, outcome: str) -> None:
         pass
 
 
+def _track_measurement_route(session_id: str, route_id: str) -> None:
+    """Journal a route_id that got a Measurement Mode arm assignment (routed
+    or holdout) against this Claude Code session, so the Stop hook
+    (hooks/report_outcome.py) can later attribute session-level outcome
+    metrics (turns/tokens/tool calls/elapsed time) back to it. Only routes
+    with an assigned arm are worth journaling -- everything else is outside
+    the opt-in comparison and would just be noise here. Best-effort, never
+    raises: a missed journal entry only means one fewer sample for the
+    account's own measured_lift, never a routing failure."""
+    if not session_id or not route_id:
+        return
+    try:
+        SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+        path = SESSIONS_DIR / f"{session_id}.jsonl"
+        with path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps({"route_id": route_id, "ts": time.time()}) + "\n")
+        try:
+            os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+        except OSError:
+            pass
+    except OSError:
+        pass
+
+
+JSON_OUTPUT_FLAG = "--json-output"
+
+
+def _emit(text: str, system_message: str = "") -> None:
+    """Print this turn's injectable context.
+
+    Claude Code registers this hook with --json-output (see
+    auto_skill_cli._command_enable_hook) so routing is visible even when the
+    model never repeats the injected context back to the user: additional
+    context still reaches the model via hookSpecificOutput.additionalContext,
+    but system_message surfaces as Claude Code's own user-facing systemMessage
+    notice, shown directly in the transcript rather than riding along inside
+    a block of injected instructions the model may or may not mention.
+
+    Codex has no such split -- its UserPromptSubmit hook treats raw stdout as
+    injected context verbatim (see _codex_hook_block) -- so without the flag
+    this keeps the original plain-text contract unchanged."""
+    if JSON_OUTPUT_FLAG in sys.argv:
+        payload: dict[str, object] = {
+            "hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": text}
+        }
+        if system_message:
+            payload["systemMessage"] = system_message
+        print(json.dumps(payload))
+    else:
+        print(text)
+
+
 def _diagnostics_enabled() -> bool:
     return os.getenv("AUTOSKILL_DIAGNOSTICS", "").strip().lower() in _TRUTHY_VALUES
 
@@ -480,6 +539,7 @@ def _policy_context_blocks(route: dict, skill: dict) -> str:
 def main() -> None:
     payload = json.load(sys.stdin)
     prompt = (payload.get("prompt") or "").strip()
+    session_id = str(payload.get("session_id") or "")
     _scrub_legacy_diagnostics()
     should_route, gate_reason = _should_route(prompt)
     if not should_route:
@@ -491,10 +551,14 @@ def main() -> None:
     # caller was worse than admitting no route is available this turn. Fails
     # open by design -- an unreachable self-hosted server just means no
     # suggestion, not a stale one.
-    route = _selfhosted_route(prompt)
+    route = _selfhosted_route(prompt, session_id) if session_id else _selfhosted_route(prompt)
     if route is None:
         _log_routing_decision(prompt, "none", reason="route unavailable")
         return
+
+    measurement = route.get("measurement") if isinstance(route.get("measurement"), dict) else None
+    if measurement:
+        _track_measurement_route(session_id, str(route.get("route_id") or ""))
 
     tier = str(route.get("tier") or "none").lower()
     skill = route.get("skill") or {}
@@ -536,7 +600,7 @@ def main() -> None:
             candidate_description = (candidate.get("description") or "").replace("\n", " ")[:120]
             option_lines.append(f"{index}. {candidate_name}: {candidate_description} ({candidate_url})")
         options_text = "\nCandidate options:\n" + "\n".join(option_lines) if option_lines else ""
-        print(
+        _emit(
             f"{receipt_block}"
             f"[auto-skill] Possible match (not injected -- {reason}): "
             f"\"{name}\"{risk_text} — {desc} ({url}). "
@@ -544,7 +608,8 @@ def main() -> None:
             "Apply content only when route_tier is full."
             f"{metrics_text}"
             f"{options_text}"
-            f"{_survey_nudge_text(route)}"
+            f"{_survey_nudge_text(route)}",
+            system_message=f"\U0001f50e auto-skill: possible match \"{name}\" -- not applied ({reason})",
         )
 
     def _print_measurement_holdout() -> None:
@@ -553,14 +618,15 @@ def main() -> None:
         Never silently withhold without saying so (see the opt-in plan's
         "clearly state a small share of eligible tasks may not receive
         automated guidance for measurement" requirement)."""
-        print(
+        _emit(
             f"{receipt_block}"
             f"[auto-skill] Measurement Mode: this task was randomly held out from automated "
             f"guidance delivery for your opted-in comparison (\"{name}\" would otherwise have been "
             "used). Continue the task normally; this does not reflect a routing failure. "
             "Run `auto-skill measurement-mode disable` to opt out at any time."
             f"{metrics_text}"
-            f"{_survey_nudge_text(route)}"
+            f"{_survey_nudge_text(route)}",
+            system_message="\U0001f9ea auto-skill: Measurement Mode holdout -- no guidance applied this turn",
         )
 
     verification = skill.get("verification") if isinstance(skill.get("verification"), dict) else {}
@@ -591,7 +657,7 @@ def main() -> None:
             fetch_line = (
                 f" This is NOT the complete SKILL.md; fetch the full verified file via {target}."
             )
-        print(
+        _emit(
             f"{receipt_block}"
             f"{policy_context}"
             f"[auto-skill] Route selected: {name}{risk_text}. Source: {url}\n\n"
@@ -601,14 +667,14 @@ def main() -> None:
             f"{capsule}\n"
             "</auto_skill_capsule>"
             f"{metrics_text}"
-            f"{_survey_nudge_text(route)}"
+            f"{_survey_nudge_text(route)}",
+            system_message=f"\U0001f9e9 auto-skill: applied \"{name}\" ({mode})",
         )
         _log_routing_decision(prompt, "full", skill, reason="selected")
         _report_outcome(route, "injected")
         return
 
     if tier == "hint":
-        measurement = route.get("measurement") if isinstance(route.get("measurement"), dict) else None
         if measurement and measurement.get("arm") == "holdout":
             _print_measurement_holdout()
             _log_routing_decision(prompt, "hint", skill, reason="selected")
@@ -654,7 +720,7 @@ def main() -> None:
             else " Use the route content_url / content_hash to load the complete file."
         )
         # Never label a truncated body as full active SKILL.md instructions.
-        print(
+        _emit(
             f"{receipt_block}"
             f"{policy_context}"
             f"[auto-skill] Route selected: {name}{risk_text}. Source: {url}\n\n"
@@ -664,22 +730,32 @@ def main() -> None:
             f"{content[:MAX_CONTENT_CHARS].rstrip()}\n"
             "</auto_skill_content_preview>"
             f"{metrics_text}"
-            f"{_survey_nudge_text(route)}"
+            f"{_survey_nudge_text(route)}",
+            system_message=f"\U0001f9e9 auto-skill: applied \"{name}\" (truncated preview)",
         )
         _log_routing_decision(prompt, "full", skill, reason="budget-truncated-honest")
         _report_outcome(route, "injected")
         return
 
-    print(
+    _emit(
         f"{receipt_block}"
         f"{policy_context}"
         f"[auto-skill] Route selected: {name}{risk_text}. Source: {url}\n\n"
-        "Use the following SKILL.md content as active task-specific instructions for this turn. "
-        "Apply it immediately unless it is missing, unusable, or unsafe.\n\n"
+        "The following SKILL.md is a retrieved technique for this task. If you don't already "
+        "know a correct, complete way to do this, use it -- it exists to teach you a method "
+        "for exactly this kind of task, and following it should let you do this better than "
+        "you could on your own. If you already know a solid, correct way to do this, you don't "
+        "need to change your approach, but check whether this technique covers a detail you'd "
+        "otherwise miss. Where it gives an exact formula, command, or code pattern, copy that "
+        "exact syntax and substitute only the specific values from this task -- do not write a "
+        "different one from memory. Either way, apply it to answer the user's specific request "
+        "-- do not produce a generic description of the technique itself instead of doing the "
+        "task.\n\n"
         "<auto_skill_content>\n"
         f"{content}\n"
         "</auto_skill_content>"
-        f"{_survey_nudge_text(route)}"
+        f"{_survey_nudge_text(route)}",
+        system_message=f"\U0001f9e9 auto-skill: applied \"{name}\"",
     )
     _log_routing_decision(prompt, "full", skill, reason="selected")
     _report_outcome(route, "injected")

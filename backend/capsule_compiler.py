@@ -8,6 +8,7 @@ its source/package provenance.
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import asdict, dataclass
 import hashlib
 import re
@@ -48,6 +49,28 @@ _EXTERNAL_RE = re.compile(
 _DESTRUCTIVE_RE = re.compile(
     r"\b(?:delete|remove|drop|truncate|overwrite|reset --hard|force push|revoke|purge|destroy|"
     r"format (?:the )?(?:disk|drive)|rm\s+-rf)\b",
+    re.I,
+)
+# A skill that's actually a bespoke automation for one specific repo/project
+# (not a portable technique) tends to repeat the same made-up top-level path
+# segment across several file references -- e.g. "Calypso/tools/x.py",
+# "Calypso/analysis/y.json", "Calypso/output/z.png". Three or more distinct
+# file references sharing the same leading path segment is a strong signal
+# the skill won't generalize to a stranger's machine, whatever its retrieval
+# similarity score says.
+_PROJECT_PATH_RE = re.compile(
+    r"\b([A-Z][A-Za-z0-9_]{2,})/(?:[A-Za-z0-9_.\-]+/){0,4}[A-Za-z0-9_.\-]+"
+    r"\.(?:py|json|ya?ml|sh|ps1|pdf|csv|xlsx?|txt|md)\b"
+)
+_NON_PORTABLE_PATH_THRESHOLD = 3
+# Skills authored specifically for Claude's own code-execution sandbox
+# (fixed mount points like /mnt/skills/user/..., /mnt/user-data/uploads/...,
+# /home/claude/...) assume a filesystem layout that doesn't exist for a
+# stranger running a different agent, a local script, or a different
+# model's tool environment. One reference is enough -- these paths are
+# specific and deliberate, never generic placeholders.
+_SANDBOX_PATH_RE = re.compile(
+    r"(?:/mnt/(?:skills|user-data)/|/home/claude/)",
     re.I,
 )
 _ACTION_RE = re.compile(
@@ -293,6 +316,7 @@ class StrippedContent:
     removed_meta_lines: int
     destructive_actions: bool
     external_actions: bool
+    non_portable: bool = False
     strip_version: str = STRIP_VERSION
 
     def as_dict(self) -> dict[str, Any]:
@@ -324,10 +348,16 @@ def strip_unsafe_content(content: str) -> StrippedContent:
     text = "\n".join(out_lines)
     if content and content.endswith("\n"):
         text += "\n"
+    path_roots = Counter(m.group(1) for m in _PROJECT_PATH_RE.finditer(text))
+    non_portable = (
+        (bool(path_roots) and max(path_roots.values()) >= _NON_PORTABLE_PATH_THRESHOLD)
+        or bool(_SANDBOX_PATH_RE.search(text))
+    )
     return StrippedContent(
         text=text,
         removed_credential_lines=removed_credentials,
         removed_meta_lines=removed_meta,
         destructive_actions=destructive,
         external_actions=external,
+        non_portable=non_portable,
     )

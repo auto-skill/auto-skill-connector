@@ -92,6 +92,13 @@ def build_context_guard(
     if not stripped.text:
         result["reason"] = "capsule_unavailable"
         return result
+    if stripped.non_portable:
+        # Repeatedly references the same made-up project path (e.g.
+        # "Calypso/tools/x.py") -- a bespoke automation for one specific
+        # repo, not a technique that generalizes to a stranger's machine.
+        # Retrieval similarity doesn't catch this; only content does.
+        result["reason"] = "non_portable_project_specific"
+        return result
     result.update(
         {
             "delivery": "capsule",

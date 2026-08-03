@@ -22,6 +22,7 @@ configured=false until then):
 """
 import os
 import threading
+import time
 
 from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel
@@ -85,7 +86,16 @@ def _customer_id_for(user: dict) -> str:
     if existing:
         return existing
     client = _stripe()
-    customer = _call_stripe(client.Customer.create, email=user["email"], metadata={"user_id": user["id"]})
+    # Idempotency key is fixed per user (not time-bucketed like checkout's):
+    # a user should only ever get one Stripe customer, so a retried create
+    # -- however long after the first attempt -- must return that same
+    # customer rather than mint a second one.
+    customer = _call_stripe(
+        client.Customer.create,
+        email=user["email"],
+        metadata={"user_id": user["id"]},
+        idempotency_key=f"cust-create-{user['id']}",
+    )
     store.set_stripe_customer_id(user["id"], customer["id"])
     return customer["id"]
 
@@ -138,6 +148,11 @@ async def billing_checkout(body: CheckoutRequest, authorization: str | None = He
     existing = _call_stripe(client.Subscription.list, customer=customer_id, status="all", limit=100).to_dict()
     if any((sub.get("status") in {"active", "trialing", "past_due"}) for sub in existing.get("data", [])):
         raise HTTPException(status_code=409, detail="an active subscription already exists; use the billing portal")
+    # Bucketed to a 10s window rather than fixed per user+plan: a network-
+    # level retry of this same click should land on the same Stripe Checkout
+    # Session, but a deliberate later retry (e.g. after cancelling) must get
+    # a fresh one instead of Stripe replaying a stale/expired session.
+    idempotency_key = f"checkout-{user['id']}-{body.plan}-{int(time.time() // 10)}"
     session = _call_stripe(
         client.checkout.Session.create,
         mode="subscription",
@@ -152,6 +167,7 @@ async def billing_checkout(body: CheckoutRequest, authorization: str | None = He
         success_url=f"{DASHBOARD_URL}#billing=success",
         cancel_url=f"{DASHBOARD_URL}#billing=cancelled",
         allow_promotion_codes=True,
+        idempotency_key=idempotency_key,
     )
     return {"url": session["url"]}
 
