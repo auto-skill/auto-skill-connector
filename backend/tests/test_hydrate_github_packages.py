@@ -66,6 +66,19 @@ def test_select_package_files_rejects_ambiguous_entrypoint() -> None:
         )
 
 
+def test_package_completeness_gate_skips_only_complete_packages() -> None:
+    complete = {
+        "package_hash": "a" * 64,
+        "package_completeness": "complete",
+        "dependency_closure_status": "complete",
+        "entrypoint_truncated": 0,
+    }
+    incomplete = {**complete, "dependency_closure_status": "partial"}
+
+    assert hydrator._package_is_complete(complete)
+    assert not hydrator._package_is_complete(incomplete)
+
+
 def test_git_run_terminates_process_tree_on_timeout(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     class FakeProcess:
         pid = 1234

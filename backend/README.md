@@ -264,8 +264,10 @@ python backend/run_local_ingestion.py \
 The phases run in package, capability-summary, then embedding order. The
 deterministic fallback uses existing descriptions/tags only when local Ollama
 is unavailable; it improves metadata search but does not bypass the complete
-package gate required for full instruction delivery. The PowerShell local
-hydrator exposes the same phases with `-BackfillPackages`,
+package gate required for full instruction delivery. For resumable package
+repair, pass `--missing-package-only` to the hydrator so complete package rows
+are skipped before network work. The PowerShell local hydrator exposes the same
+phases with `-MissingPackageOnly`, `-BackfillPackages`,
 `-BackfillCapabilitySummary`, `-BackfillEmbeddings`, and
 `-DeterministicFallback`.
 

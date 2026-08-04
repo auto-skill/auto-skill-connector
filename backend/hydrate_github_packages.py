@@ -650,6 +650,16 @@ def _write_curated_body(library_dir: Path, skill: dict, body: str) -> None:
     Path(index_temp).replace(index_path)
 
 
+def _package_is_complete(row: sqlite3.Row | dict) -> bool:
+    return bool(
+        row
+        and row["package_hash"]
+        and str(row["package_completeness"] or "").casefold() == "complete"
+        and str(row["dependency_closure_status"] or "").casefold() == "complete"
+        and not bool(row["entrypoint_truncated"])
+    )
+
+
 def _row_is_complete(row_id: str) -> bool:
     conn = store.get_conn()
     try:
@@ -658,13 +668,7 @@ def _row_is_complete(row_id: str) -> bool:
             "FROM skills WHERE id=?",
             (row_id,),
         ).fetchone()
-        return bool(
-            row
-            and row["package_hash"]
-            and str(row["package_completeness"] or "").casefold() == "complete"
-            and str(row["dependency_closure_status"] or "").casefold() == "complete"
-            and not bool(row["entrypoint_truncated"])
-        )
+        return _package_is_complete(row)
     finally:
         conn.close()
 
@@ -1009,6 +1013,11 @@ def main() -> int:
         help="select only rows currently marked pending (for transient retry lanes)",
     )
     parser.add_argument(
+        "--missing-package-only",
+        action="store_true",
+        help="skip rows that already have a complete package manifest and closure",
+    )
+    parser.add_argument(
         "--retry-closure",
         action="store_true",
         help="rehydrate active packages whose stored dependency closure is partial",
@@ -1091,6 +1100,8 @@ def main() -> int:
                 and str(row["dependency_closure_status"] or "").casefold() != "complete"
                 and bool(row["package_hash"])
             )
+            if args.missing_package_only and _package_is_complete(row) and not retry_closure:
+                continue
             if url in state["done"] and not retry_closure:
                 continue
             if (
