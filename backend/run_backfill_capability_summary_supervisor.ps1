@@ -22,7 +22,10 @@ for ($i = 1; $i -le 2000; $i++) {
         exit 1
     }
     $previousRemaining = $remaining
-    cmd /c "python -u backfill_capability_summary.py --concurrency 8 >> `"$log`" 2>&1"
+    # Keep concurrent LLM requests bounded; each page batches embeddings after
+    # the requests, so higher fan-out only increases pressure without improving
+    # the single-model local embedding path.
+    cmd /c "python -u backfill_capability_summary.py --concurrency 2 >> `"$log`" 2>&1"
     Start-Sleep -Seconds 20
 }
 Add-Content -Path $log -Value "backfill_capability_summary: gave up after 2000 runs"

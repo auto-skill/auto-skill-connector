@@ -249,6 +249,26 @@ build it once with `BUILD_HYDRATOR=1`. With that image available, a monitored
 `STOP_SERVICES=0 HYDRATOR_SERVICE=hydrator` run can keep the API online while
 package writes remain transactional.
 
+The same repair phases can run against an off-host local staging copy without
+touching production:
+
+```bash
+python backend/run_local_ingestion.py \
+  --db backend/data/local-staging/extracted/backend/data/local_skills.db.local-seed \
+  --library-dir backend/data/local-staging/extracted/backend/skills_library \
+  --package-root backend/data/local-staging/extracted/backend/skills_library/packages \
+  --phase all --batch-size 8 --concurrency 2 \
+  --deterministic-fallback
+```
+
+The phases run in package, capability-summary, then embedding order. The
+deterministic fallback uses existing descriptions/tags only when local Ollama
+is unavailable; it improves metadata search but does not bypass the complete
+package gate required for full instruction delivery. The PowerShell local
+hydrator exposes the same phases with `-BackfillPackages`,
+`-BackfillCapabilitySummary`, `-BackfillEmbeddings`, and
+`-DeterministicFallback`.
+
 Conversation follow-ups carry the stable skills.sh ID, not an arbitrary source
 URL. Live mode rehydrates that ID through the skills.sh catalog (using the
 short-lived search cache for public metadata-only rows); it never reloads a

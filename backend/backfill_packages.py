@@ -26,18 +26,19 @@ import time
 from pathlib import Path
 
 from embeddings import LibraryContent
-from local_store import DB_PATH, init_db, upsert_skill_package
+import local_store as store
 from package_store import ImmutablePackageStore, PackageFileInput, build_package_manifest, git_blob_sha
 from quality import content_hash as compute_content_hash
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-PACKAGE_ROOT = Path(__file__).parent / "skills_library" / "packages"
+DEFAULT_LIBRARY_DIR = Path(__file__).parent / "skills_library"
+DEFAULT_PACKAGE_ROOT = DEFAULT_LIBRARY_DIR / "packages"
 ENTRYPOINT = "SKILL.md"
 PAGE_SIZE = 500
 
 
-def _build_and_store(row: sqlite3.Row, content: str) -> dict:
+def _build_and_store(row: sqlite3.Row, content: str, package_root: Path) -> dict:
     content_bytes = content.encode("utf-8")
     file_input = PackageFileInput(
         path=ENTRYPOINT,
@@ -56,28 +57,38 @@ def _build_and_store(row: sqlite3.Row, content: str) -> dict:
             "immutable_ref": None,
         },
     )
-    ImmutablePackageStore(PACKAGE_ROOT).put(manifest, objects)
-    upsert_skill_package(manifest, None, skill_id=row["id"])
+    ImmutablePackageStore(package_root).put(manifest, objects)
+    store.upsert_skill_package(manifest, None, skill_id=row["id"])
     return manifest
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--limit", type=int, default=0, help="Process at most N rows (0 = all).")
-    parser.add_argument("--dry-run", action="store_true", help="Build manifests, do not write to disk/DB.")
-    args = parser.parse_args()
+def run(
+    *,
+    db_path: Path,
+    library_dir: Path,
+    package_root: Path,
+    limit: int = 0,
+    dry_run: bool = False,
+) -> dict[str, int]:
+    """Backfill immutable single-file packages from an existing local library.
 
-    init_db()
-    library = LibraryContent()
-    conn = sqlite3.connect(DB_PATH)
+    The caller owns the database/CAS roots explicitly. This keeps the same
+    repair code usable for production containers and the off-host local
+    staging database without accidentally writing to backend/local_skills.db.
+    """
+    store.DB_PATH = Path(db_path)
+    store.init_db()
+    library = LibraryContent(Path(library_dir))
+    package_root = Path(package_root)
+    conn = sqlite3.connect(store.DB_PATH)
     conn.row_factory = sqlite3.Row
     try:
         query = (
             "SELECT id,url,name,source,content_hash FROM skills "
             "WHERE quality_status='active' AND package_hash IS NULL ORDER BY id"
         )
-        if args.limit:
-            query += f" LIMIT {args.limit}"
+        if limit:
+            query += f" LIMIT {int(limit)}"
         rows = conn.execute(query).fetchall()
         print(f"backfill-packages: {len(rows)} candidate rows", flush=True)
 
@@ -96,11 +107,11 @@ def main() -> None:
                 skipped_hash_mismatch += 1
                 print(f"  row {row['id']} ({row['url']}): content_hash mismatch, skipping", flush=True)
                 continue
-            if args.dry_run:
+            if dry_run:
                 succeeded += 1
             else:
                 try:
-                    manifest = _build_and_store(row, content)
+                    manifest = _build_and_store(row, content, package_root)
                     succeeded += 1
                     if succeeded <= 5 or succeeded % 500 == 0:
                         print(f"  row {row['id']}: package_hash={manifest['package_hash']}", flush=True)
@@ -122,9 +133,34 @@ def main() -> None:
             f"{skipped_hash_mismatch} skipped (hash mismatch), {errors} errors",
             flush=True,
         )
+        return {
+            "candidates": len(rows),
+            "succeeded": succeeded,
+            "skipped_no_content": skipped_no_content,
+            "skipped_hash_mismatch": skipped_hash_mismatch,
+            "errors": errors,
+        }
     finally:
         conn.close()
 
 
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--db", type=Path, default=store.DB_PATH)
+    parser.add_argument("--library-dir", type=Path, default=DEFAULT_LIBRARY_DIR)
+    parser.add_argument("--package-root", type=Path, default=DEFAULT_PACKAGE_ROOT)
+    parser.add_argument("--limit", type=int, default=0, help="Process at most N rows (0 = all).")
+    parser.add_argument("--dry-run", action="store_true", help="Build manifests, do not write to disk/DB.")
+    args = parser.parse_args()
+    run(
+        db_path=args.db,
+        library_dir=args.library_dir,
+        package_root=args.package_root,
+        limit=args.limit,
+        dry_run=args.dry_run,
+    )
+    return 0
+
+
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
