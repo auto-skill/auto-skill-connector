@@ -17,6 +17,7 @@ import io
 import json
 import os
 import re
+import signal
 import sqlite3
 import subprocess
 import tarfile
@@ -62,13 +63,31 @@ MAX_ARCHIVE_BYTES = 32 * 1024 * 1024
 # tree through Git's partial-clone protocol.  The fallback still refuses a
 # package that exceeds the package limits; it never clips a file or silently
 # drops a path.
+# Production's existing network budgets remain the default. Local high-volume
+# lanes can opt into the shorter budgets below; slow sources stay resumable and
+# are never installed from a partial response.
 GIT_FALLBACK_TIMEOUT = 180
+GIT_RESOLVE_TIMEOUT = 45
+FAST_NETWORK_INFO_TIMEOUT = 15
+FAST_NETWORK_ARCHIVE_TIMEOUT = 45
+FAST_NETWORK_GIT_TIMEOUT = 30
+_FAST_NETWORK = False
 MAX_GIT_TREE_LIST_BYTES = 8 * 1024 * 1024
 _LIBRARY_WRITE_LOCK = threading.Lock()
 _THREAD_LOCAL = threading.local()
 # URLs are overwhelmingly unique in the catalog; retaining more than the
 # current archive only increases memory pressure without meaningful reuse.
 MAX_THREAD_CACHE_ENTRIES = 1
+# Keep a large repository from monopolizing a worker when one scoped row has
+# a slow transport path. Each chunk still reuses its repository caches, while
+# completed chunks can checkpoint independently.
+MAX_REPOSITORY_GROUP_ROWS = 20
+# A small batch must also be fair before it reaches the worker pool. Without
+# this cap, URL ordering can fill all 20 slots with one repository; one slow
+# row then blocks the whole selected batch and makes the watchdog repeat the
+# same work. Parallel local lanes isolate each repository to one row per
+# bounded batch; the production one-worker path remains unchanged.
+MAX_REPOSITORY_SELECTION_ROWS = 1
 
 
 def parse_github_url(url: str) -> dict | None:
@@ -95,7 +114,11 @@ def resolve_commit(client: httpx.Client, owner: str, repo: str, ref: str) -> str
     # GitHub's smart-HTTP ref advertisement is not subject to the REST API
     # search quota and is available in the slim API container.
     info_url = f"https://github.com/{owner}/{repo}/info/refs"
-    response = client.get(info_url, params={"service": "git-upload-pack"}, timeout=45)
+    response = client.get(
+        info_url,
+        params={"service": "git-upload-pack"},
+        timeout=FAST_NETWORK_INFO_TIMEOUT if _FAST_NETWORK else GIT_RESOLVE_TIMEOUT,
+    )
     if response.status_code == 200:
         text = response.content.decode("utf-8", errors="ignore")
         escaped_ref = re.escape(ref)
@@ -110,14 +133,12 @@ def resolve_commit(client: httpx.Client, owner: str, repo: str, ref: str) -> str
                 if branch_match:
                     return branch_match.group(1)
     # Local/offline development fallback; production does not require git.
-    result = subprocess.run(
+    result = _git_run(
         ["git", "ls-remote", f"https://github.com/{owner}/{repo}.git", ref, "HEAD"],
-        check=True,
-        capture_output=True,
-        text=True,
-        timeout=45,
+        cwd=Path.cwd(),
+        timeout=FAST_NETWORK_GIT_TIMEOUT if _FAST_NETWORK else GIT_RESOLVE_TIMEOUT,
     )
-    for line in result.stdout.splitlines():
+    for line in result.stdout.decode("utf-8", errors="ignore").splitlines():
         sha = line.split()[0] if line.split() else ""
         if re.fullmatch(r"[a-f0-9]{40}", sha):
             return sha
@@ -229,7 +250,11 @@ def read_archive(
 
 def download_archive(client: httpx.Client, url: str) -> bytes:
     """Download with a hard compressed-size cap before buffering in memory."""
-    with client.stream("GET", url, timeout=120) as response:
+    with client.stream(
+        "GET",
+        url,
+        timeout=FAST_NETWORK_ARCHIVE_TIMEOUT if _FAST_NETWORK else 120,
+    ) as response:
         response.raise_for_status()
         declared = int(response.headers.get("content-length") or 0)
         if declared > MAX_ARCHIVE_BYTES:
@@ -244,18 +269,76 @@ def download_archive(client: httpx.Client, url: str) -> bytes:
     return b"".join(chunks)
 
 
-def _git_run(args: list[str], *, cwd: Path, timeout: int = GIT_FALLBACK_TIMEOUT) -> subprocess.CompletedProcess:
+def _terminate_process_tree(process: subprocess.Popen) -> None:
+    """Terminate a timed-out Git process and any children it left behind."""
+    if os.name == "nt":
+        try:
+            subprocess.run(
+                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                check=False,
+                capture_output=True,
+                timeout=5,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    else:
+        try:
+            os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+        except (OSError, ProcessLookupError):
+            pass
+    try:
+        process.kill()
+    except (OSError, ProcessLookupError):
+        pass
+
+
+def _git_run(
+    args: list[str],
+    *,
+    cwd: Path,
+    timeout: int | None = None,
+) -> subprocess.CompletedProcess:
     """Run a non-interactive Git command for the scoped capture fallback."""
+    if timeout is None:
+        timeout = FAST_NETWORK_GIT_TIMEOUT if _FAST_NETWORK else GIT_FALLBACK_TIMEOUT
     env = os.environ.copy()
     env["GIT_TERMINAL_PROMPT"] = "0"
-    return subprocess.run(
-        args,
-        cwd=str(cwd),
-        check=True,
-        capture_output=True,
-        timeout=timeout,
-        env=env,
-    )
+    popen_kwargs = {
+        "cwd": str(cwd),
+        "stdout": subprocess.PIPE,
+        "stderr": subprocess.PIPE,
+        "env": env,
+    }
+    if os.name == "nt":
+        popen_kwargs["creationflags"] = (
+            getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+            | getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        )
+    else:
+        popen_kwargs["start_new_session"] = True
+    process = subprocess.Popen(args, **popen_kwargs)
+    try:
+        stdout, stderr = process.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        _terminate_process_tree(process)
+        try:
+            process.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            try:
+                process.kill()
+            except (OSError, ProcessLookupError):
+                pass
+            process.communicate()
+        raise
+    if process.returncode:
+        raise subprocess.CalledProcessError(
+            process.returncode,
+            args,
+            output=stdout,
+            stderr=stderr,
+        )
+    return subprocess.CompletedProcess(args, process.returncode, stdout=stdout, stderr=stderr)
 
 
 def _git_reference_blob(root: Path, commit_sha: str, path: str) -> bytes | None:
@@ -825,14 +908,8 @@ def hydrate_row(
         )
 
 
-def _hydrate_in_worker(row: sqlite3.Row, library_dir: Path) -> str:
-    """Hydrate one row with a thread-local client/cache pair.
-
-    Codeload and ref resolution are network-bound. A small worker pool cuts
-    wall-clock time without sharing httpx clients or mutable archive caches
-    across threads; package writes and per-row SQLite transactions remain
-    independently atomic.
-    """
+def _worker_resources() -> tuple[httpx.Client, dict, dict, dict]:
+    """Return the bounded client/cache tuple owned by the current worker."""
     client = getattr(_THREAD_LOCAL, "client", None)
     if client is None:
         client = httpx.Client(
@@ -843,26 +920,80 @@ def _hydrate_in_worker(row: sqlite3.Row, library_dir: Path) -> str:
         _THREAD_LOCAL.archive_cache = {}
         _THREAD_LOCAL.commit_cache = {}
         _THREAD_LOCAL.raw_archive_cache = {}
+    return (
+        client,
+        _THREAD_LOCAL.archive_cache,
+        _THREAD_LOCAL.commit_cache,
+        _THREAD_LOCAL.raw_archive_cache,
+    )
+
+
+def _trim_worker_caches() -> None:
+    # A batch can contain hundreds of distinct repositories. Keep only a
+    # small LRU-like tail per thread so archive bytes cannot exhaust the
+    # hydrator cgroup; package objects are already persisted atomically.
+    for cache in (
+        _THREAD_LOCAL.archive_cache,
+        _THREAD_LOCAL.commit_cache,
+        _THREAD_LOCAL.raw_archive_cache,
+    ):
+        while len(cache) > MAX_THREAD_CACHE_ENTRIES:
+            cache.pop(next(iter(cache)))
+
+
+def _hydrate_in_worker(row: sqlite3.Row, library_dir: Path) -> str:
+    """Hydrate one row with a thread-local client/cache pair."""
+    client, archive_cache, commit_cache, raw_archive_cache = _worker_resources()
     try:
-        return hydrate_row(
-            client,
-            row,
-            library_dir,
-            _THREAD_LOCAL.archive_cache,
-            _THREAD_LOCAL.commit_cache,
-            _THREAD_LOCAL.raw_archive_cache,
-        )
+        return hydrate_row(client, row, library_dir, archive_cache, commit_cache, raw_archive_cache)
     finally:
-        # A batch can contain hundreds of distinct repositories. Keep only a
-        # small LRU-like tail per thread so archive bytes cannot exhaust the
-        # hydrator cgroup; package objects are already persisted atomically.
-        for cache in (
-            _THREAD_LOCAL.archive_cache,
-            _THREAD_LOCAL.commit_cache,
-            _THREAD_LOCAL.raw_archive_cache,
-        ):
-            while len(cache) > MAX_THREAD_CACHE_ENTRIES:
-                cache.pop(next(iter(cache)))
+        _trim_worker_caches()
+
+
+def _hydrate_group_in_worker(rows: list[sqlite3.Row], library_dir: Path) -> list[tuple[sqlite3.Row, str | None, Exception | None]]:
+    """Hydrate one repository group serially while reusing its fetch caches.
+
+    Repository groups are the unit of reuse: a single worker can resolve one
+    immutable ref/archive once and then process all scoped skills from that
+    repository. Each row still has independent locks, CAS writes, and SQLite
+    transactions, and one bad row is returned as an individual outcome rather
+    than aborting the rest of the group.
+    """
+    try:
+        client, archive_cache, commit_cache, raw_archive_cache = _worker_resources()
+    except Exception as exc:  # preserve resumable per-row error handling
+        return [(row, None, exc) for row in rows]
+    outcomes: list[tuple[sqlite3.Row, str | None, Exception | None]] = []
+    try:
+        for row in rows:
+            try:
+                result = hydrate_row(
+                    client,
+                    row,
+                    library_dir,
+                    archive_cache,
+                    commit_cache,
+                    raw_archive_cache,
+                )
+            except Exception as exc:  # one row must not stop its repo group
+                outcomes.append((row, None, exc))
+            else:
+                outcomes.append((row, result, None))
+        return outcomes
+    finally:
+        _trim_worker_caches()
+
+
+def _repository_group_key(row: sqlite3.Row) -> tuple[str, ...]:
+    parsed = parse_github_url(str(row["url"] or ""))
+    if not parsed:
+        return ("url", str(row["url"] or ""))
+    return (
+        "repo",
+        str(parsed["owner"]).casefold(),
+        str(parsed["repo"]).casefold(),
+        str(parsed["ref"]),
+    )
 
 
 def main() -> int:
@@ -898,7 +1029,19 @@ def main() -> int:
         default="",
         help="comma-separated source partitions (default: all package-backed sources)",
     )
+    parser.add_argument(
+        "--scoped-only",
+        action="store_true",
+        help="select only GitHub URLs with an explicit skill directory scope",
+    )
+    parser.add_argument(
+        "--fast-network",
+        action="store_true",
+        help="use shorter local network/Git budgets and leave slow sources resumable",
+    )
     args = parser.parse_args()
+    global _FAST_NETWORK
+    _FAST_NETWORK = bool(args.fast_network)
     store.DB_PATH = args.db
     store.init_db()
     state = json.loads(args.state.read_text()) if args.state.exists() else {"done": {}, "failed": {}}
@@ -918,8 +1061,10 @@ def main() -> int:
         statuses.append("rejected")
     status_placeholders = ",".join("?" for _ in statuses)
     placeholders = ",".join("?" for _ in sources)
+    worker_count = max(1, min(int(args.workers), 8))
     conn = store.get_conn()
     selected = []
+    selected_group_counts: dict[tuple[str, ...], int] = {}
     try:
         rows = conn.execute(
             f"SELECT * FROM skills WHERE quality_status IN ({status_placeholders}) "
@@ -931,6 +1076,15 @@ def main() -> int:
             if args.only_pending and str(row["quality_status"] or "") != "pending":
                 continue
             url = str(row["url"])
+            parsed_url = parse_github_url(url)
+            if args.scoped_only and (parsed_url is None or not parsed_url["scope"]):
+                continue
+            group_key = _repository_group_key(row) if worker_count > 1 else None
+            if (
+                group_key is not None
+                and selected_group_counts.get(group_key, 0) >= MAX_REPOSITORY_SELECTION_ROWS
+            ):
+                continue
             retry_closure = (
                 args.retry_closure
                 and str(row["quality_status"] or "") == "active"
@@ -953,7 +1107,6 @@ def main() -> int:
             ):
                 continue
             if url in state["failed"] and not args.retry_failed and not retry_closure:
-                parsed_url = parse_github_url(url)
                 if (
                     not args.retry_fallback
                     or not _is_scoped_fallback_failure(state["failed"][url])
@@ -970,87 +1123,109 @@ def main() -> int:
             }
             compact["raw"] = "{}"
             selected.append(compact)
+            if group_key is not None:
+                selected_group_counts[group_key] = selected_group_counts.get(group_key, 0) + 1
             if len(selected) >= max(1, args.limit):
                 break
         rows.close()
     finally:
         conn.close()
     counts = {"hydrated": 0, "incomplete": 0, "failed": 0, "not-github": 0}
-    worker_count = max(1, min(int(args.workers), 8))
+    if worker_count > 1:
+        grouped: dict[tuple[str, ...], list[sqlite3.Row]] = {}
+        for row in selected:
+            grouped.setdefault(_repository_group_key(row), []).append(row)
+        work_items = [
+            rows[start:start + MAX_REPOSITORY_GROUP_ROWS]
+            for rows in grouped.values()
+            for start in range(0, len(rows), MAX_REPOSITORY_GROUP_ROWS)
+        ]
+    else:
+        # Preserve the production one-worker path exactly: each row remains a
+        # resumable unit and no scheduler-level grouping is needed.
+        work_items = [[row] for row in selected]
     with ThreadPoolExecutor(max_workers=worker_count) as executor:
         futures = {
-            executor.submit(_hydrate_in_worker, row, args.library_dir): row
-            for row in selected
+            executor.submit(_hydrate_group_in_worker, rows, args.library_dir): rows
+            for rows in work_items
         }
         for future in as_completed(futures):
-            row = futures[future]
-            url = str(row["url"])
+            rows = futures[future]
             try:
-                result = future.result()
-                if result in {"hydrated", "already-complete"}:
-                    state["done"][url] = result
-                    counts["hydrated"] += 1
-                elif result.startswith("incomplete:"):
-                    state["failed"][url] = result
-                    conn = store.get_conn()
-                    try:
-                        conn.execute(
-                            "UPDATE skills SET quality_status='rejected', package_completeness='incomplete', "
-                            "quality_reasons=? WHERE id=?",
-                            (json.dumps(["package-incomplete", result], sort_keys=True), row["id"]),
-                        )
-                        conn.commit()
-                    finally:
-                        conn.close()
-                    counts["incomplete"] += 1
-                elif result == "not-github":
-                    # The source gate selected this row because its registry
-                    # claims GitHub-backed instructions, but the URL is not a
-                    # verifiable GitHub tree.  Leaving it active would make
-                    # the package audit impossible to bring to zero forever.
-                    state["failed"][url] = result
-                    conn = store.get_conn()
-                    try:
-                        conn.execute(
-                            "UPDATE skills SET quality_status='rejected', package_completeness='incomplete', "
-                            "quality_reasons=? WHERE id=?",
-                            (json.dumps(["package-incomplete", "not-github-source"], sort_keys=True), row["id"]),
-                        )
-                        conn.commit()
-                    finally:
-                        conn.close()
-                    counts["not-github"] += 1
-                else:
-                    state["failed"][url] = result
-                    counts[result] += 1
-            except Exception as exc:  # one public repository must not stop the resumable run
-                reason = f"{type(exc).__name__}:{exc}"[:500]
-                state["failed"][url] = reason
-                # Invalid/malformed packages are permanently ineligible for
-                # routing. Network/rate-limit failures remain pending so a
-                # later --retry-failed pass can retry them without surfacing
-                # an incomplete source package.
-                terminal = isinstance(exc, ValueError)
-                if isinstance(exc, httpx.HTTPStatusError):
-                    terminal = exc.response.status_code in {400, 404, 410, 422}
-                conn = store.get_conn()
+                outcomes = future.result()
+            except Exception as exc:  # preserve resumability if a group fails before returning
+                outcomes = [(row, None, exc) for row in rows]
+            for row, result, worker_error in outcomes:
+                url = str(row["url"])
                 try:
-                    conn.execute(
-                        "UPDATE skills SET quality_status=?, package_completeness=?, "
-                        "quality_reasons=? WHERE id=?",
-                        (
-                            "rejected" if terminal else "pending",
-                            "incomplete",
-                            json.dumps(["package-incomplete", reason], sort_keys=True),
-                            row["id"],
-                        ),
-                    )
-                    conn.commit()
-                finally:
-                    conn.close()
-                counts["failed"] += 1
-            args.state.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")
-            print(url, counts, flush=True)
+                    if worker_error is not None:
+                        raise worker_error
+                    if result is None:
+                        raise RuntimeError("hydrator returned no result")
+                    if result in {"hydrated", "already-complete"}:
+                        state["done"][url] = result
+                        counts["hydrated"] += 1
+                    elif result.startswith("incomplete:"):
+                        state["failed"][url] = result
+                        conn = store.get_conn()
+                        try:
+                            conn.execute(
+                                "UPDATE skills SET quality_status='rejected', package_completeness='incomplete', "
+                                "quality_reasons=? WHERE id=?",
+                                (json.dumps(["package-incomplete", result], sort_keys=True), row["id"]),
+                            )
+                            conn.commit()
+                        finally:
+                            conn.close()
+                        counts["incomplete"] += 1
+                    elif result == "not-github":
+                        # The source gate selected this row because its registry
+                        # claims GitHub-backed instructions, but the URL is not a
+                        # verifiable GitHub tree. Leaving it active would make
+                        # the package audit impossible to bring to zero forever.
+                        state["failed"][url] = result
+                        conn = store.get_conn()
+                        try:
+                            conn.execute(
+                                "UPDATE skills SET quality_status='rejected', package_completeness='incomplete', "
+                                "quality_reasons=? WHERE id=?",
+                                (json.dumps(["package-incomplete", "not-github-source"], sort_keys=True), row["id"]),
+                            )
+                            conn.commit()
+                        finally:
+                            conn.close()
+                        counts["not-github"] += 1
+                    else:
+                        state["failed"][url] = result
+                        counts[result] += 1
+                except Exception as exc:  # one public repository must not stop the resumable run
+                    reason = f"{type(exc).__name__}:{exc}"[:500]
+                    state["failed"][url] = reason
+                    # Invalid/malformed packages are permanently ineligible for
+                    # routing. Network/rate-limit failures remain pending so a
+                    # later --retry-failed pass can retry them without surfacing
+                    # an incomplete source package.
+                    terminal = isinstance(exc, ValueError)
+                    if isinstance(exc, httpx.HTTPStatusError):
+                        terminal = exc.response.status_code in {400, 404, 410, 422}
+                    conn = store.get_conn()
+                    try:
+                        conn.execute(
+                            "UPDATE skills SET quality_status=?, package_completeness=?, "
+                            "quality_reasons=? WHERE id=?",
+                            (
+                                "rejected" if terminal else "pending",
+                                "incomplete",
+                                json.dumps(["package-incomplete", reason], sort_keys=True),
+                                row["id"],
+                            ),
+                        )
+                        conn.commit()
+                    finally:
+                        conn.close()
+                    counts["failed"] += 1
+                args.state.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")
+                print(url, counts, flush=True)
     print(json.dumps({"selected": len(selected), "counts": counts}, indent=2))
     return 0
 

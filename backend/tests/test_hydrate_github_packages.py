@@ -66,6 +66,37 @@ def test_select_package_files_rejects_ambiguous_entrypoint() -> None:
         )
 
 
+def test_git_run_terminates_process_tree_on_timeout(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    class FakeProcess:
+        pid = 1234
+        returncode = None
+
+        def __init__(self) -> None:
+            self.communicate_calls: list[int | None] = []
+            self.killed = False
+
+        def communicate(self, timeout=None):
+            self.communicate_calls.append(timeout)
+            if len(self.communicate_calls) == 1:
+                raise subprocess.TimeoutExpired(["git"], timeout)
+            self.returncode = -9
+            return b"", b""
+
+        def kill(self) -> None:
+            self.killed = True
+
+    process = FakeProcess()
+    monkeypatch.setattr(hydrator.subprocess, "Popen", lambda *args, **kwargs: process)
+    terminated: list[object] = []
+    monkeypatch.setattr(hydrator, "_terminate_process_tree", terminated.append)
+
+    with pytest.raises(subprocess.TimeoutExpired):
+        hydrator._git_run(["git", "fetch"], cwd=tmp_path, timeout=1)
+
+    assert terminated == [process]
+    assert process.communicate_calls == [1, 5]
+
+
 def test_choose_skill_entrypoint_narrows_broad_repository_by_catalog_name() -> None:
     assert hydrator._choose_skill_entrypoint(
         ["skills/report/SKILL.md", "skills/browser/SKILL.md"],

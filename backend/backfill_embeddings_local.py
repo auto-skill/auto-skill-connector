@@ -9,11 +9,22 @@ fresh when the new embeddings become routable.
 from __future__ import annotations
 
 import argparse
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 
 import local_store as store
 from embeddings import LibraryContent, build_embed_text, embed_text_hash, embed_texts
+
+
+def _decode_json_list(value: object) -> list:
+    """Match delta export's canonical representation for JSON list fields."""
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError:
+            return []
+    return value if isinstance(value, list) else []
 
 
 def main() -> int:
@@ -31,7 +42,7 @@ def main() -> int:
         conn = store.get_conn()
         try:
             sql = (
-                "SELECT id,url,name,source,description,tags,capability_summary,retrieval_text "
+                "SELECT id,url,name,source,description,tags,triggers,capability_summary,retrieval_text "
                 "FROM skills WHERE embedding IS NULL AND url IS NOT NULL AND quality_status='active' "
                 "ORDER BY id LIMIT ?"
             )
@@ -43,6 +54,9 @@ def main() -> int:
             conn.close()
         if not rows:
             break
+        for row in rows:
+            row["tags"] = _decode_json_list(row.get("tags"))
+            row["triggers"] = _decode_json_list(row.get("triggers"))
         texts = [build_embed_text(row, library.get(row.get("url") or "")) for row in rows]
         vectors = embed_texts(texts, args.batch_size)
         now = datetime.now(timezone.utc).isoformat()
