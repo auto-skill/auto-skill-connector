@@ -90,6 +90,32 @@ MAX_REPOSITORY_GROUP_ROWS = 20
 MAX_REPOSITORY_SELECTION_ROWS = 1
 
 
+def _load_requested_urls(path: Path | None) -> set[str] | None:
+    """Load an explicit demand worklist; an empty file selects no rows."""
+    if path is None:
+        return None
+    raw = path.read_text(encoding="utf-8")
+    try:
+        decoded = json.loads(raw)
+    except json.JSONDecodeError:
+        decoded = [line.strip() for line in raw.splitlines() if line.strip()]
+    if isinstance(decoded, dict):
+        decoded = decoded.get("items")
+    if not isinstance(decoded, list):
+        raise ValueError("urls file must contain a JSON list, an items list, or one URL per line")
+    urls = set()
+    for item in decoded:
+        if isinstance(item, str):
+            url = item.strip()
+        elif isinstance(item, dict):
+            url = str(item.get("url") or "").strip()
+        else:
+            url = ""
+        if url:
+            urls.add(url)
+    return urls
+
+
 def parse_github_url(url: str) -> dict | None:
     match = GITHUB_URL_RE.match(str(url or "").rstrip("/"))
     if not match:
@@ -1018,6 +1044,11 @@ def main() -> int:
         help="skip rows that already have a complete package manifest and closure",
     )
     parser.add_argument(
+        "--urls-file",
+        type=Path,
+        help="restrict selection to URLs from a JSON worklist or one-URL-per-line file",
+    )
+    parser.add_argument(
         "--retry-closure",
         action="store_true",
         help="rehydrate active packages whose stored dependency closure is partial",
@@ -1053,6 +1084,10 @@ def main() -> int:
     _FAST_NETWORK = bool(args.fast_network)
     store.DB_PATH = args.db
     store.init_db()
+    try:
+        requested_urls = _load_requested_urls(args.urls_file)
+    except (OSError, ValueError) as exc:
+        parser.error(str(exc))
     state = json.loads(args.state.read_text()) if args.state.exists() else {"done": {}, "failed": {}}
     state.setdefault("done", {})
     state.setdefault("failed", {})
@@ -1085,6 +1120,8 @@ def main() -> int:
             if args.only_pending and str(row["quality_status"] or "") != "pending":
                 continue
             url = str(row["url"])
+            if requested_urls is not None and url not in requested_urls:
+                continue
             parsed_url = parse_github_url(url)
             if args.scoped_only and (parsed_url is None or not parsed_url["scope"]):
                 continue

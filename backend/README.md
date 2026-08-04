@@ -271,6 +271,30 @@ phases with `-MissingPackageOnly`, `-BackfillPackages`,
 `-BackfillCapabilitySummary`, `-BackfillEmbeddings`, and
 `-DeterministicFallback`.
 
+For gradual, demand-driven population, generate a read-only worklist from an
+offline database snapshot. It ranks incomplete package rows by positive route
+outcomes first, then repeated demand and publisher popularity:
+
+```bash
+python backend/plan_hydration_demand.py \
+  --db backend/data/local-staging/extracted/backend/data/local_skills.db.local-seed \
+  --output /tmp/autoskill-hydration-demand.json \
+  --limit 250
+python backend/hydrate_github_packages.py \
+  --db backend/data/local-staging/extracted/backend/data/local_skills.db.local-seed \
+  --library-dir backend/data/local-staging/extracted/backend/skills_library \
+  --state backend/data/local-staging/extracted/backend/data/github_package_hydration_state.seeded.json \
+  --urls-file /tmp/autoskill-hydration-demand.json \
+  --missing-package-only --workers 1 --limit 250
+```
+
+The planner does not modify SQLite or the CAS. Run both commands on a trusted
+off-host/staging worker, never in the serving API container. Only after the
+package audit is green should the resulting verified delta be promoted with
+`skill_delta.py`; code deploys continue to exclude the production database and
+CAS. A missing or partial package can remain a catalog hint, but it can never
+become an injected instruction route while this work proceeds over weeks.
+
 Conversation follow-ups carry the stable skills.sh ID, not an arbitrary source
 URL. Live mode rehydrates that ID through the skills.sh catalog (using the
 short-lived search cache for public metadata-only rows); it never reloads a

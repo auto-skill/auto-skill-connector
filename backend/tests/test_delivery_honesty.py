@@ -254,6 +254,8 @@ class ContentAndRouteDeliveryTests(unittest.TestCase):
             "risk_score": 0,
             "quality_status": "active",
             "quality_score": 90,
+            "package_completeness": "complete",
+            "dependency_closure_status": "complete",
             "content_hash": chash,
             "rank": 1.0,
             "similarity": 0.95,

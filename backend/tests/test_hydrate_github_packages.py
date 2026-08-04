@@ -1,13 +1,19 @@
 from __future__ import annotations
 
 import io
+import json
 import subprocess
 import tarfile
 
 import pytest
 
 import hydrate_github_packages as hydrator
-from hydrate_github_packages import parse_github_url, read_archive, select_package_files
+from hydrate_github_packages import (
+    _load_requested_urls,
+    parse_github_url,
+    read_archive,
+    select_package_files,
+)
 
 
 def _archive(files: dict[str, bytes]) -> bytes:
@@ -77,6 +83,19 @@ def test_package_completeness_gate_skips_only_complete_packages() -> None:
 
     assert hydrator._package_is_complete(complete)
     assert not hydrator._package_is_complete(incomplete)
+
+
+def test_requested_url_worklist_accepts_planner_json_and_empty_is_bounded(tmp_path) -> None:
+    worklist = tmp_path / "demand.json"
+    worklist.write_text(
+        json.dumps({"items": [{"url": "https://github.com/acme/one"}, {"url": "https://github.com/acme/one"}]}),
+        encoding="utf-8",
+    )
+    assert _load_requested_urls(worklist) == {"https://github.com/acme/one"}
+
+    empty = tmp_path / "empty.json"
+    empty.write_text("[]", encoding="utf-8")
+    assert _load_requested_urls(empty) == set()
 
 
 def test_git_run_terminates_process_tree_on_timeout(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:

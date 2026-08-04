@@ -14,6 +14,7 @@ WORKERS="${WORKERS:-1}"
 RETRY_FAILED="${RETRY_FAILED:-0}"
 RETRY_FALLBACK="${RETRY_FALLBACK:-0}"
 SOURCES="${SOURCES:-}"
+URLS_FILE="${URLS_FILE:-}"
 AUDIT_REQUIRE_COMPLETE="${AUDIT_REQUIRE_COMPLETE:-0}"
 STOP_SERVICES="${STOP_SERVICES:-1}"
 HYDRATOR_SERVICE="${HYDRATOR_SERVICE:-hydrator}"
@@ -74,6 +75,10 @@ source_args=()
 if [[ -n "$SOURCES" ]]; then
   source_args+=(--sources "$SOURCES")
 fi
+urls_args=()
+if [[ -n "$URLS_FILE" ]]; then
+  urls_args+=(--urls-file "$URLS_FILE")
+fi
 
 for batch in $(seq 1 "$BATCHES"); do
   if [[ "$STOP_SERVICES" != "1" ]] && ! curl -fsS --max-time 5 "$API_HEALTH_URL" >/dev/null; then
@@ -89,7 +94,8 @@ for batch in $(seq 1 "$BATCHES"); do
     --limit "$LIMIT" \
     --workers "$WORKERS" \
     "${retry_args[@]}" \
-    "${source_args[@]}"
+    "${source_args[@]}" \
+    "${urls_args[@]}"
 done
 
 if [[ "$STOP_SERVICES" != "1" ]]; then
