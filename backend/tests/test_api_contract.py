@@ -315,6 +315,8 @@ class ApiContractTests(unittest.TestCase):
             ("POST", "/private-skills"),
             ("DELETE", "/private-skills/{skill_id}"),
             ("POST", "/route-feedback"),
+            ("POST", "/route-survey-response"),
+            ("POST", "/route-outcome-metrics"),
             ("GET", "/mcp-oauth/authorize"),
             ("GET", "/mcp-oauth/choose"),
             ("GET", "/signup"),
@@ -338,6 +340,9 @@ class ApiContractTests(unittest.TestCase):
             ("GET", "/preferences"),
             ("PUT", "/preferences"),
             ("GET", "/analytics"),
+            ("GET", "/impact-report"),
+            ("GET", "/measurement-mode"),
+            ("PUT", "/measurement-mode"),
             # Team plan org surface (bearer-authed; role checks per handler).
             ("GET", "/orgs"),
             ("POST", "/orgs"),

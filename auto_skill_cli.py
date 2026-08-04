@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import hashlib
 import json
+import os
 import re
 import shutil
 import sys
@@ -29,6 +30,8 @@ from auto_skill_core import (
     _search,
     add_favorite,
     get_autoskill_url,
+    get_impact_report,
+    get_measurement_mode,
     get_skills_home,
     install_skill_from_content,
     is_url,
@@ -37,10 +40,12 @@ from auto_skill_core import (
     logout_backend,
     recommend_skill_payload,
     record_route_feedback,
+    record_route_survey_response,
     remove_favorite,
     remove_private_skill,
     route_prompt_payload,
     route_task_payload,
+    set_measurement_mode,
     submit_private_skill,
     validate_skill_content,
     whoami,
@@ -58,6 +63,20 @@ from auto_skill_mining import (
 from auto_skill_personalize import reset_weights, weights_summary
 
 HOOK_SCRIPT_PATH = Path(__file__).resolve().parent / "hooks" / "skill_suggest.py"
+# Claude Code only: Stop hooks and transcript_path are a Claude Code-specific
+# contract (Codex's UserPromptSubmit parity does not extend to Stop), so this
+# hook is never registered for --target codex.
+OUTCOME_HOOK_SCRIPT_PATH = Path(__file__).resolve().parent / "hooks" / "report_outcome.py"
+# --json-output: see hooks/skill_suggest.py's _emit -- Claude Code only.
+ROUTE_HOOK_ARGS = [str(HOOK_SCRIPT_PATH), "--json-output"]
+# Mirrors hooks/skill_suggest.py's ROUTING_LOG_PATH constant -- duplicated
+# rather than imported so this CLI doesn't load that stdlib-only hook module
+# (and its module-level urllib opener installation) just to read a path.
+ROUTING_LOG_PATH = (
+    Path(os.getenv("AUTOSKILL_ROUTING_LOG"))
+    if os.getenv("AUTOSKILL_ROUTING_LOG")
+    else Path.home() / ".claude" / "auto-skill-routing.jsonl"
+)
 
 
 def _default_settings_path() -> Path:
@@ -269,6 +288,124 @@ async def _command_feedback(args: argparse.Namespace) -> int:
     return 1
 
 
+async def _command_survey(args: argparse.Namespace) -> int:
+    ok = await record_route_survey_response(args.response)
+    if ok:
+        print(f"recorded survey response: {args.response}")
+        return 0
+    print("survey response was not recorded (not logged in, or an invalid value)")
+    return 1
+
+
+def _print_impact_report(report: dict[str, Any]) -> None:
+    activity = report.get("activity") or {}
+    efficiency = report.get("context_efficiency") or {}
+    lift = report.get("measured_lift") or {}
+
+    print(f"Auto-Skill impact report -- last {report.get('window_days', '?')} days")
+    print()
+    print("What Auto-Skill did for you:")
+    print(f"  substantial tasks routed: {activity.get('substantial_tasks_routed', 0)}")
+    tiers = activity.get("tiers") or {}
+    if tiers:
+        tiers_text = ", ".join(f"{tier}={count}" for tier, count in sorted(tiers.items()))
+        print(f"  tiers: {tiers_text}")
+    print(f"  declined uncertain matches (trust behavior): {activity.get('declined_uncertain_count', 0)}")
+    families = activity.get("top_task_families") or []
+    if families:
+        families_text = ", ".join(f"{f['task_family']} ({f['count']})" for f in families[:5])
+        print(f"  top task families: {families_text}")
+    print(
+        "  distinct specialists delivered: "
+        f"{activity.get('distinct_specialists_delivered', 0)} "
+        f"({activity.get('specialists_discovered_without_install', 0)} discovered without installing anything)"
+    )
+    print()
+    print("Context efficiency:")
+    raw = efficiency.get("eligible_raw_tokens") or 0
+    delivered = efficiency.get("delivered_capsule_tokens") or 0
+    ratio = efficiency.get("compression_ratio")
+    if raw:
+        pct = round((ratio or 0) * 100)
+        print(
+            f"  delivered {delivered:,} tokens of task-specific guidance from {raw:,} tokens of verified "
+            f"source material: a {pct}% reduction in reference context"
+        )
+    else:
+        print("  no full-tier deliveries in this window yet")
+    if efficiency.get("median_injected_tokens") is not None:
+        print(
+            f"  injected tokens: median={efficiency['median_injected_tokens']}, "
+            f"p95={efficiency.get('p95_injected_tokens')}, budget={efficiency.get('token_budget')}"
+        )
+    if efficiency.get("budget_compliance_rate") is not None:
+        print(f"  within budget: {round(efficiency['budget_compliance_rate'] * 100)}%")
+    print()
+    print("Proven lift:")
+    if lift.get("available"):
+        print(
+            f"  in comparable measured tasks, routed guidance changed median {lift['metric']} by "
+            f"{lift['relative_reduction_pct']}% (95% CI: {lift['ci_low_pct']}% to {lift['ci_high_pct']}%; "
+            f"{lift['measured_tasks']} measured tasks)"
+        )
+    else:
+        reason = lift.get("reason", "not_enough_measurement_mode_data")
+        if reason == "measurement_mode_not_enabled":
+            print("  not available -- opt in with `auto-skill measurement-mode enable` to start measuring.")
+        else:
+            print("  we have not collected enough controlled observations to claim a personal performance lift yet.")
+
+
+async def _command_impact_report(args: argparse.Namespace) -> int:
+    try:
+        report = await get_impact_report(args.days)
+    except NotLoggedInError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    if args.json:
+        print(json.dumps(report, indent=2))
+        return 0
+    _print_impact_report(report)
+    return 0
+
+
+async def _command_measurement_mode_status(args: argparse.Namespace) -> int:
+    del args
+    try:
+        settings = await get_measurement_mode()
+    except NotLoggedInError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    state = "enabled" if settings.get("enabled") else "disabled"
+    print(f"measurement mode: {state} (holdout_rate={settings.get('holdout_rate')})")
+    return 0
+
+
+async def _command_measurement_mode_enable(args: argparse.Namespace) -> int:
+    try:
+        settings = await set_measurement_mode(True, args.holdout_rate)
+    except NotLoggedInError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print(
+        f"measurement mode enabled (holdout_rate={settings.get('holdout_rate')}). "
+        "A small share of otherwise-full-tier tasks may not receive automated guidance, "
+        "so their outcomes can be compared against routed tasks."
+    )
+    return 0
+
+
+async def _command_measurement_mode_disable(args: argparse.Namespace) -> int:
+    del args
+    try:
+        await set_measurement_mode(False)
+    except NotLoggedInError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print("measurement mode disabled")
+    return 0
+
+
 def _print_route_metrics_summary(payload: dict[str, Any]) -> None:
     window = payload.get("window_hours")
     total = int(payload.get("total") or 0)
@@ -306,6 +443,59 @@ def _print_route_metrics_summary(payload: dict[str, Any]) -> None:
             avg_find = int(skill.get("avg_skill_find_ms") or 0)
             avg_tokens = int(skill.get("avg_injected_tokens") or 0)
             print(f"- {name}: count={count}, positive={positives}, avg_find={avg_find}ms, avg_injected={avg_tokens}")
+
+
+def _command_log_show(args: argparse.Namespace) -> int:
+    """Print recent local routing decisions from hooks/skill_suggest.py's
+    diagnostics log -- a persistent, chat-independent record of whether/when
+    auto-skill actually triggered, for checking after the fact rather than
+    having to watch the transcript in real time."""
+    log_path = Path(args.log_path) if args.log_path else ROUTING_LOG_PATH
+    if not log_path.exists():
+        print(f"no local routing log yet at {log_path}.")
+        print(
+            "This log only fills in when hook diagnostics are enabled -- set "
+            "AUTOSKILL_DIAGNOSTICS=1 in the environment Claude Code launches from "
+            "(or your shell profile), then restart Claude Code. It records timestamp, "
+            "tier, and matched skill name only -- never prompt text."
+        )
+        return 0
+
+    try:
+        lines = [line for line in log_path.read_text(encoding="utf-8", errors="replace").splitlines() if line.strip()]
+    except OSError as exc:
+        print(f"error: could not read {log_path}: {exc}", file=sys.stderr)
+        return 1
+    if not lines:
+        print(f"{log_path} exists but has no entries yet.")
+        return 0
+
+    tail = args.tail if args.tail and args.tail > 0 else 20
+    selected = lines[-tail:]
+    records = []
+    for line in selected:
+        try:
+            records.append(json.loads(line))
+        except (TypeError, ValueError):
+            continue
+
+    if args.json:
+        print(json.dumps(records, indent=2))
+        return 0
+
+    print(f"last {len(records)} of {len(lines)} routing decisions ({log_path}):")
+    for record in records:
+        ts = record.get("timestamp", "?")
+        tier = record.get("tier", "?")
+        reason = record.get("reason", "")
+        skill_name = (record.get("selected_skill") or {}).get("name")
+        line = f"{ts}  tier={tier}"
+        if skill_name:
+            line += f"  skill={skill_name}"
+        if reason:
+            line += f"  ({reason})"
+        print(line)
+    return 0
 
 
 async def _command_metrics(args: argparse.Namespace) -> int:
@@ -527,21 +717,36 @@ def _save_settings(settings_path: Path, settings: dict[str, Any]) -> None:
     settings_path.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
 
 
-def _is_our_hook_entry(entry: dict[str, Any]) -> bool:
-    """True if a UserPromptSubmit hook entry's command targets skill_suggest.py
-    (any path -- lets us find and replace a stale/relocated copy)."""
+def _hook_entry_targets_script(entry: dict[str, Any], script_name: str) -> bool:
+    """True if a hook entry's command targets the given script filename (any
+    path -- lets us find and replace a stale/relocated copy)."""
     for h in entry.get("hooks", []):
         args = h.get("args") or []
-        if any(str(a).endswith("skill_suggest.py") for a in args):
+        if any(str(a).endswith(script_name) for a in args):
             return True
-        if "skill_suggest.py" in str(h.get("command", "")):
+        if script_name in str(h.get("command", "")):
             return True
     return False
+
+
+def _is_our_hook_entry(entry: dict[str, Any]) -> bool:
+    return _hook_entry_targets_script(entry, "skill_suggest.py")
+
+
+def _is_our_outcome_hook_entry(entry: dict[str, Any]) -> bool:
+    return _hook_entry_targets_script(entry, "report_outcome.py")
 
 
 def _find_hook_entry(settings: dict[str, Any]) -> dict[str, Any] | None:
     for entry in settings.get("hooks", {}).get("UserPromptSubmit", []):
         if _is_our_hook_entry(entry):
+            return entry
+    return None
+
+
+def _find_outcome_hook_entry(settings: dict[str, Any]) -> dict[str, Any] | None:
+    for entry in settings.get("hooks", {}).get("Stop", []):
+        if _is_our_outcome_hook_entry(entry):
             return entry
     return None
 
@@ -676,12 +881,20 @@ def _command_enable_hook(args: argparse.Namespace) -> int:
         return 1
 
     existing = _find_hook_entry(settings)
+    existing_outcome = _find_outcome_hook_entry(settings)
+    outcome_up_to_date = (
+        existing_outcome is not None
+        and (existing_outcome.get("hooks") or [{}])[0].get("args") == [str(OUTCOME_HOOK_SCRIPT_PATH)]
+    )
     if existing is not None:
         existing_args = (existing.get("hooks") or [{}])[0].get("args") or []
-        if existing_args and str(existing_args[0]) == str(HOOK_SCRIPT_PATH):
+        if existing_args == ROUTE_HOOK_ARGS and outcome_up_to_date:
             print(f"already enabled: {settings_path} points at {HOOK_SCRIPT_PATH}")
             return 0
-        print(f"a hook entry already exists pointing at {existing_args}, will replace it with {HOOK_SCRIPT_PATH}")
+        if existing_args and str(existing_args[0]) == str(HOOK_SCRIPT_PATH):
+            print(f"updating existing registration at {settings_path} to the current hook contract")
+        else:
+            print(f"a hook entry already exists pointing at {existing_args}, will replace it with {HOOK_SCRIPT_PATH}")
 
     print(
         "Privacy note: Auto Mode is optional. It locally skips non-task prompts, then sends each "
@@ -706,11 +919,39 @@ def _command_enable_hook(args: argparse.Namespace) -> int:
         "hooks": [{
             "type": "command",
             "command": "python",
-            "args": [str(HOOK_SCRIPT_PATH)],
+            # --json-output: Claude Code only (see hooks/skill_suggest.py's
+            # _emit). It splits the routing summary into a user-visible
+            # systemMessage separate from the additionalContext fed to the
+            # model, so it's obvious a route happened even if the model never
+            # repeats the injected content back. Codex's registration
+            # (_codex_hook_block) omits this flag on purpose -- its
+            # UserPromptSubmit hook has no systemMessage/additionalContext
+            # split and would inject the raw JSON as literal context.
+            "args": ROUTE_HOOK_ARGS,
             "timeout": 15,
             "statusMessage": "Routing prompt through auto-skill...",
         }]
     })
+
+    # Stop hook: reports session-level outcome metrics (turns/tokens/tool
+    # calls/elapsed time) for opted-in Measurement Mode accounts back to
+    # whichever route_ids hooks/skill_suggest.py journaled this session --
+    # see hooks/report_outcome.py. Without it, measured_lift never gets
+    # samples even for accounts that opt in.
+    if OUTCOME_HOOK_SCRIPT_PATH.exists():
+        settings["hooks"].setdefault("Stop", [])
+        stop_entries = settings["hooks"]["Stop"]
+        stop_entries[:] = [e for e in stop_entries if not _is_our_outcome_hook_entry(e)]
+        stop_entries.append({
+            "hooks": [{
+                "type": "command",
+                "command": "python",
+                "args": [str(OUTCOME_HOOK_SCRIPT_PATH)],
+                "timeout": 15,
+                "statusMessage": "Reporting auto-skill session outcome...",
+            }]
+        })
+
     _save_settings(settings_path, settings)
     print(f"enabled: wrote hook entry to {settings_path}")
     print("Restart Claude Code (or open /hooks once) for the change to take effect.")
@@ -729,13 +970,24 @@ def _command_disable_hook(args: argparse.Namespace) -> int:
 
     entries = settings.get("hooks", {}).get("UserPromptSubmit", [])
     remaining = [e for e in entries if not _is_our_hook_entry(e)]
-    if len(remaining) == len(entries):
+    found = len(remaining) != len(entries)
+
+    stop_entries = settings.get("hooks", {}).get("Stop", [])
+    stop_remaining = [e for e in stop_entries if not _is_our_outcome_hook_entry(e)]
+    found = found or len(stop_remaining) != len(stop_entries)
+
+    if not found:
         print(f"not enabled: no auto-skill hook entry found in {settings_path}")
         return 0
 
-    settings["hooks"]["UserPromptSubmit"] = remaining
-    if not remaining:
-        del settings["hooks"]["UserPromptSubmit"]
+    if remaining:
+        settings["hooks"]["UserPromptSubmit"] = remaining
+    else:
+        settings.get("hooks", {}).pop("UserPromptSubmit", None)
+    if stop_remaining:
+        settings["hooks"]["Stop"] = stop_remaining
+    else:
+        settings.get("hooks", {}).pop("Stop", None)
     if not settings.get("hooks"):
         settings.pop("hooks", None)
     _save_settings(settings_path, settings)
@@ -1057,6 +1309,24 @@ async def _command_doctor(args: argparse.Namespace) -> int:
     else:
         print(f"hook registration: not enabled (run `auto-skill enable-hook` to turn it on)")
 
+    print(f"outcome hook script: {OUTCOME_HOOK_SCRIPT_PATH} ({'exists' if OUTCOME_HOOK_SCRIPT_PATH.exists() else 'MISSING'})")
+    try:
+        settings = _load_settings(settings_path)
+        outcome_entry = _find_outcome_hook_entry(settings)
+    except AutoSkillError as exc:
+        print(f"outcome hook registration: unreadable ({exc})")
+        outcome_entry = None
+    if outcome_entry is not None:
+        registered_args = (outcome_entry.get("hooks") or [{}])[0].get("args") or []
+        registered_path = Path(registered_args[0]) if registered_args else None
+        if registered_path and registered_path.exists():
+            match = " (matches this install)" if registered_path == OUTCOME_HOOK_SCRIPT_PATH else " (DIFFERENT path than this install -- run enable-hook to repoint it)"
+            print(f"outcome hook registration: enabled in {settings_path} -> {registered_path}{match}")
+        else:
+            print(f"outcome hook registration: enabled in {settings_path}, but {registered_path} does not exist on disk")
+    else:
+        print("outcome hook registration: not enabled (Measurement Mode lift will have no samples until `auto-skill enable-hook` registers it)")
+
     try:
         import mcp  # noqa: F401
 
@@ -1117,6 +1387,46 @@ def build_parser() -> argparse.ArgumentParser:
     metrics.add_argument("--base-url", default="", help="Override AUTOSKILL_URL; use a local/loopback API.")
     metrics.add_argument("--json", action="store_true", help="Print raw /route-metrics JSON.")
     metrics.set_defaults(func=_command_metrics)
+
+    survey = subparsers.add_parser(
+        "survey", help="Answer the voluntary 'was Auto-Skill useful?' prompt (requires login)."
+    )
+    survey.add_argument("response", choices=["helpful", "not_useful", "skip"], help="Your answer.")
+    survey.set_defaults(func=_command_survey)
+
+    impact_report = subparsers.add_parser(
+        "impact-report", help="Show your personal Auto-Skill impact report (requires login)."
+    )
+    impact_report.add_argument("--days", type=int, default=30, help="Window size in days (default 30).")
+    impact_report.add_argument("--json", action="store_true", help="Print raw /impact-report JSON.")
+    impact_report.set_defaults(func=_command_impact_report)
+
+    measurement_mode = subparsers.add_parser(
+        "measurement-mode", help="Manage opt-in Measurement Mode (requires login)."
+    )
+    measurement_mode_sub = measurement_mode.add_subparsers(dest="measurement_mode_command", required=True)
+
+    measurement_mode_status = measurement_mode_sub.add_parser("status", help="Show current Measurement Mode settings.")
+    measurement_mode_status.set_defaults(func=_command_measurement_mode_status)
+
+    measurement_mode_enable = measurement_mode_sub.add_parser(
+        "enable", help="Opt in: randomly withhold a small share of full-tier routes to measure lift."
+    )
+    measurement_mode_enable.add_argument(
+        "--holdout-rate", type=float, default=None, help="Fraction of eligible routes to hold out (default 0.05)."
+    )
+    measurement_mode_enable.set_defaults(func=_command_measurement_mode_enable)
+
+    measurement_mode_disable = measurement_mode_sub.add_parser("disable", help="Opt out at any time.")
+    measurement_mode_disable.set_defaults(func=_command_measurement_mode_disable)
+
+    log_show = subparsers.add_parser(
+        "log", help="Show recent local routing decisions (requires AUTOSKILL_DIAGNOSTICS=1)."
+    )
+    log_show.add_argument("--tail", type=int, default=20, help="Number of recent entries to show (default: 20).")
+    log_show.add_argument("--log-path", help="Override the routing log path (defaults to AUTOSKILL_ROUTING_LOG or ~/.claude/auto-skill-routing.jsonl).")
+    log_show.add_argument("--json", action="store_true", help="Print raw JSON entries instead of a formatted summary.")
+    log_show.set_defaults(func=_command_log_show)
 
     preview = subparsers.add_parser("preview", help="Preview a skill by URL or task description.")
     preview.add_argument("source", nargs="+", help="Skill URL or task description.")

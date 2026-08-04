@@ -92,10 +92,23 @@ def build_context_guard(
         result["reason"] = "invalid_skill_frontmatter"
         return result
 
+    if len(content) > MAX_GUARDED_CONTENT_CHARS:
+        result["reason"] = "content_too_large"
+        return result
+
     stripped = strip_unsafe_content(content)
     if not stripped.text:
         result["reason"] = "capsule_unavailable"
         return result
+
+    if stripped.non_portable:
+        # Repeatedly references the same made-up project path (e.g.
+        # "Calypso/tools/x.py") -- a bespoke automation for one specific
+        # repo, not a technique that generalizes to a stranger's machine.
+        # Retrieval similarity doesn't catch this; only content does.
+        result["reason"] = "non_portable_project_specific"
+        return result
+
     if len(stripped.text) > _inline_delivery_budget():
         result.update(
             {

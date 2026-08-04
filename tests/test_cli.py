@@ -101,6 +101,177 @@ def test_disable_hook_codex_reports_not_enabled(
     assert "not enabled" in out
 
 
+def test_enable_hook_claude_registers_stop_outcome_hook_alongside_route_hook(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    settings_path = tmp_path / "settings.json"
+
+    result = cli._command_enable_hook(_hook_ns(settings_path, target="claude"))
+    out = capsys.readouterr().out
+
+    assert result == 0
+    assert "enabled: wrote hook entry" in out
+    settings = json.loads(settings_path.read_text(encoding="utf-8"))
+    route_args = settings["hooks"]["UserPromptSubmit"][0]["hooks"][0]["args"]
+    assert route_args == [str(cli.HOOK_SCRIPT_PATH), "--json-output"]
+    outcome_args = settings["hooks"]["Stop"][0]["hooks"][0]["args"]
+    assert outcome_args == [str(cli.OUTCOME_HOOK_SCRIPT_PATH)]
+
+
+def test_enable_hook_claude_is_idempotent_for_stop_hook(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    settings_path = tmp_path / "settings.json"
+    cli._command_enable_hook(_hook_ns(settings_path, target="claude"))
+    capsys.readouterr()
+
+    cli._command_enable_hook(_hook_ns(settings_path, target="claude"))
+
+    settings = json.loads(settings_path.read_text(encoding="utf-8"))
+    assert len(settings["hooks"]["Stop"]) == 1
+
+
+def test_disable_hook_claude_removes_both_route_and_outcome_hooks(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    settings_path = tmp_path / "settings.json"
+    cli._command_enable_hook(_hook_ns(settings_path, target="claude"))
+    capsys.readouterr()
+
+    result = cli._command_disable_hook(_hook_ns(settings_path, target="claude"))
+    out = capsys.readouterr().out
+
+    assert result == 0
+    assert "disabled: removed hook entry" in out
+    settings = json.loads(settings_path.read_text(encoding="utf-8"))
+    assert "hooks" not in settings
+
+
+def test_enable_hook_claude_upgrades_a_pre_json_output_registration(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A settings.json written before --json-output/the Stop hook existed
+    must not be treated as already up to date -- the old check only compared
+    args[0], which matched forever and silently skipped the Stop hook and
+    --json-output additions on every real machine that had already run
+    enable-hook once."""
+    settings_path = tmp_path / "settings.json"
+    settings_path.write_text(
+        json.dumps(
+            {
+                "hooks": {
+                    "UserPromptSubmit": [
+                        {
+                            "hooks": [
+                                {
+                                    "type": "command",
+                                    "command": "python",
+                                    "args": [str(cli.HOOK_SCRIPT_PATH)],
+                                    "timeout": 15,
+                                    "statusMessage": "Routing prompt through auto-skill...",
+                                }
+                            ]
+                        }
+                    ]
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = cli._command_enable_hook(_hook_ns(settings_path, target="claude"))
+    out = capsys.readouterr().out
+
+    assert result == 0
+    assert "already enabled" not in out
+    settings = json.loads(settings_path.read_text(encoding="utf-8"))
+    assert settings["hooks"]["UserPromptSubmit"][0]["hooks"][0]["args"] == [str(cli.HOOK_SCRIPT_PATH), "--json-output"]
+    assert settings["hooks"]["Stop"][0]["hooks"][0]["args"] == [str(cli.OUTCOME_HOOK_SCRIPT_PATH)]
+
+
+def test_disable_hook_claude_preserves_unrelated_stop_hooks(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    settings_path = tmp_path / "settings.json"
+    settings_path.write_text(
+        json.dumps({"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "python", "args": ["/other/hook.py"]}]}]}}),
+        encoding="utf-8",
+    )
+    cli._command_enable_hook(_hook_ns(settings_path, target="claude"))
+    capsys.readouterr()
+
+    cli._command_disable_hook(_hook_ns(settings_path, target="claude"))
+
+    settings = json.loads(settings_path.read_text(encoding="utf-8"))
+    assert len(settings["hooks"]["Stop"]) == 1
+    assert settings["hooks"]["Stop"][0]["hooks"][0]["args"] == ["/other/hook.py"]
+
+
+def _log_ns(log_path: Path | None, *, tail: int = 20, as_json: bool = False) -> argparse.Namespace:
+    return argparse.Namespace(log_path=str(log_path) if log_path else None, tail=tail, json=as_json)
+
+
+def test_log_show_reports_when_diagnostics_never_enabled(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    missing = tmp_path / "auto-skill-routing.jsonl"
+    result = cli._command_log_show(_log_ns(missing))
+    out = capsys.readouterr().out
+
+    assert result == 0
+    assert "no local routing log yet" in out
+    assert "AUTOSKILL_DIAGNOSTICS=1" in out
+
+
+def test_log_show_prints_recent_entries_most_recent_last(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    log_path = tmp_path / "routing.jsonl"
+    log_path.write_text(
+        json.dumps({"timestamp": "2026-07-31T10:00:00Z", "tier": "full", "selected_skill": {"name": "spreadsheet-router"}})
+        + "\n"
+        + json.dumps({"timestamp": "2026-07-31T10:05:00Z", "tier": "hint", "reason": "multiple candidates plausible"})
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = cli._command_log_show(_log_ns(log_path))
+    out = capsys.readouterr().out
+
+    assert result == 0
+    assert "last 2 of 2 routing decisions" in out
+    assert "tier=full  skill=spreadsheet-router" in out
+    assert "tier=hint  (multiple candidates plausible)" in out
+
+
+def test_log_show_respects_tail_limit(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    log_path = tmp_path / "routing.jsonl"
+    log_path.write_text(
+        "\n".join(json.dumps({"timestamp": f"t{i}", "tier": "full"}) for i in range(30)) + "\n",
+        encoding="utf-8",
+    )
+
+    result = cli._command_log_show(_log_ns(log_path, tail=5))
+    out = capsys.readouterr().out
+
+    assert result == 0
+    assert "last 5 of 30 routing decisions" in out
+    assert "t29" in out
+    assert "t25" in out
+    assert "t24" not in out
+
+
+def test_log_show_json_mode_prints_raw_entries(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    log_path = tmp_path / "routing.jsonl"
+    log_path.write_text(json.dumps({"timestamp": "t0", "tier": "full"}) + "\n", encoding="utf-8")
+
+    result = cli._command_log_show(_log_ns(log_path, as_json=True))
+    out = capsys.readouterr().out
+
+    assert result == 0
+    assert json.loads(out) == [{"timestamp": "t0", "tier": "full"}]
+
+
 def test_route_outputs_selected_skill(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -337,6 +508,125 @@ def test_feedback_command_reports_failure(
     out = capsys.readouterr().out
     assert result == 1
     assert "not recorded" in out
+
+
+def test_survey_command_records_response(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    async def fake_survey(response: str) -> bool:
+        assert response == "helpful"
+        return True
+
+    monkeypatch.setattr(cli, "record_route_survey_response", fake_survey)
+    result = cli.main(["survey", "helpful"])
+    out = capsys.readouterr().out
+    assert result == 0
+    assert "recorded survey response: helpful" in out
+
+
+def test_survey_command_reports_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    async def fake_survey(response: str) -> bool:
+        del response
+        return False
+
+    monkeypatch.setattr(cli, "record_route_survey_response", fake_survey)
+    result = cli.main(["survey", "skip"])
+    out = capsys.readouterr().out
+    assert result == 1
+    assert "not recorded" in out
+
+
+def test_impact_report_command_prints_summary(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    async def fake_report(days: int) -> dict:
+        assert days == 30
+        return {
+            "window_days": 30,
+            "activity": {
+                "substantial_tasks_routed": 12,
+                "tiers": {"full": 8, "hint": 3, "none": 1},
+                "declined_uncertain_count": 1,
+                "top_task_families": [{"task_family": "coding", "count": 9}],
+                "distinct_specialists_delivered": 4,
+                "specialists_discovered_without_install": 3,
+            },
+            "context_efficiency": {
+                "delivered_capsule_tokens": 2140,
+                "eligible_raw_tokens": 17600,
+                "compression_ratio": 0.88,
+                "median_injected_tokens": 300,
+                "p95_injected_tokens": 900,
+                "token_budget": 1000,
+                "budget_compliance_rate": 0.95,
+            },
+            "measured_lift": {"available": False, "reason": "measurement_mode_not_enabled"},
+        }
+
+    monkeypatch.setattr(cli, "get_impact_report", fake_report)
+    result = cli.main(["impact-report"])
+    out = capsys.readouterr().out
+    assert result == 0
+    assert "substantial tasks routed: 12" in out
+    assert "88% reduction in reference context" in out
+    assert "opt in with `auto-skill measurement-mode enable`" in out
+
+
+def test_impact_report_command_requires_login(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    async def fake_report(days: int) -> dict:
+        del days
+        raise cli.NotLoggedInError("Not logged in. Run `auto-skill login` first.")
+
+    monkeypatch.setattr(cli, "get_impact_report", fake_report)
+    result = cli.main(["impact-report"])
+    err = capsys.readouterr().err
+    assert result == 1
+    assert "Not logged in" in err
+
+
+def test_measurement_mode_status_and_enable_and_disable(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    async def fake_get() -> dict:
+        return {"enabled": False, "holdout_rate": 0.05}
+
+    monkeypatch.setattr(cli, "get_measurement_mode", fake_get)
+    result = cli.main(["measurement-mode", "status"])
+    out = capsys.readouterr().out
+    assert result == 0
+    assert "disabled" in out
+
+    async def fake_set(enabled: bool, holdout_rate: float | None) -> dict:
+        assert enabled is True
+        assert holdout_rate == 0.1
+        return {"enabled": True, "holdout_rate": 0.1}
+
+    monkeypatch.setattr(cli, "set_measurement_mode", fake_set)
+    result = cli.main(["measurement-mode", "enable", "--holdout-rate", "0.1"])
+    out = capsys.readouterr().out
+    assert result == 0
+    assert "measurement mode enabled" in out
+    assert "may not receive automated guidance" in out
+
+    async def fake_disable(enabled: bool, holdout_rate: float | None = None) -> dict:
+        assert enabled is False
+        assert holdout_rate is None
+        return {"enabled": False, "holdout_rate": 0.1}
+
+    monkeypatch.setattr(cli, "set_measurement_mode", fake_disable)
+    result = cli.main(["measurement-mode", "disable"])
+    out = capsys.readouterr().out
+    assert result == 0
+    assert "measurement mode disabled" in out
 
 
 class FakeMetricsResponse:

@@ -1,0 +1,146 @@
+---
+name: video-repurposing-planner
+description: Turns raw footage, a transcript, or a rough description of a video/podcast into a ready-to-use social media edit plan — a shot list, cut timestamps, a hook line, and platform-ready captions with hashtags — for YouTube, Instagram, TikTok, or Facebook. Use when the user asks to "repurpose this video", "make viral clips", "create highlights", "convert this podcast to shorts", "extract the best moments", "make a reel", "make a short", "plan my edit", or "write captions for this clip". Do NOT use for video editing theory questions, camera-buying advice, or software tutorials (e.g. Premiere Pro / DaVinci Resolve lessons) with no actual footage or transcript to work from.
+---
+
+# Video Repurposing Planner Skill
+
+## Settings (edit these to make it yours)
+- Default platform if none is specified: YouTube (16:9, 1080p)
+- Default caption tone: energetic, friendly, first-person (matches Jaweirya's content-creator voice)
+- Default number of hashtags: 5-8, mix of niche + broad tags
+
+## Default Editing Philosophy
+- Remove dead air (long silences, filler words like "umm") from the plan.
+- Keep cuts natural — recommend hard cuts over flashy transitions.
+- Preserve the speaker's intended meaning — never suggest a cut that
+  changes or reverses what they actually said.
+- Prioritize a strong hook in the first 3 seconds over a slow intro.
+
+## Purpose
+This skill teaches an AI agent how to turn raw footage (described in
+text, or a transcript pasted in) into a complete, ready-to-use social
+media edit plan — entirely as text output, with no video file
+processing required. It works fully inside a normal chat, on any
+device, with no downloads or extra tools needed.
+
+## When to Use This Skill (Trigger Conditions)
+Use this skill whenever the user asks to:
+- Repurpose a video/podcast/interview into shorter clips
+- Create highlights or viral clips from raw footage or a transcript
+- Convert a podcast into YouTube Shorts, Reels, or TikTok clips
+- Extract the "best moments" from a longer recording
+- Get a hook line, captions, or hashtags for a clip
+- Plan out an edit before actually cutting the video
+
+## Step 0: Ask Before Planning (ALWAYS do this first)
+Before creating the plan, check whether enough information exists.
+Never assume — ask the user when something is missing:
+
+- If the user hasn't shared a transcript or description of the
+  footage → ask them to paste it, or describe what happens in the video.
+- If the target platform is not specified → ask which platform
+  (YouTube, Instagram, TikTok, Facebook) this is for.
+- If the desired number/length of clips is not specified → ask how
+  many clips they want and roughly how long each should be.
+- If the user wants "highlights" or "viral clips" → ask if they want
+  clips ranked by how likely each is to perform well.
+
+Only move to the planning steps below once these are answered (or the
+user says "just use your best judgment" — in that case, use the
+Settings defaults above).
+
+## Platform Reference Table
+
+| Platform | Aspect Ratio | Ideal Length | Style Notes |
+|---|---|---|---|
+| YouTube (long-form) | 16:9 | No strict limit | Slower pacing OK, prioritize audio quality |
+| YouTube Shorts | 9:16 | Under 60s | Hook in first 2-3 seconds |
+| Instagram Reels | 9:16 | Under 90s | Strong opening frame (used as cover) |
+| Instagram Feed | 1:1 or 4:5 | Under 60s | Clean, polished look |
+| TikTok | 9:16 | Best under 60s | Hook in first 3 seconds, fast cuts, captions mandatory |
+| Facebook | 9:16 or 1:1 | Varies | Similar to Instagram, slightly slower pacing OK |
+
+## Step-by-Step Workflow
+
+1. **Read the raw material**
+   Read the transcript/description the user provided in full before
+   planning anything.
+
+2. **Identify candidate moments**
+   Find the strongest moments: a surprising line, a strong emotion, a
+   clear tip/lesson, a funny or quotable moment. List each with an
+   approximate timestamp or location in the text.
+
+3. **Rank the moments**
+   Order candidates by how likely each is to hook a viewer in the
+   first 3 seconds, based on the target platform's style notes above.
+
+4. **Build the shot list**
+   For each chosen clip, write:
+   - Start point / end point (timestamp or text location)
+   - What happens in the clip (one line)
+   - Why it was chosen (hook value, emotion, information)
+
+5. **Write the hook line**
+   Write the exact first line/sentence that should open the clip —
+   this is the single most important part for retention.
+
+6. **Write the caption**
+   Write a ready-to-post caption in the user's tone (see Settings),
+   matching the platform's typical style (short and punchy for TikTok,
+   slightly longer for Instagram, descriptive for YouTube).
+
+7. **Write hashtags**
+   Suggest hashtags per the Settings default: a mix of niche-specific
+   and broad/discovery tags relevant to the content topic.
+
+8. **Note the technical formatting needed**
+   State the aspect ratio, ideal length, and caption/subtitle
+   recommendation for the chosen platform, so whoever edits the video
+   (the user, or an editor) knows exactly what to produce.
+
+## Final Quality Check (do this before finishing)
+Before finishing any plan, verify all of the following:
+- Confirm every clip's hook actually matches the platform's attention style.
+- Confirm the caption tone matches the Settings default (or the user's
+  request if they specified something different).
+- Confirm timestamps/locations reference real parts of the provided
+  transcript/description, not invented content.
+- Confirm the plan includes aspect ratio and length guidance for the
+  stated platform.
+
+## Best Practices
+- Keep the hook line short — under 10 words when possible.
+- Never invent details not present in the user's transcript/description.
+- Match caption length to platform norms (TikTok/Reels: short; YouTube: longer).
+- Always give a reason for each clip choice, not just a timestamp.
+
+## Common Mistakes to Avoid
+- Suggesting a hook that doesn't match the actual opening moment of the clip.
+- Writing generic captions that could apply to any video.
+- Ignoring the platform's ideal length and pacing style.
+- Recommending too many clips without ranking them by strength.
+
+## Negative Triggers — Do NOT Use This Skill For
+- General video editing theory questions with no footage/transcript to work from
+- Camera or microphone buying advice
+- Premiere Pro or DaVinci Resolve software tutorials
+- Only activate this skill when the user has actual footage, a
+  transcript, or a description of content they want repurposed
+
+## Example Tasks
+**User request 1:** "Convert this podcast transcript into 5 YouTube Shorts."
+**Agent should:** ask clarifying questions if needed (Step 0) → read
+transcript → find 5 strong moments → rank them → build a shot list with
+timestamps → write a hook line, caption, and hashtags for each →
+confirm aspect ratio/length guidance for YouTube Shorts.
+
+**User request 2:** "Make viral clips from this interview."
+**Agent should:** ask which platform and how many clips (Step 0) → read
+provided material → identify and rank candidate moments → build full
+shot list, hooks, captions, hashtags → note platform formatting rules.
+
+**User request 3:** "Write a caption and hashtags for this clip about morning routines."
+**Agent should:** ask which platform if not specified → write a hook
+line, caption in the user's tone, and 5-8 relevant hashtags.

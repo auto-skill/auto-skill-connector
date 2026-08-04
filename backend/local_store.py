@@ -302,6 +302,32 @@ CREATE TABLE IF NOT EXISTS route_usage (
     PRIMARY KEY (user_id, month)
 );
 
+CREATE TABLE IF NOT EXISTS route_survey_state (
+    user_id TEXT PRIMARY KEY,
+    routes_since_response INTEGER NOT NULL DEFAULT 0,
+    last_prompted_at TEXT,
+    last_response TEXT,
+    last_response_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS measurement_mode_settings (
+    user_id TEXT PRIMARY KEY,
+    enabled INTEGER NOT NULL DEFAULT 0,
+    holdout_rate REAL NOT NULL DEFAULT 0.05,
+    updated_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS route_outcome_metrics (
+    route_id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    turns INTEGER,
+    total_tokens INTEGER,
+    tool_calls INTEGER,
+    elapsed_seconds INTEGER,
+    reported_at TEXT
+);
+CREATE INDEX IF NOT EXISTS route_outcome_metrics_user_idx ON route_outcome_metrics(user_id);
+
 CREATE TABLE IF NOT EXISTS oauth_identities (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
@@ -568,6 +594,15 @@ ROUTE_EVENT_COLUMN_DEFAULTS = {
     "user_id": "TEXT",
     "skip_reason": "TEXT",
     "ip_address": "TEXT",
+    "task_family": "TEXT",
+    "policy_skill_id": "TEXT",
+    "plan_size": "INTEGER",
+    "compression_ratio": "REAL",
+    "route_confidence": "REAL",
+    "session_id": "TEXT",
+    "task_id": "TEXT",
+    "measurement_arm": "TEXT",
+    "measurement_stratum": "TEXT",
 }
 
 # Route analytics are deliberately metadata-only. Keep this allowlist at the
@@ -610,6 +645,15 @@ ROUTE_EVENT_WRITE_COLUMNS = frozenset(
         "user_id",
         "skip_reason",
         "ip_address",
+        "task_family",
+        "policy_skill_id",
+        "plan_size",
+        "compression_ratio",
+        "route_confidence",
+        "session_id",
+        "task_id",
+        "measurement_arm",
+        "measurement_stratum",
     }
 )
 
@@ -619,6 +663,7 @@ ROUTE_EVENT_OUTCOMES = frozenset(
 )
 ROUTE_EVENT_TIERS = frozenset({"full", "hint", "none", "skipped"})
 ROUTE_GUARD_DELIVERIES = frozenset({"full", "capsule", "isolation", "hint", "none"})
+ROUTE_MEASUREMENT_ARMS = frozenset({"routed", "holdout"})
 SAFE_ROUTE_SKIP_REASONS = frozenset(
     {
         "empty prompt",
@@ -630,6 +675,7 @@ SAFE_ROUTE_SKIP_REASONS = frozenset(
         "acknowledgement or continuation",
         "meta prompt",
         "meta or status prompt",
+        "non-task prompt",
     }
 )
 _SAFE_ROUTE_IDENTIFIER_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/+@-]*\Z")
@@ -1335,9 +1381,21 @@ def insert_route_event(event: dict) -> None:
         row = {key: value for key, value in event.items() if key in ROUTE_EVENT_WRITE_COLUMNS}
         row.setdefault("id", str(uuid.uuid4()))
         row.setdefault("created_at", _now())
-        for key in ("client", "client_version", "config_version", "feedback_source"):
+        for key in (
+            "client",
+            "client_version",
+            "config_version",
+            "feedback_source",
+            "task_family",
+            "policy_skill_id",
+            "session_id",
+            "task_id",
+            "measurement_stratum",
+        ):
             if key in row:
                 row[key] = _safe_route_identifier(row[key]) or None
+        if row.get("measurement_arm") not in ROUTE_MEASUREMENT_ARMS:
+            row["measurement_arm"] = None
         if row.get("anonymous_id_hash") and not _ANONYMOUS_HASH_RE.fullmatch(str(row["anonymous_id_hash"])):
             row["anonymous_id_hash"] = None
         if "ip_address" in row:
@@ -4285,6 +4343,426 @@ def user_route_analytics(user_id: str, days: int = 30) -> dict:
     rollup["window_days"] = days
     rollup["routes_this_month"] = get_route_usage(user_id)
     return rollup
+
+
+IMPACT_REPORT_TOKEN_BUDGET = int(os.getenv("ROUTE_INJECTED_TOKEN_WARN", "1000"))
+
+
+def user_impact_report(user_id: str, days: int = 30) -> dict:
+    """Retention-grade personal report: descriptive activity, the
+    capsule-vs-raw-source context-efficiency numbers, and trust behavior.
+    Aggregate-only -- same privacy stance as _route_event_rollup, no raw
+    prompts or content. Proven-lift is always unavailable until an opt-in
+    Measurement Mode exists to earn that claim."""
+    days = max(1, min(int(days or 30), 365))
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    conn = get_conn()
+    try:
+        where = "user_id = ? AND created_at >= ?"
+        params = [user_id, cutoff]
+        substantial_where = f"{where} AND skip_reason IS NULL"
+
+        total_substantial = int(
+            conn.execute(f"SELECT COUNT(*) FROM route_events WHERE {substantial_where}", params).fetchone()[0]
+        )
+        tiers = {
+            row["tier"] or "none": row["count"]
+            for row in conn.execute(
+                f"SELECT tier, COUNT(*) AS count FROM route_events WHERE {substantial_where} GROUP BY tier", params
+            ).fetchall()
+        }
+        families = [
+            dict(r)
+            for r in conn.execute(
+                f"""
+                SELECT task_family, COUNT(*) AS count
+                FROM route_events
+                WHERE {substantial_where} AND task_family IS NOT NULL AND task_family != ''
+                GROUP BY task_family
+                ORDER BY count DESC, task_family ASC
+                LIMIT 10
+                """,
+                params,
+            ).fetchall()
+        ]
+        clients = [
+            dict(r)
+            for r in conn.execute(
+                f"""
+                SELECT client, COUNT(*) AS count
+                FROM route_events
+                WHERE {substantial_where} AND client IS NOT NULL AND client != ''
+                GROUP BY client
+                ORDER BY count DESC, client ASC
+                LIMIT 10
+                """,
+                params,
+            ).fetchall()
+        ]
+
+        full_where = f"{where} AND tier = 'full'"
+        installed_ids = {
+            row["skill_id"]
+            for row in conn.execute(
+                "SELECT DISTINCT skill_id FROM installs WHERE user_id=?", (user_id,)
+            ).fetchall()
+        }
+        delivered_specialists = {
+            row["skill_id"]
+            for row in conn.execute(
+                f"SELECT DISTINCT skill_id FROM route_events WHERE {full_where} "
+                f"AND skill_id IS NOT NULL AND skill_id != ''",
+                params,
+            ).fetchall()
+        }
+        discovered_without_install = delivered_specialists - installed_ids
+
+        token_rows = conn.execute(
+            f"SELECT content_tokens, capsule_tokens, injected_tokens, result_count "
+            f"FROM route_events WHERE {full_where}",
+            params,
+        ).fetchall()
+        raw_tokens = [int(row["content_tokens"]) for row in token_rows if row["content_tokens"]]
+        capsule_tokens_list = [int(row["capsule_tokens"]) for row in token_rows if row["capsule_tokens"]]
+        injected_tokens_list = [
+            int(row["injected_tokens"]) for row in token_rows if row["injected_tokens"] is not None
+        ]
+        candidate_counts = [int(row["result_count"]) for row in token_rows if row["result_count"] is not None]
+
+        total_raw_tokens = sum(raw_tokens)
+        total_capsule_tokens = sum(capsule_tokens_list)
+        compression_ratio = (
+            round(1 - (total_capsule_tokens / total_raw_tokens), 4) if total_raw_tokens else None
+        )
+        median_injected = int(np.percentile(injected_tokens_list, 50)) if injected_tokens_list else None
+        p95_injected = int(np.percentile(injected_tokens_list, 95)) if injected_tokens_list else None
+        within_budget = sum(1 for value in injected_tokens_list if value <= IMPACT_REPORT_TOKEN_BUDGET)
+        budget_compliance_rate = (
+            round(within_budget / len(injected_tokens_list), 4) if injected_tokens_list else None
+        )
+        avg_candidates_considered = (
+            round(sum(candidate_counts) / len(candidate_counts), 1) if candidate_counts else None
+        )
+    finally:
+        conn.close()
+
+    return {
+        "window_days": days,
+        "activity": {
+            "substantial_tasks_routed": total_substantial,
+            "tiers": tiers,
+            "declined_uncertain_count": tiers.get("none", 0),
+            "top_task_families": families,
+            "top_clients": clients,
+            "distinct_specialists_delivered": len(delivered_specialists),
+            "specialists_discovered_without_install": len(discovered_without_install),
+        },
+        "context_efficiency": {
+            "delivered_capsule_tokens": total_capsule_tokens,
+            "eligible_raw_tokens": total_raw_tokens,
+            "compression_ratio": compression_ratio,
+            "median_injected_tokens": median_injected,
+            "p95_injected_tokens": p95_injected,
+            "token_budget": IMPACT_REPORT_TOKEN_BUDGET,
+            "budget_compliance_rate": budget_compliance_rate,
+            "avg_candidate_skills_considered": avg_candidates_considered,
+        },
+        "measured_lift": measurement_mode_lift(user_id, days),
+    }
+
+
+ROUTE_SURVEY_MIN_INTERVAL = int(os.getenv("ROUTE_SURVEY_MIN_INTERVAL", "12"))
+ROUTE_SURVEY_COOLDOWN_HOURS = int(os.getenv("ROUTE_SURVEY_COOLDOWN_HOURS", "24"))
+ROUTE_SURVEY_RESPONSES = frozenset({"helpful", "not_useful", "skip"})
+
+
+def record_substantial_route_for_survey(user_id: str) -> bool:
+    """Advance this user's substantial-route counter and report whether the
+    caller should surface the voluntary "Was Auto-Skill useful?" prompt.
+
+    Never asks after a single task -- only every ROUTE_SURVEY_MIN_INTERVAL
+    substantial routes, and never again within the cooldown window even if
+    the user ignores (rather than answers) the prompt. A real answer resets
+    the counter via record_route_survey_response."""
+    if not user_id:
+        return False
+    now = _now()
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT INTO route_survey_state (user_id, routes_since_response) VALUES (?, 1) "
+            "ON CONFLICT(user_id) DO UPDATE SET routes_since_response = routes_since_response + 1",
+            (user_id,),
+        )
+        row = conn.execute(
+            "SELECT routes_since_response, last_prompted_at FROM route_survey_state WHERE user_id=?",
+            (user_id,),
+        ).fetchone()
+        if row is None or row["routes_since_response"] < ROUTE_SURVEY_MIN_INTERVAL:
+            conn.commit()
+            return False
+        last_prompted = _parse_iso(row["last_prompted_at"]) if row["last_prompted_at"] else None
+        if last_prompted is not None:
+            elapsed_hours = (datetime.now(timezone.utc) - last_prompted).total_seconds() / 3600
+            if elapsed_hours < ROUTE_SURVEY_COOLDOWN_HOURS:
+                conn.commit()
+                return False
+        conn.execute("UPDATE route_survey_state SET last_prompted_at=? WHERE user_id=?", (now, user_id))
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
+def record_route_survey_response(user_id: str, response: str) -> bool:
+    """Record a voluntary Helpful/Not useful/Skip answer and reset the
+    substantial-route counter for the next cycle."""
+    response = (response or "").strip().lower()
+    if not user_id or response not in ROUTE_SURVEY_RESPONSES:
+        return False
+    now = _now()
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT INTO route_survey_state "
+            "(user_id, routes_since_response, last_prompted_at, last_response, last_response_at) "
+            "VALUES (?, 0, NULL, ?, ?) "
+            "ON CONFLICT(user_id) DO UPDATE SET "
+            "routes_since_response=0, last_prompted_at=NULL, last_response=?, last_response_at=?",
+            (user_id, response, now, response, now),
+        )
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
+def user_engagement_signals(user_id: str, days: int = 30) -> dict:
+    """Weak, passively observed re-engagement signals for internal use --
+    identifying customers worth a check-in, never a "time saved" or
+    "helpfulness" claim (see docs/impact-report-plan). Session continuation
+    only reflects reality once a client actually sends session_id."""
+    days = max(1, min(int(days or 30), 365))
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    conn = get_conn()
+    try:
+        reused_skills = int(
+            conn.execute(
+                """
+                SELECT COUNT(*) FROM (
+                    SELECT skill_id FROM route_events
+                    WHERE user_id=? AND created_at >= ? AND tier='full'
+                          AND skill_id IS NOT NULL AND skill_id != ''
+                    GROUP BY skill_id HAVING COUNT(*) > 1
+                )
+                """,
+                (user_id, cutoff),
+            ).fetchone()[0]
+        )
+        returned_task_families = int(
+            conn.execute(
+                """
+                SELECT COUNT(*) FROM (
+                    SELECT task_family FROM route_events
+                    WHERE user_id=? AND created_at >= ? AND skip_reason IS NULL
+                          AND task_family IS NOT NULL AND task_family != ''
+                    GROUP BY task_family HAVING COUNT(DISTINCT substr(created_at, 1, 10)) > 1
+                )
+                """,
+                (user_id, cutoff),
+            ).fetchone()[0]
+        )
+        rows = conn.execute(
+            """
+            SELECT created_at, task_family, session_id, outcome
+            FROM route_events
+            WHERE user_id=? AND created_at >= ? AND skip_reason IS NULL
+            ORDER BY created_at ASC
+            """,
+            (user_id, cutoff),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    immediate_reroutes = 0
+    same_session_continuations = 0
+    explicit_rejections = 0
+    previous = None
+    for row in rows:
+        if row["outcome"] in {"dismissed", "failed"}:
+            explicit_rejections += 1
+        if previous is not None:
+            prev_time = _parse_iso(previous["created_at"])
+            curr_time = _parse_iso(row["created_at"])
+            if (
+                prev_time
+                and curr_time
+                and (curr_time - prev_time).total_seconds() <= 300
+                and previous["task_family"]
+                and previous["task_family"] == row["task_family"]
+            ):
+                immediate_reroutes += 1
+            if (
+                previous["session_id"]
+                and row["session_id"]
+                and previous["session_id"] == row["session_id"]
+            ):
+                same_session_continuations += 1
+        previous = row
+
+    return {
+        "window_days": days,
+        "reused_skill_count": reused_skills,
+        "returned_task_family_count": returned_task_families,
+        "immediate_reroute_count": immediate_reroutes,
+        "same_session_continuation_count": same_session_continuations,
+        "explicit_rejection_count": explicit_rejections,
+    }
+
+
+MEASUREMENT_MODE_DEFAULT_HOLDOUT_RATE = float(os.getenv("MEASUREMENT_MODE_DEFAULT_HOLDOUT_RATE", "0.05"))
+MEASUREMENT_MODE_MIN_SAMPLES_PER_ARM = int(os.getenv("MEASUREMENT_MODE_MIN_SAMPLES_PER_ARM", "15"))
+# Priority order from the measurement plan: turns first, then tokens, then
+# tool calls, then elapsed time -- only shown once the paired arm sizes clear
+# the minimum-N gate, never inferred from ordinary month-over-month change.
+MEASUREMENT_MODE_METRIC_PRIORITY = ("turns", "total_tokens", "tool_calls", "elapsed_seconds")
+
+
+def get_measurement_mode_settings(user_id: str) -> dict:
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT enabled, holdout_rate FROM measurement_mode_settings WHERE user_id=?", (user_id,)
+        ).fetchone()
+    finally:
+        conn.close()
+    if row is None:
+        return {"enabled": False, "holdout_rate": MEASUREMENT_MODE_DEFAULT_HOLDOUT_RATE}
+    return {"enabled": bool(row["enabled"]), "holdout_rate": float(row["holdout_rate"])}
+
+
+def set_measurement_mode(user_id: str, enabled: bool, holdout_rate: float | None = None) -> dict:
+    """Opt a user in or out of Measurement Mode. Disabling at any time is a
+    one-call operation -- no confirmation flow, no delay."""
+    rate = MEASUREMENT_MODE_DEFAULT_HOLDOUT_RATE if holdout_rate is None else float(holdout_rate)
+    rate = max(0.0, min(rate, 0.5))
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT INTO measurement_mode_settings (user_id, enabled, holdout_rate, updated_at) "
+            "VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(user_id) DO UPDATE SET enabled=excluded.enabled, holdout_rate=excluded.holdout_rate, "
+            "updated_at=excluded.updated_at",
+            (user_id, 1 if enabled else 0, rate, _now()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return get_measurement_mode_settings(user_id)
+
+
+def record_route_outcome_metrics(
+    route_id: str,
+    user_id: str,
+    *,
+    turns: int | None = None,
+    total_tokens: int | None = None,
+    tool_calls: int | None = None,
+    elapsed_seconds: int | None = None,
+) -> bool:
+    """Sparse, voluntary session-outcome numbers a client can report against
+    a route_id it already received -- never raw prompts or tool output."""
+    conn = get_conn()
+    try:
+        owner = conn.execute("SELECT user_id FROM route_events WHERE id=?", (route_id,)).fetchone()
+        if owner is None or owner["user_id"] != user_id:
+            return False
+        conn.execute(
+            "INSERT INTO route_outcome_metrics "
+            "(route_id, user_id, turns, total_tokens, tool_calls, elapsed_seconds, reported_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(route_id) DO UPDATE SET turns=excluded.turns, total_tokens=excluded.total_tokens, "
+            "tool_calls=excluded.tool_calls, elapsed_seconds=excluded.elapsed_seconds, "
+            "reported_at=excluded.reported_at",
+            (route_id, user_id, turns, total_tokens, tool_calls, elapsed_seconds, _now()),
+        )
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
+def _bootstrap_relative_reduction(
+    routed: list[float], holdout: list[float], iterations: int = 2000
+) -> tuple[float, float, float] | None:
+    """Percentile bootstrap CI on the relative reduction of `routed` vs.
+    `holdout` medians (positive = routed used less of the metric)."""
+    if not routed or not holdout:
+        return None
+    rng = np.random.default_rng(20260730)
+    routed_arr = np.array(routed, dtype=float)
+    holdout_arr = np.array(holdout, dtype=float)
+    holdout_median = float(np.median(holdout_arr))
+    if holdout_median == 0:
+        return None
+    point = (holdout_median - float(np.median(routed_arr))) / holdout_median
+    samples = np.empty(iterations)
+    for i in range(iterations):
+        r = rng.choice(routed_arr, size=len(routed_arr), replace=True)
+        h = rng.choice(holdout_arr, size=len(holdout_arr), replace=True)
+        h_med = np.median(h)
+        samples[i] = (h_med - np.median(r)) / h_med if h_med != 0 else np.nan
+    samples = samples[~np.isnan(samples)]
+    if len(samples) < iterations // 2:
+        return None
+    low, high = np.percentile(samples, [2.5, 97.5])
+    return round(point * 100, 1), round(float(low) * 100, 1), round(float(high) * 100, 1)
+
+
+def measurement_mode_lift(user_id: str, days: int = 90) -> dict:
+    """Personal causal lift, gated behind opt-in Measurement Mode and a
+    minimum-N/CI requirement -- never inferred from ordinary route_events
+    trends. Returns unavailable until both arms clear the sample-size gate."""
+    settings = get_measurement_mode_settings(user_id)
+    if not settings["enabled"]:
+        return {"available": False, "reason": "measurement_mode_not_enabled"}
+    days = max(1, min(int(days or 90), 365))
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            """
+            SELECT re.measurement_arm AS arm, m.turns, m.total_tokens, m.tool_calls, m.elapsed_seconds
+            FROM route_events re
+            JOIN route_outcome_metrics m ON m.route_id = re.id
+            WHERE re.user_id=? AND re.created_at >= ? AND re.measurement_arm IS NOT NULL
+            """,
+            (user_id, cutoff),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    for metric in MEASUREMENT_MODE_METRIC_PRIORITY:
+        routed = [row[metric] for row in rows if row["arm"] == "routed" and row[metric] is not None]
+        holdout = [row[metric] for row in rows if row["arm"] == "holdout" and row[metric] is not None]
+        if len(routed) < MEASUREMENT_MODE_MIN_SAMPLES_PER_ARM or len(holdout) < MEASUREMENT_MODE_MIN_SAMPLES_PER_ARM:
+            continue
+        result = _bootstrap_relative_reduction(routed, holdout)
+        if result is None:
+            continue
+        point, low, high = result
+        return {
+            "available": True,
+            "metric": metric,
+            "measured_tasks": len(routed) + len(holdout),
+            "routed_samples": len(routed),
+            "holdout_samples": len(holdout),
+            "relative_reduction_pct": point,
+            "ci_low_pct": low,
+            "ci_high_pct": high,
+            "window_days": days,
+        }
+    return {"available": False, "reason": "not_enough_measurement_mode_data"}
 
 
 def org_route_analytics(org_id: str, days: int = 30) -> dict:

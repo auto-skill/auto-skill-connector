@@ -463,6 +463,142 @@ class RouteEventPrivacyTests(unittest.TestCase):
         self.assertFalse(archive.exists())
 
 
+class RouteSurveyAndEngagementSignalTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.old_db_path = local_store.DB_PATH
+        self.db_path = Path(self.tmp.name) / "local_skills.db"
+        local_store.DB_PATH = self.db_path
+        local_store.init_db()
+        self.old_interval = local_store.ROUTE_SURVEY_MIN_INTERVAL
+        local_store.ROUTE_SURVEY_MIN_INTERVAL = 3
+
+    def tearDown(self) -> None:
+        local_store.DB_PATH = self.old_db_path
+        local_store.ROUTE_SURVEY_MIN_INTERVAL = self.old_interval
+
+    def test_survey_prompts_only_after_interval_and_resets_on_response(self) -> None:
+        user_id = "u1"
+        self.assertFalse(local_store.record_substantial_route_for_survey(user_id))
+        self.assertFalse(local_store.record_substantial_route_for_survey(user_id))
+        self.assertTrue(local_store.record_substantial_route_for_survey(user_id))
+        # Cooldown blocks an immediate re-prompt even though the counter is still high.
+        self.assertFalse(local_store.record_substantial_route_for_survey(user_id))
+
+        self.assertTrue(local_store.record_route_survey_response(user_id, "helpful"))
+        self.assertFalse(local_store.record_substantial_route_for_survey(user_id))
+        self.assertFalse(local_store.record_substantial_route_for_survey(user_id))
+        self.assertTrue(local_store.record_substantial_route_for_survey(user_id))
+
+    def test_survey_response_rejects_unknown_values(self) -> None:
+        self.assertFalse(local_store.record_route_survey_response("u1", "love it"))
+
+    def test_non_task_prompt_events_are_excluded_from_substantial_counts(self) -> None:
+        user_id = "u1"
+        local_store.insert_route_event(
+            {"client": "cli", "user_id": user_id, "tier": "none", "skip_reason": "non-task prompt"}
+        )
+        local_store.insert_route_event(
+            {"client": "cli", "user_id": user_id, "tier": "full", "task_family": "coding", "skill_id": "s1"}
+        )
+        report = local_store.user_impact_report(user_id)
+        self.assertEqual(report["activity"]["substantial_tasks_routed"], 1)
+
+    def test_engagement_signals_detect_reuse_and_rejection(self) -> None:
+        user_id = "u1"
+        for _ in range(2):
+            local_store.insert_route_event(
+                {
+                    "client": "cli",
+                    "user_id": user_id,
+                    "tier": "full",
+                    "task_family": "coding",
+                    "skill_id": "s1",
+                    "outcome": "dismissed",
+                }
+            )
+        signals = local_store.user_engagement_signals(user_id)
+        self.assertEqual(signals["reused_skill_count"], 1)
+        self.assertEqual(signals["explicit_rejection_count"], 2)
+
+
+class MeasurementModeTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.old_db_path = local_store.DB_PATH
+        self.db_path = Path(self.tmp.name) / "local_skills.db"
+        local_store.DB_PATH = self.db_path
+        local_store.init_db()
+        self.old_min_samples = local_store.MEASUREMENT_MODE_MIN_SAMPLES_PER_ARM
+        local_store.MEASUREMENT_MODE_MIN_SAMPLES_PER_ARM = 3
+
+    def tearDown(self) -> None:
+        local_store.DB_PATH = self.old_db_path
+        local_store.MEASUREMENT_MODE_MIN_SAMPLES_PER_ARM = self.old_min_samples
+
+    def test_settings_default_off_and_round_trip(self) -> None:
+        defaults = local_store.get_measurement_mode_settings("u1")
+        self.assertFalse(defaults["enabled"])
+        updated = local_store.set_measurement_mode("u1", True, 0.2)
+        self.assertTrue(updated["enabled"])
+        self.assertEqual(updated["holdout_rate"], 0.2)
+        disabled = local_store.set_measurement_mode("u1", False)
+        self.assertFalse(disabled["enabled"])
+
+    def test_holdout_rate_is_clamped_to_a_safe_maximum(self) -> None:
+        # A caller (including a test) asking for holdout_rate=1.0 must not
+        # silently withhold guidance on every eligible task -- this clamp is
+        # a deliberate safety rail, not a default. See recommender.py's
+        # measurement-mode tests, which pin the assignment arm directly
+        # rather than relying on the clamped rate for determinism.
+        settings = local_store.set_measurement_mode("u1", True, holdout_rate=1.0)
+        self.assertEqual(settings["holdout_rate"], 0.5)
+        settings = local_store.set_measurement_mode("u1", True, holdout_rate=-1.0)
+        self.assertEqual(settings["holdout_rate"], 0.0)
+
+    def test_outcome_metrics_require_route_ownership(self) -> None:
+        local_store.insert_route_event({"id": "r1", "client": "cli", "user_id": "u1", "tier": "full"})
+        self.assertTrue(local_store.record_route_outcome_metrics("r1", "u1", turns=5))
+        self.assertFalse(local_store.record_route_outcome_metrics("r1", "someone-else", turns=5))
+        self.assertFalse(local_store.record_route_outcome_metrics("missing", "u1", turns=5))
+
+    def test_lift_unavailable_without_opt_in(self) -> None:
+        result = local_store.measurement_mode_lift("u1")
+        self.assertFalse(result["available"])
+        self.assertEqual(result["reason"], "measurement_mode_not_enabled")
+
+    def test_lift_unavailable_below_min_sample_gate(self) -> None:
+        local_store.set_measurement_mode("u1", True)
+        for i in range(2):
+            local_store.insert_route_event(
+                {"id": f"routed-{i}", "client": "cli", "user_id": "u1", "tier": "full", "measurement_arm": "routed"}
+            )
+            local_store.record_route_outcome_metrics(f"routed-{i}", "u1", turns=3)
+        result = local_store.measurement_mode_lift("u1")
+        self.assertFalse(result["available"])
+        self.assertEqual(result["reason"], "not_enough_measurement_mode_data")
+
+    def test_lift_reports_reduction_once_gate_clears(self) -> None:
+        local_store.set_measurement_mode("u1", True)
+        for i in range(3):
+            local_store.insert_route_event(
+                {"id": f"routed-{i}", "client": "cli", "user_id": "u1", "tier": "full", "measurement_arm": "routed"}
+            )
+            local_store.record_route_outcome_metrics(f"routed-{i}", "u1", turns=4)
+            local_store.insert_route_event(
+                {"id": f"holdout-{i}", "client": "cli", "user_id": "u1", "tier": "hint", "measurement_arm": "holdout"}
+            )
+            local_store.record_route_outcome_metrics(f"holdout-{i}", "u1", turns=8)
+        result = local_store.measurement_mode_lift("u1")
+        self.assertTrue(result["available"])
+        self.assertEqual(result["metric"], "turns")
+        self.assertEqual(result["relative_reduction_pct"], 50.0)
+        self.assertEqual(result["routed_samples"], 3)
+        self.assertEqual(result["holdout_samples"], 3)
+
+
 class RecomputeFeedbackScoresTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()

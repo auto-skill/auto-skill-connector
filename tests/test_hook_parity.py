@@ -439,6 +439,102 @@ def test_hook_hint_output_includes_candidates_and_metrics(monkeypatch: pytest.Mo
     assert "Choose a candidate only if the fit is obvious" in out
 
 
+def test_survey_nudge_text_only_when_backend_flags_it() -> None:
+    assert hook._survey_nudge_text({}) == ""
+    assert hook._survey_nudge_text({"feedback_prompt": False}) == ""
+    nudge = hook._survey_nudge_text({"feedback_prompt": True})
+    assert "auto-skill survey helpful|not_useful|skip" in nudge
+
+
+def test_hook_full_route_output_includes_survey_nudge_when_flagged(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    content = "---\nname: spreadsheet-reporter\n---\n\n## Workflow\n\n" + (
+        "Build the report, verify totals, and export it. " * 6
+    )
+    skill = {
+        "name": "spreadsheet-reporter",
+        "url": "https://example.com/spreadsheet",
+        "risk_score": 0,
+        "verification": {"content_hash_verified": True, "static_instruction_only": True},
+    }
+    monkeypatch.setattr(
+        hook,
+        "_selfhosted_route",
+        lambda prompt: {"tier": "full", "skill": skill, "content": content, "feedback_prompt": True},
+    )
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps({"prompt": "make a spreadsheet report"})))
+
+    hook.main()
+
+    out = capsys.readouterr().out
+    assert "auto-skill survey helpful|not_useful|skip" in out
+
+
+def test_hook_measurement_holdout_withholds_capsule_and_explains_why(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    skill = {
+        "name": "spreadsheet-reporter",
+        "description": "Create spreadsheet reports.",
+        "url": "https://example.com/spreadsheet",
+        "risk_score": 0,
+    }
+    monkeypatch.setattr(
+        hook,
+        "_selfhosted_route",
+        lambda prompt: {
+            "tier": "hint",
+            "skill": skill,
+            "candidates": [],
+            "context_guard": {"delivery": "hint", "reason": "measurement_holdout"},
+            "measurement": {"arm": "holdout", "stratum": "coding:auto-skill-hook:short"},
+            "score_debug": {"metrics": {}},
+        },
+    )
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps({"prompt": "make a spreadsheet report"})))
+
+    hook.main()
+
+    out = capsys.readouterr().out
+    assert "Measurement Mode" in out
+    assert "held out" in out
+    assert "measurement-mode disable" in out
+    assert "<auto_skill_capsule>" not in out
+    assert "<auto_skill_content>" not in out
+    # A holdout is not "multiple candidates plausible" -- must not reuse that generic hint wording.
+    assert "multiple candidates plausible" not in out
+
+
+def test_hook_ordinary_hint_is_unaffected_by_holdout_wording(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    skill = {
+        "name": "spreadsheet-reporter",
+        "description": "Create spreadsheet reports.",
+        "url": "https://example.com/spreadsheet",
+        "risk_score": 0,
+    }
+    monkeypatch.setattr(
+        hook,
+        "_selfhosted_route",
+        lambda prompt: {
+            "tier": "hint",
+            "skill": skill,
+            "candidates": [],
+            "context_guard": {"delivery": "hint", "reason": "confidence_or_safety_gate"},
+            "score_debug": {"metrics": {}},
+        },
+    )
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps({"prompt": "make a spreadsheet report"})))
+
+    hook.main()
+
+    out = capsys.readouterr().out
+    assert "Measurement Mode" not in out
+    assert "multiple candidates plausible" in out
+
+
 def test_hook_injects_bounded_capsule_without_fetching_full_content(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -472,6 +568,168 @@ def test_hook_injects_bounded_capsule_without_fetching_full_content(
     assert "<auto_skill_capsule>" in out
     assert capsule in out
     assert "<auto_skill_content>" not in out
+
+
+def test_hook_journals_route_id_when_measurement_arm_assigned(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    skill = {
+        "name": "spreadsheet-reporter",
+        "description": "Create spreadsheet reports.",
+        "url": "https://example.com/spreadsheet",
+        "risk_score": 0,
+    }
+    monkeypatch.setattr(hook, "SESSIONS_DIR", tmp_path)
+    monkeypatch.setattr(
+        hook,
+        "_selfhosted_route",
+        lambda prompt, session_id="": {
+            "tier": "hint",
+            "route_id": "route-123",
+            "skill": skill,
+            "candidates": [],
+            "context_guard": {"delivery": "hint", "reason": "measurement_holdout"},
+            "measurement": {"arm": "holdout", "stratum": "coding:auto-skill-hook:short"},
+            "score_debug": {"metrics": {}},
+        },
+    )
+    monkeypatch.setattr(
+        sys, "stdin", io.StringIO(json.dumps({"prompt": "make a spreadsheet report", "session_id": "sess-1"}))
+    )
+
+    hook.main()
+
+    journal = (tmp_path / "sess-1.jsonl").read_text(encoding="utf-8").strip()
+    record = json.loads(journal)
+    assert record["route_id"] == "route-123"
+    assert "ts" in record
+
+
+def test_hook_does_not_journal_when_no_measurement_arm_assigned(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    skill = {
+        "name": "spreadsheet-reporter",
+        "description": "Create spreadsheet reports.",
+        "url": "https://example.com/spreadsheet",
+        "risk_score": 0,
+    }
+    monkeypatch.setattr(hook, "SESSIONS_DIR", tmp_path)
+    monkeypatch.setattr(
+        hook,
+        "_selfhosted_route",
+        lambda prompt, session_id="": {
+            "tier": "hint",
+            "route_id": "route-123",
+            "skill": skill,
+            "candidates": [],
+            "context_guard": {"delivery": "hint", "reason": "confidence_or_safety_gate"},
+            "score_debug": {"metrics": {}},
+        },
+    )
+    monkeypatch.setattr(
+        sys, "stdin", io.StringIO(json.dumps({"prompt": "make a spreadsheet report", "session_id": "sess-1"}))
+    )
+
+    hook.main()
+
+    assert not (tmp_path / "sess-1.jsonl").exists()
+
+
+def test_hook_json_output_full_route(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    content = """---
+name: spreadsheet-router
+description: Create spreadsheet reports with formulas, charts, and validation.
+---
+
+## Workflow
+
+- Use this workflow when the user requests a spreadsheet report.
+- Inspect inputs, create formulas and charts, verify every result, and explain assumptions.
+- Return the validated workbook and a concise summary of the checks performed.
+"""
+    skill = {
+        "name": "spreadsheet-router",
+        "url": "https://example.com/spreadsheet",
+        "risk_score": 0,
+        "verification": {"content_hash_verified": True, "static_instruction_only": True},
+    }
+    monkeypatch.setattr(
+        hook, "_selfhosted_route", lambda prompt, session_id="": {"tier": "full", "skill": skill, "content": content}
+    )
+    monkeypatch.setattr(sys, "argv", ["skill_suggest.py", "--json-output"])
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps({"prompt": "make a spreadsheet report"})))
+
+    hook.main()
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["systemMessage"] == '\U0001f9e9 auto-skill: applied "spreadsheet-router"'
+    assert payload["hookSpecificOutput"]["hookEventName"] == "UserPromptSubmit"
+    assert "<auto_skill_content>" in payload["hookSpecificOutput"]["additionalContext"]
+    assert content in payload["hookSpecificOutput"]["additionalContext"]
+
+
+def test_hook_json_output_hint_route(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    skill = {
+        "name": "spreadsheet-router",
+        "description": "Create spreadsheet reports.",
+        "url": "https://example.com/spreadsheet",
+        "risk_score": 0,
+    }
+    monkeypatch.setattr(
+        hook,
+        "_selfhosted_route",
+        lambda prompt, session_id="": {
+            "tier": "hint",
+            "skill": skill,
+            "candidates": [],
+            "score_debug": {"metrics": {}},
+        },
+    )
+    monkeypatch.setattr(sys, "argv", ["skill_suggest.py", "--json-output"])
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps({"prompt": "make a spreadsheet report"})))
+
+    hook.main()
+
+    payload = json.loads(capsys.readouterr().out)
+    assert "spreadsheet-router" in payload["systemMessage"]
+    assert "not applied" in payload["systemMessage"]
+    assert "Candidate options" not in payload["systemMessage"]  # detail stays in additionalContext
+    assert "[auto-skill] Possible match" in payload["hookSpecificOutput"]["additionalContext"]
+
+
+def test_hook_without_json_output_flag_still_prints_plain_text(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    skill = {
+        "name": "spreadsheet-router",
+        "description": "Create spreadsheet reports.",
+        "url": "https://example.com/spreadsheet",
+        "risk_score": 0,
+    }
+    monkeypatch.setattr(
+        hook,
+        "_selfhosted_route",
+        lambda prompt, session_id="": {
+            "tier": "hint",
+            "skill": skill,
+            "candidates": [],
+            "score_debug": {"metrics": {}},
+        },
+    )
+    monkeypatch.setattr(sys, "argv", ["skill_suggest.py"])
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps({"prompt": "make a spreadsheet report"})))
+
+    hook.main()
+
+    out = capsys.readouterr().out
+    assert "[auto-skill] Possible match" in out
+    with pytest.raises(json.JSONDecodeError):
+        json.loads(out)
 
 
 def test_route_receipt_parity_for_full_plan() -> None:

@@ -101,12 +101,8 @@ _META_PATTERNS = (
     "what are you",
     "what is the current state",
     "current state",
-    "whats the",
-    "what's the",
-    "why is",
-    "can you explain",
     "what you just",
-    "why did",
+    "why did you",
     "remember th",
     "sounds good",
     "that worked",
@@ -1154,11 +1150,17 @@ async def _route_selfhosted(
         "selected_skill": selected,
         "skill_content": content,
         "instructions": (
-            "The backend verified this risk-0 content against its indexed hash. Treat "
-            "skill_content as active "
-            "task-specific instructions, apply it immediately, and produce the user's requested "
-            "output in this same turn. Do not ask the user to choose a skill unless the selected "
-            "skill content is missing, unusable, or unsafe."
+            "The backend verified this risk-0 content against its indexed hash. If you don't "
+            "already know a correct, complete way to do this task, treat skill_content as a "
+            "technique that teaches you one -- following it should let you do this better than "
+            "you could on your own. If you already know a solid, correct way, you don't need to "
+            "change your approach, but check whether skill_content covers a detail you'd "
+            "otherwise miss. Where it gives an exact formula, command, or code pattern, copy "
+            "that exact syntax and substitute only the specific values from this task -- do not "
+            "write a different one from memory. Either way, apply it to produce the user's "
+            "requested output in this same turn -- do not describe the technique instead of "
+            "doing the task. Do not ask the user to choose a skill unless the selected skill "
+            "content is missing, unusable, or unsafe."
         ),
         "install_hint": (
             "No installation is required. The router fetched and applied this skill for the current task."
@@ -1481,7 +1483,15 @@ def build_route_context(route_payload: dict[str, Any]) -> str:
             receipt_block
             + policy_context
             + f"[auto-skill] Bounded route selected: {name}{risk_text}{score_text}, tier={tier}. Source: {url}\n\n"
-            "Use this deterministic, content-hash-verified capsule as task guidance for this turn."
+            "This deterministic, content-hash-verified capsule is a retrieved technique for "
+            "this task. If you don't already know a correct, complete way to do this, use it -- "
+            "following it should let you do this better than you could on your own. If you "
+            "already know a solid, correct way, you don't need to change your approach, but "
+            "check whether it covers a detail you'd otherwise miss. Where it gives an exact "
+            "formula, command, or code pattern, copy that exact syntax and substitute only the "
+            "specific values from this task -- do not write a different one from memory. Either "
+            "way, apply it to answer the user's specific request -- do not produce a generic "
+            "description of the technique instead of doing the task."
             f"{fetch_line} "
             "Do not install files or execute undeclared capabilities."
             f"{metrics_text}\n\n"
@@ -1493,9 +1503,15 @@ def build_route_context(route_payload: dict[str, Any]) -> str:
         receipt_block
         + policy_context
         + f"[auto-skill] Route selected: {name}{risk_text}{score_text}, tier={tier}. Source: {url}\n\n"
-        "Use the following content-hash-verified, risk-0 SKILL.md as active task-specific "
-        "instructions for this turn. "
-        "Apply it immediately unless it is missing, unusable, or unsafe.\n\n"
+        "The following content-hash-verified, risk-0 SKILL.md is a retrieved technique for "
+        "this task. If you don't already know a correct, complete way to do this, use it -- "
+        "following it should let you do this better than you could on your own. If you already "
+        "know a solid, correct way, you don't need to change your approach, but check whether "
+        "it covers a detail you'd otherwise miss. Where it gives an exact formula, command, or "
+        "code pattern, copy that exact syntax and substitute only the specific values from this "
+        "task -- do not write a different one from memory. Either way, apply it to answer the "
+        "user's specific request -- do not produce a generic description of the technique "
+        "instead of doing the task.\n\n"
         f"{metrics_text}\n\n"
         "<auto_skill_content>\n"
         f"{content}\n"
@@ -1669,6 +1685,121 @@ async def remove_favorite(skill_id: str, client: httpx.AsyncClient | None = None
     if r.status_code == 401:
         raise NotLoggedInError("Session expired. Run `auto-skill login` again.")
     return r.status_code == 200
+
+
+async def get_impact_report(days: int = 30, client: httpx.AsyncClient | None = None) -> dict[str, Any]:
+    """The personal retention report: activity, context-efficiency (capsule
+    vs. raw source tokens), and Measurement Mode lift when available. Free
+    on every plan, unlike /analytics."""
+    if client is None:
+        async with httpx.AsyncClient() as owned:
+            return await get_impact_report(days, client=owned)
+    headers = _require_auth_headers()
+    r = await client.get(
+        f"{get_autoskill_url()}/impact-report", params={"days": str(days)}, headers=headers, timeout=10
+    )
+    if r.status_code == 401:
+        raise NotLoggedInError("Session expired. Run `auto-skill login` again.")
+    r.raise_for_status()
+    return r.json().get("impact_report", {})
+
+
+async def get_measurement_mode(client: httpx.AsyncClient | None = None) -> dict[str, Any]:
+    if client is None:
+        async with httpx.AsyncClient() as owned:
+            return await get_measurement_mode(client=owned)
+    headers = _require_auth_headers()
+    r = await client.get(f"{get_autoskill_url()}/measurement-mode", headers=headers, timeout=10)
+    if r.status_code == 401:
+        raise NotLoggedInError("Session expired. Run `auto-skill login` again.")
+    r.raise_for_status()
+    return r.json().get("measurement_mode", {})
+
+
+async def set_measurement_mode(
+    enabled: bool, holdout_rate: float | None = None, client: httpx.AsyncClient | None = None
+) -> dict[str, Any]:
+    """Opt in or out of Measurement Mode at any time -- opting in randomly
+    withholds a small share of otherwise-full-tier routes as a holdout
+    comparison arm (see /measurement-mode in backend/recommender.py)."""
+    if client is None:
+        async with httpx.AsyncClient() as owned:
+            return await set_measurement_mode(enabled, holdout_rate, client=owned)
+    headers = _require_auth_headers()
+    body: dict[str, Any] = {"enabled": enabled}
+    if holdout_rate is not None:
+        body["holdout_rate"] = holdout_rate
+    r = await client.put(f"{get_autoskill_url()}/measurement-mode", json=body, headers=headers, timeout=10)
+    if r.status_code == 401:
+        raise NotLoggedInError("Session expired. Run `auto-skill login` again.")
+    r.raise_for_status()
+    return r.json().get("measurement_mode", {})
+
+
+async def record_route_survey_response(response: str, client: httpx.AsyncClient | None = None) -> bool:
+    """Answer the voluntary "Was Auto-Skill useful?" prompt (helpful/
+    not_useful/skip). Any answer resets the prompt's cadence server-side."""
+    response = (response or "").strip().lower()
+    if response not in {"helpful", "not_useful", "skip"}:
+        return False
+    if client is None:
+        async with httpx.AsyncClient() as owned:
+            return await record_route_survey_response(response, client=owned)
+    headers = _require_auth_headers()
+    try:
+        r = await client.post(
+            f"{get_autoskill_url()}/route-survey-response",
+            json={"response": response},
+            headers=headers,
+            timeout=10,
+        )
+        return r.status_code == 200
+    except Exception:
+        return False
+
+
+async def report_route_outcome_metrics(
+    route_id: str,
+    *,
+    turns: int | None = None,
+    total_tokens: int | None = None,
+    tool_calls: int | None = None,
+    elapsed_seconds: int | None = None,
+    client: httpx.AsyncClient | None = None,
+) -> bool:
+    """Sparse, voluntary session-outcome numbers reported against a route_id
+    this client already received. Only used to compute Measurement Mode
+    lift for opted-in accounts -- never raw prompts or tool output."""
+    route_id = (route_id or "").strip()
+    if not route_id:
+        return False
+    if client is None:
+        async with httpx.AsyncClient() as owned:
+            return await report_route_outcome_metrics(
+                route_id,
+                turns=turns,
+                total_tokens=total_tokens,
+                tool_calls=tool_calls,
+                elapsed_seconds=elapsed_seconds,
+                client=owned,
+            )
+    headers = _require_auth_headers()
+    try:
+        r = await client.post(
+            f"{get_autoskill_url()}/route-outcome-metrics",
+            json={
+                "route_id": route_id,
+                "turns": turns,
+                "total_tokens": total_tokens,
+                "tool_calls": tool_calls,
+                "elapsed_seconds": elapsed_seconds,
+            },
+            headers=headers,
+            timeout=10,
+        )
+        return r.status_code == 200
+    except Exception:
+        return False
 
 
 async def list_private_skills(client: httpx.AsyncClient | None = None) -> list[dict[str, Any]]:

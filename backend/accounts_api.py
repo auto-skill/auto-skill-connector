@@ -771,6 +771,14 @@ async def get_analytics(days: int = 30, authorization: str | None = Header(None)
     return {"analytics": store.user_route_analytics(user["id"], days)}
 
 
+@router.get("/impact-report")
+async def get_impact_report(days: int = 30, authorization: str | None = Header(None)):
+    """Personal retention report: available on every plan, including free
+    trials -- this is the surface meant to earn renewal, not a paid feature."""
+    user = _require_user(authorization)
+    return {"impact_report": store.user_impact_report(user["id"], days)}
+
+
 def _require_org_member(org_id: str, user: dict) -> str:
     role = store.org_role(org_id, user["id"])
     if role is None:

@@ -185,15 +185,11 @@ META_PATTERNS = (
     "what are you",
     "what is the current state",
     "current state",
-    "whats the",
-    "what's the",
-    "why is",
-    "why did",
+    "why did you",
     "remember th",
     "sounds good",
     "that worked",
     "looks good",
-    "can you explain",
     "what you just",
 )
 META_EXACT = {"status", "summarize", "explain this"}

@@ -277,6 +277,108 @@ class PlanFeatureEndpointTests(unittest.TestCase):
         self.assertEqual(body["excluded_skill_ids"], ["s1"])
         self.assertEqual(body["excluded_sources"], ["gitlab"])
 
+    def test_impact_report_is_free_and_summarizes_context_efficiency(self) -> None:
+        free = self._login("free@example.com")
+        user = local_store.get_or_create_user("free@example.com", "free", None)
+        # A full-tier delivery: 1000 raw tokens distilled to a 100-token capsule.
+        local_store.insert_route_event(
+            {
+                "client": "cli",
+                "user_id": user["id"],
+                "tier": "full",
+                "task_family": "coding",
+                "skill_id": "s1",
+                "skill_name": "Demo s1",
+                "content_tokens": 1000,
+                "capsule_tokens": 100,
+                "injected_tokens": 120,
+                "result_count": 5,
+            }
+        )
+        # A declined route: no confident match, nothing injected.
+        local_store.insert_route_event(
+            {"client": "cli", "user_id": user["id"], "tier": "none", "task_family": "research"}
+        )
+
+        body = self.client.get("/impact-report", headers=self._auth(free)).json()["impact_report"]
+        self.assertEqual(body["activity"]["substantial_tasks_routed"], 2)
+        self.assertEqual(body["activity"]["tiers"], {"full": 1, "none": 1})
+        self.assertEqual(body["activity"]["declined_uncertain_count"], 1)
+        self.assertEqual(body["activity"]["specialists_discovered_without_install"], 1)
+        self.assertEqual(body["context_efficiency"]["delivered_capsule_tokens"], 100)
+        self.assertEqual(body["context_efficiency"]["eligible_raw_tokens"], 1000)
+        self.assertEqual(body["context_efficiency"]["compression_ratio"], 0.9)
+        self.assertFalse(body["measured_lift"]["available"])
+
+    def test_route_survey_response_resets_cadence_and_rejects_bad_values(self) -> None:
+        free = self._login("free@example.com")
+        user = local_store.get_or_create_user("free@example.com", "free", None)
+        bad = self.client.post(
+            "/route-survey-response", json={"response": "love it"}, headers=self._auth(free)
+        )
+        self.assertEqual(bad.status_code, 400)
+
+        ok = self.client.post(
+            "/route-survey-response", json={"response": "not_useful"}, headers=self._auth(free)
+        )
+        self.assertEqual(ok.status_code, 200)
+        self.assertEqual(ok.json(), {"ok": True, "response": "not_useful"})
+
+        conn = local_store.get_conn()
+        try:
+            state = conn.execute(
+                "SELECT routes_since_response, last_response FROM route_survey_state WHERE user_id=?",
+                (user["id"],),
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertEqual(state["routes_since_response"], 0)
+        self.assertEqual(state["last_response"], "not_useful")
+
+    def test_route_response_includes_feedback_prompt_flag(self) -> None:
+        pro = self._login("pro@example.com", "pro")
+        candidate = {"id": "s1", "name": "Demo", "description": "d", "source": "github", "url": "http://s1"}
+        with (
+            patch("recommender.retrieve_skills", new=AsyncMock(return_value=[candidate])),
+            patch("recommender.rerank_candidates", side_effect=lambda q, r: r),
+        ):
+            r = self.client.post(
+                "/route",
+                json={"task": "create an excel spreadsheet report"},
+                headers=self._auth(pro),
+            )
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("feedback_prompt", r.json())
+        self.assertFalse(r.json()["feedback_prompt"])
+
+    def test_measurement_mode_settings_and_outcome_metrics_endpoints(self) -> None:
+        free = self._login("free@example.com")
+        user = local_store.get_or_create_user("free@example.com", "free", None)
+
+        default = self.client.get("/measurement-mode", headers=self._auth(free)).json()["measurement_mode"]
+        self.assertFalse(default["enabled"])
+
+        updated = self.client.put(
+            "/measurement-mode", json={"enabled": True, "holdout_rate": 0.2}, headers=self._auth(free)
+        ).json()["measurement_mode"]
+        self.assertTrue(updated["enabled"])
+        self.assertEqual(updated["holdout_rate"], 0.2)
+
+        local_store.insert_route_event({"id": "r1", "client": "cli", "user_id": user["id"], "tier": "full"})
+        ok = self.client.post(
+            "/route-outcome-metrics", json={"route_id": "r1", "turns": 4}, headers=self._auth(free)
+        )
+        self.assertEqual(ok.status_code, 200)
+        missing = self.client.post(
+            "/route-outcome-metrics", json={"route_id": "no-such-route", "turns": 4}, headers=self._auth(free)
+        )
+        self.assertEqual(missing.status_code, 404)
+
+        disabled = self.client.put(
+            "/measurement-mode", json={"enabled": False}, headers=self._auth(free)
+        ).json()["measurement_mode"]
+        self.assertFalse(disabled["enabled"])
+
     def test_route_applies_exclusions_and_org_blocks(self) -> None:
         pro = self._login("pro@example.com", "pro")
         user = local_store.get_or_create_user("pro@example.com", "pro", None)
