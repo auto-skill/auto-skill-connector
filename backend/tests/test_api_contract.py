@@ -13,7 +13,9 @@ from fastapi.testclient import TestClient
 import auth
 import local_store
 import scraper
+from context_guard import build_context_guard
 from quality import content_hash
+from token_budget import FixedTokenCounter
 
 
 VALID_SKILL = """---
@@ -577,6 +579,192 @@ class ApiContractTests(unittest.TestCase):
         self.assertGreaterEqual(event["skill_find_ms"], 0)
         self.assertGreaterEqual(event["injected_tokens"], event["content_tokens"])
         self.assertGreater(event["response_tokens"], 0)
+
+    def test_experimental_shadow_keeps_control_route_authoritative(self) -> None:
+        local_candidate = {
+            "id": "local-spreadsheet",
+            "name": "local-spreadsheet-reporter",
+            "description": "Build spreadsheet reports with formulas and charts.",
+            "source": "github_skill_file",
+            "url": "https://example.com/local-spreadsheet",
+            "retrieval_backend": "local",
+            "quality_status": "active",
+            "quality_score": 90,
+            "package_completeness": "complete",
+            "dependency_closure_status": "complete",
+            "content_hash": content_hash(VALID_SKILL),
+            "rank": 1.0,
+            "route_score": 0.03,
+            "similarity": 0.95,
+            "lexical_overlap": 6,
+            "meaningfulness_score": 0.62,
+            "trust_signal": True,
+            "_content": VALID_SKILL,
+        }
+        candidate = {
+            "id": "ondemand-spreadsheet",
+            "name": "spreadsheet-reporter",
+            "description": "Build spreadsheet reports with formulas and charts.",
+            "source": "skills_sh",
+            "url": "https://skills.sh/acme/spreadsheet-reporter",
+            "retrieval_backend": "skills_sh",
+            "on_demand_mode": True,
+            "source_snapshot_hash": "snapshot-ondemand",
+            "audit_status": "pass",
+            "risk_score": 0,
+            "quality_status": "active",
+            "quality_score": 90,
+            "package_completeness": "entrypoint-only",
+            "dependency_closure_status": "entrypoint-only",
+            "entrypoint_truncated": False,
+            "content_hash": content_hash(VALID_SKILL),
+            "rank": 1.0 / 61.0,
+            "route_score": 0.03,
+            "similarity": None,
+            "lexical_overlap": 6,
+            "meaningfulness_score": 0.62,
+            "trust_signal": True,
+            "_content": VALID_SKILL,
+        }
+
+        class FakeResult:
+            candidates = [candidate]
+            status = "ok"
+            warnings: list[str] = []
+
+            def debug(self) -> dict:
+                return {
+                    "variant": "on-demand",
+                    "provider": "fixture",
+                    "status": self.status,
+                    "cache": "miss",
+                    "candidate_count": 1,
+                    "latency_ms": 1,
+                    "budget": {"provider_calls": 2, "fetches": 1, "bytes_read": len(VALID_SKILL)},
+                    "warnings": [],
+                }
+
+        class FakeResolver:
+            async def resolve(self, task, *, intent, limit, max_capsule_chars=None):
+                del task, intent, limit, max_capsule_chars
+                return FakeResult()
+
+        async def control_retrieval(client, intent, limit):
+            del client, intent, limit
+            return [local_candidate]
+
+        async def no_policy(client, task_analysis, routing_filters):
+            del client, task_analysis, routing_filters
+            return None
+
+        with patch("recommender._on_demand_mode", return_value="shadow"), patch(
+            "recommender.retrieve_skills_for_intent", control_retrieval
+        ), patch("recommender.find_default_policy_candidate", no_policy), patch(
+            "recommender.default_on_demand_resolver", return_value=FakeResolver()
+        ):
+            response = self.client.post(
+                "/route",
+                json={"task": "create an excel report with formulas"},
+                headers=self._auth_headers(),
+            )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["tier"], "full")
+        self.assertEqual(body["skill"]["name"], "local-spreadsheet-reporter")
+        self.assertNotIn("on_demand_resolver", body["score_debug"])
+        self.assertNotEqual(body["skill"]["id"], candidate["id"])
+        self.assertEqual(body["context_guard"]["delivery"], "capsule")
+
+    def test_explicit_fallback_uses_verified_on_demand_candidate_after_control_miss(self) -> None:
+        candidate = {
+            "id": "ondemand-spreadsheet",
+            "name": "spreadsheet-reporter",
+            "description": "Build spreadsheet reports with formulas and charts.",
+            "source": "skills_sh",
+            "url": "https://github.com/acme/skills/blob/" + "a" * 40 + "/SKILL.md",
+            "retrieval_backend": "on_demand",
+            "on_demand_mode": True,
+            "source_snapshot_hash": "a" * 40,
+            "source_commit_sha": "a" * 40,
+            "audit_status": "unknown",
+            "risk_score": 0,
+            "quality_status": "active",
+            "quality_score": 90,
+            "package_completeness": "entrypoint-only",
+            "dependency_closure_status": "entrypoint-only",
+            "entrypoint_truncated": False,
+            "content_hash": content_hash(VALID_SKILL),
+            "rank": 1.0 / 61.0,
+            "route_score": 0.03,
+            "similarity": None,
+            "lexical_overlap": 6,
+            "meaningfulness_score": 0.62,
+            "trust_signal": True,
+            "_content": VALID_SKILL,
+        }
+        guard = build_context_guard(
+            task="create an excel report with formulas",
+            content=VALID_SKILL,
+            content_hash=content_hash(VALID_SKILL),
+            bounded_delivery=True,
+            token_counter=FixedTokenCounter(),
+            max_tokens=1000,
+        )
+        candidate["_on_demand_context_guard"] = guard
+        candidate["on_demand_tokenizer_id"] = guard["tokenizer_id"]
+        candidate["on_demand_capsule_ready"] = True
+
+        class FakeResult:
+            candidates = [candidate]
+            status = "ok"
+            warnings: list[str] = []
+
+            def debug(self) -> dict:
+                return {
+                    "variant": "on-demand",
+                    "provider": "fixture",
+                    "status": self.status,
+                    "cache": "miss",
+                    "candidate_count": 1,
+                    "latency_ms": 1,
+                    "budget": {"provider_calls": 2, "fetches": 1, "bytes_read": len(VALID_SKILL)},
+                    "warnings": [],
+                }
+
+        class FakeResolver:
+            async def resolve(self, task, *, intent, limit, max_capsule_chars=None):
+                del task, intent, limit, max_capsule_chars
+                return FakeResult()
+
+        async def control_miss(client, intent, limit):
+            del client, intent, limit
+            return []
+
+        async def no_policy(client, task_analysis, routing_filters):
+            del client, task_analysis, routing_filters
+            return None
+
+        with patch("recommender._on_demand_mode", return_value="fallback"), patch(
+            "recommender.retrieve_skills_for_intent", control_miss
+        ), patch("recommender.find_default_policy_candidate", no_policy), patch(
+            "recommender.default_on_demand_resolver", return_value=FakeResolver()
+        ):
+            response = self.client.post(
+                "/route",
+                json={"task": "create an excel report with formulas"},
+                headers=self._auth_headers(),
+            )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["tier"], "full")
+        self.assertEqual(body["skill"]["name"], "spreadsheet-reporter")
+        self.assertEqual(body["skill"]["verification"]["source"], "on-demand-provider")
+        self.assertEqual(body["context_guard"]["delivery"], "capsule")
+        self.assertIsNone(body["content"])
+        self.assertGreater(body["score_debug"]["metrics"]["capsule_tokens"], 0)
+        self.assertEqual(body["score_debug"]["metrics"]["content_tokens"], 0)
 
     def test_route_composes_coding_policy_with_primary_specialist(self) -> None:
         frontend_content = """---

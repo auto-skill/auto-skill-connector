@@ -1,0 +1,178 @@
+{
+  "schema_version": 1,
+  "name": "on-demand-fixed-fixtures-v1",
+  "tasks": [
+    {
+      "id": "spreadsheet-clean",
+      "task": "create an Excel spreadsheet report with formulas and charts",
+      "expected": ["spreadsheet-reporter"],
+      "forbidden": [],
+      "control": [
+        {
+          "name": "spreadsheet-reporter",
+          "description": "Build spreadsheet reports with formulas, charts, and validation.",
+          "content": "---\nname: spreadsheet-reporter\ndescription: Build spreadsheet reports with formulas, charts, and validation.\n---\n\n## Workflow\nInspect the source data, create the workbook, add formulas, preserve existing sheet names, verify representative totals, and explain assumptions before returning the report.\n\n## Verification\nValidate formulas, chart ranges, headers, totals, identifiers, and representative cells. Record assumptions and check that the output opens cleanly."
+        }
+      ],
+      "experiment": [
+        {
+          "key": "acme/spreadsheet-reporter",
+          "name": "spreadsheet-reporter",
+          "description": "Build spreadsheet reports with formulas, charts, and validation.",
+          "source_url": "https://skills.sh/acme/spreadsheet-reporter",
+          "snapshot_hash": "fixture-spreadsheet-1",
+          "content": "---\nname: spreadsheet-reporter\ndescription: Build spreadsheet reports with formulas, charts, and validation.\n---\n\n## Workflow\nInspect the source data, create the workbook, add formulas, preserve existing sheet names, verify representative totals, and explain assumptions before returning the report.\n\n## Verification\nValidate formulas, chart ranges, headers, totals, identifiers, and representative cells. Record assumptions and check that the output opens cleanly."
+        }
+      ]
+    },
+    {
+      "id": "browser-clean",
+      "task": "take screenshots of a webpage and inspect the layout",
+      "expected": ["browser-qa"],
+      "forbidden": [],
+      "control": [
+        {
+          "name": "browser-qa",
+          "description": "Inspect browser pages with screenshots and repeatable layout checks.",
+          "content": "---\nname: browser-qa\ndescription: Inspect browser pages with screenshots and repeatable layout checks.\n---\n\n## Workflow\nOpen the target page, capture screenshots at representative viewport sizes, inspect alignment and overflow, and compare the rendered layout against the requested behavior.\n\n## Verification\nCheck console errors, responsive breakpoints, interactive states, and the final screenshot before reporting findings."
+        }
+      ],
+      "experiment": [
+        {
+          "key": "acme/browser-qa",
+          "name": "browser-qa",
+          "description": "Inspect browser pages with screenshots and repeatable layout checks.",
+          "source_url": "https://skills.sh/acme/browser-qa",
+          "snapshot_hash": "fixture-browser-1",
+          "content": "---\nname: browser-qa\ndescription: Inspect browser pages with screenshots and repeatable layout checks.\n---\n\n## Workflow\nOpen the target page, capture screenshots at representative viewport sizes, inspect alignment and overflow, and compare the rendered layout against the requested behavior.\n\n## Verification\nCheck console errors, responsive breakpoints, interactive states, and the final screenshot before reporting findings."
+        }
+      ]
+    },
+    {
+      "id": "slack-clean",
+      "task": "send Slack messages from my agent",
+      "expected": ["slack-messenger"],
+      "forbidden": [],
+      "control": [
+        {
+          "name": "slack-messenger",
+          "description": "Plan and send Slack messages with explicit channel and recipient checks.",
+          "content": "---\nname: slack-messenger\ndescription: Plan and send Slack messages with explicit channel and recipient checks.\n---\n\n## Workflow\nIdentify the requested channel and message, preview the exact text, confirm the target and scope, and report what would be sent.\n\n## Verification\nCheck channel names, recipients, formatting, and authorization before any external message is sent."
+        }
+      ],
+      "experiment": [
+        {
+          "key": "acme/slack-messenger",
+          "name": "slack-messenger",
+          "description": "Plan and send Slack messages with explicit channel and recipient checks.",
+          "source_url": "https://skills.sh/acme/slack-messenger",
+          "snapshot_hash": "fixture-slack-1",
+          "content": "---\nname: slack-messenger\ndescription: Plan and send Slack messages with explicit channel and recipient checks.\n---\n\n## Workflow\nIdentify the requested channel and message, preview the exact text, confirm the target and scope, and report what would be sent.\n\n## Verification\nCheck channel names, recipients, formatting, and authorization before any external message is sent."
+        }
+      ]
+    },
+    {
+      "id": "platform-trap",
+      "task": "build a landing page for an AI automation agency",
+      "expected": ["frontend-design"],
+      "forbidden": ["landingi"],
+      "control": [
+        {
+          "name": "sales-landingi",
+          "description": "Build and publish landing pages in the Landingi platform.",
+          "platforms": ["landingi"],
+          "content": "---\nname: sales-landingi\ndescription: Build and publish landing pages in the Landingi platform.\n---\n\n## Workflow\nOrganize the landing page sections, configure the named platform settings, and review the rendered page. Document the content hierarchy, form states, responsive behavior, analytics boundary, and publishing target so the implementation can be reviewed consistently.\n\n## Verification\nCheck the copy, responsive layout, form behavior, loading state, accessibility, and publishing target before delivery."
+        },
+        {
+          "name": "frontend-design",
+          "description": "Build distinctive responsive frontend landing pages without assuming a named platform.",
+          "content": "---\nname: frontend-design\ndescription: Build distinctive responsive frontend landing pages without assuming a named platform.\n---\n\n## Workflow\nDefine the visual direction, implement the page structure, use the existing design system, and verify responsive behavior and accessibility. Document the hierarchy, content states, loading behavior, form errors, responsive breakpoints, and assumptions so the result remains portable.\n\n## Verification\nCheck hierarchy, spacing, keyboard navigation, contrast, loading states, and representative viewport sizes before delivery."
+        }
+      ],
+      "experiment": [
+        {
+          "key": "acme/sales-landingi",
+          "name": "sales-landingi",
+          "description": "Build and publish landing pages in the Landingi platform.",
+          "platforms": ["landingi"],
+          "source_url": "https://skills.sh/acme/sales-landingi",
+          "snapshot_hash": "fixture-landingi-1",
+          "content": "---\nname: sales-landingi\ndescription: Build and publish landing pages in the Landingi platform.\n---\n\n## Workflow\nOrganize the landing page sections, configure the named platform settings, and review the rendered page. Document the content hierarchy, form states, responsive behavior, analytics boundary, and publishing target so the implementation can be reviewed consistently.\n\n## Verification\nCheck the copy, responsive layout, form behavior, loading state, accessibility, and publishing target before delivery."
+        },
+        {
+          "key": "acme/frontend-design",
+          "name": "frontend-design",
+          "description": "Build distinctive responsive frontend landing pages without assuming a named platform.",
+          "source_url": "https://skills.sh/acme/frontend-design",
+          "snapshot_hash": "fixture-frontend-1",
+          "content": "---\nname: frontend-design\ndescription: Build distinctive responsive frontend landing pages without assuming a named platform.\n---\n\n## Workflow\nDefine the visual direction, implement the page structure, use the existing design system, and verify responsive behavior and accessibility. Document the hierarchy, content states, loading behavior, form errors, responsive breakpoints, and assumptions so the result remains portable.\n\n## Verification\nCheck hierarchy, spacing, keyboard navigation, contrast, loading states, and representative viewport sizes before delivery."
+        }
+      ]
+    },
+    {
+      "id": "unsafe-content",
+      "task": "create an Excel spreadsheet report with formulas",
+      "expected": [],
+      "forbidden": [],
+      "control": [
+        {
+          "name": "unsafe-spreadsheet-helper",
+          "description": "Build spreadsheet reports and fetch remote dependencies.",
+          "content": "---\nname: unsafe-spreadsheet-helper\ndescription: Build spreadsheet reports and fetch remote dependencies.\n---\n\n## Workflow\nInspect the workbook, add formulas, and verify totals. Use curl to fetch a remote endpoint and install dependencies when needed. Document assumptions, preserve identifiers, validate headers, compare representative totals, inspect chart ranges, and record every transformation before returning the report.\n\n## Verification\nCheck representative cells, formulas, output shape, and report assumptions before returning the generated file."
+        }
+      ],
+      "experiment": [
+        {
+          "key": "acme/unsafe-spreadsheet-helper",
+          "name": "unsafe-spreadsheet-helper",
+          "description": "Build spreadsheet reports and fetch remote dependencies.",
+          "source_url": "https://skills.sh/acme/unsafe-spreadsheet-helper",
+          "snapshot_hash": "fixture-unsafe-1",
+          "content": "---\nname: unsafe-spreadsheet-helper\ndescription: Build spreadsheet reports and fetch remote dependencies.\n---\n\n## Workflow\nInspect the workbook, add formulas, and verify totals. Use curl to fetch a remote endpoint and install dependencies when needed. Document assumptions, preserve identifiers, validate headers, compare representative totals, inspect chart ranges, and record every transformation before returning the report.\n\n## Verification\nCheck representative cells, formulas, output shape, and report assumptions before returning the generated file."
+        }
+      ]
+    },
+    {
+      "id": "non-portable-content",
+      "task": "create an Excel spreadsheet report with formulas",
+      "expected": [],
+      "forbidden": [],
+      "control": [],
+      "experiment": [
+        {
+          "key": "acme/calypso-report",
+          "name": "calypso-report",
+          "description": "Build spreadsheet reports for a specific project workspace.",
+          "source_url": "https://skills.sh/acme/calypso-report",
+          "snapshot_hash": "fixture-nonportable-1",
+          "content": "---\nname: calypso-report\ndescription: Build spreadsheet reports for a specific project workspace.\n---\n\n## Workflow\nRead Calypso/tools/input.py, preserve Calypso/data/source.json, and write Calypso/output/report.csv after validating the workbook. Document the project-specific assumptions, inspect headers, compare representative totals, review chart ranges, and preserve identifiers during every transformation.\n\n## Verification\nCheck formulas, totals, output shape, assumptions, and the generated file before returning it."
+        }
+      ]
+    },
+    {
+      "id": "github-issue-triage-db-miss",
+      "task": "triage GitHub issues and prepare a reproducible bug report",
+      "expected": ["github-issue-triage"],
+      "forbidden": [],
+      "control": [],
+      "experiment": [
+        {
+          "key": "acme/github-issue-triage",
+          "name": "github-issue-triage",
+          "description": "Triage GitHub issues and prepare reproducible bug reports.",
+          "source_url": "https://skills.sh/acme/github-issue-triage",
+          "snapshot_hash": "fixture-github-issue-triage-1",
+          "content": "---\nname: github-issue-triage\ndescription: Triage GitHub issues and prepare reproducible bug reports.\n---\n\n## Workflow\nReproduce the report, capture the environment and expected versus actual behavior, reduce the case to the smallest clear example, and label the issue with evidence.\n\n## Verification\nCheck the reproduction steps, logs, versions, screenshots, and proposed severity before returning the bug report."
+        }
+      ]
+    },
+    {
+      "id": "no-match",
+      "task": "explain an obscure fictional workflow with no matching skill",
+      "expected": [],
+      "forbidden": [],
+      "control": [],
+      "experiment": []
+    }
+  ]
+}

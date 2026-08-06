@@ -44,6 +44,8 @@ from context_guard import (
 from embeddings import LibraryContent, build_embed_text, embed_text_hash, embed_texts
 import local_store as store
 from query_compiler import CompiledIntent, compile_intent_query, skills_sh_query
+from on_demand_resolver import default_on_demand_resolver
+from token_budget import default_token_counter
 from quality import (
     CONFIG_VERSION,
     NAME_STOPWORDS,
@@ -82,6 +84,20 @@ SKILLS_SH_LIVE_ROUTING = os.getenv("AUTOSKILL_SKILLS_SH_ROUTING", "1").lower() n
     "false",
     "no",
 }
+# Compatibility flag for the first on-demand experiment. It now selects the
+# local-first shadow mode; active internet fallback requires the explicit enum
+# below so a legacy environment cannot replace the control route by accident.
+EXPERIMENTAL_ON_DEMAND_ROUTING = os.getenv(
+    "AUTOSKILL_EXPERIMENTAL_ON_DEMAND_ROUTING", "0"
+).lower() in {"1", "true", "yes"}
+ON_DEMAND_MODE_VALUES = {"off", "shadow", "fallback"}
+
+
+def _on_demand_mode() -> str:
+    configured = os.getenv("AUTOSKILL_ON_DEMAND_MODE", "").strip().lower()
+    if configured in ON_DEMAND_MODE_VALUES:
+        return configured
+    return "shadow" if EXPERIMENTAL_ON_DEMAND_ROUTING else "off"
 # A local package corpus is useful for offline development and private/legacy
 # migrations, but it must not silently bypass the skills.sh data gate in the
 # normal public route.  Operators can opt in explicitly for an outage drill
@@ -1048,6 +1064,19 @@ def _public_skill(row: dict | None) -> dict | None:
         "skills_sh_url": row.get("skills_sh_url"),
         "install_url": row.get("install_url"),
         "source_snapshot_hash": row.get("source_snapshot_hash"),
+        "source_commit_sha": row.get("source_commit_sha"),
+        "entrypoint_path": row.get("entrypoint_path"),
+        "repository": row.get("repository"),
+        "license": row.get("license"),
+        "raw_content_digest": row.get("raw_content_digest"),
+        "on_demand_cache_key": row.get("on_demand_cache_key"),
+        "on_demand_tokenizer_id": row.get("on_demand_tokenizer_id"),
+        "on_demand_capsule_token_count": row.get("on_demand_capsule_token_count"),
+        "on_demand_capsule_compiler_version": row.get("on_demand_capsule_compiler_version"),
+        "on_demand_context_policy": row.get("on_demand_context_policy"),
+        "on_demand_quality_version": row.get("on_demand_quality_version"),
+        "on_demand_trust_epoch": row.get("on_demand_trust_epoch"),
+        "on_demand_gate_versions": row.get("on_demand_gate_versions"),
         "audit_status": row.get("audit_status"),
         "audit_risk_level": row.get("audit_risk_level"),
         "audit_count": row.get("audit_count"),
@@ -1412,6 +1441,12 @@ def _candidate_context_guard(
     text: str,
     max_capsule_chars: int = DEFAULT_CAPSULE_CHARS,
 ) -> dict:
+    cached_guard = candidate.get("_on_demand_context_guard") if candidate else None
+    if candidate.get("on_demand_mode") and isinstance(cached_guard, dict):
+        # Resolver verification already pinned the capsule digest, tokenizer,
+        # compiler policy, and source commit. Reuse only that safe capsule;
+        # never cache or rehydrate the raw body.
+        return dict(cached_guard)
     package_hash = str(candidate.get("package_hash") or "") or None
     manifest = store.get_skill_package_manifest(package_hash) if package_hash else None
     return build_context_guard(
@@ -1420,7 +1455,11 @@ def _candidate_context_guard(
         content_hash=str(candidate.get("content_hash") or ""),
         content_digest=content_digest(text),
         max_capsule_chars=max_capsule_chars,
-        force_capsule=True,
+        # Internet candidates are delivered as bounded task capsules. Keep
+        # the legacy local/public delivery semantics unchanged.
+        bounded_delivery=bool(candidate.get("on_demand_mode")),
+        token_counter=default_token_counter() if candidate.get("on_demand_mode") else None,
+        max_tokens=ROUTE_INJECTED_TOKEN_WARN if candidate.get("on_demand_mode") else None,
         package_manifest=manifest,
         source_url=str(candidate.get("url") or candidate.get("source_url") or "") or None,
         source_commit_sha=str(candidate.get("source_commit_sha") or "") or None,
@@ -1510,6 +1549,10 @@ def _policy_context_guard(policy_item: dict) -> dict:
 
 def _verified_static_candidate_content(candidate: dict) -> str:
     """Return current indexed content only when it is safe for full delivery."""
+    if candidate.get("_on_demand_cached"):
+        # The on-demand hot cache retains only the verified capsule and
+        # provenance. Its absence of raw content is intentional.
+        return ""
     public = _public_skill(candidate)
     if not public or not public.get("content_hash"):
         return ""
@@ -1551,6 +1594,14 @@ async def find_deliverable_primary_candidate(
         *(asyncio.to_thread(_verified_static_candidate_content, candidate) for candidate in plausible)
     )
     for candidate, text in zip(plausible, contents):
+        cached_guard = candidate.get("_on_demand_context_guard")
+        if (
+            candidate.get("_on_demand_cached")
+            and isinstance(cached_guard, dict)
+            and cached_guard.get("delivery") == "capsule"
+            and cached_guard.get("complete") is True
+        ):
+            return candidate, ""
         guard = _candidate_context_guard(query, candidate, text) if text else None
         if guard and guard.get("delivery") in {"capsule", "isolation"}:
             return candidate, text
@@ -1624,6 +1675,11 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
     routing_filters = await asyncio.to_thread(store.routing_filters_for_user, user["id"])
     routing_filters_ms = int((time.monotonic() - filters_start) * 1000)
     retrieval_start = time.monotonic()
+    on_demand_result = None
+    on_demand_mode = _on_demand_mode()
+    # The indexed/local or skills.sh retrieval path is always the control.
+    # Internet discovery is considered only after this route has been filtered
+    # and checked for a deliverable candidate below.
     async with httpx.AsyncClient() as client:
         primary_retrieval_start = time.monotonic()
         results = await retrieve_skills_for_intent(client, intent, limit)
@@ -1663,6 +1719,39 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
         query, primary_results, ranked=results_are_ranked
     )
     deliverable_validation_ms = int((time.monotonic() - deliverable_validation_start) * 1000)
+    if deliverable_primary is None and on_demand_mode in {"shadow", "fallback"}:
+        try:
+            on_demand_result = await default_on_demand_resolver().resolve(
+                query,
+                intent=intent,
+                limit=limit,
+                max_capsule_chars=body.max_capsule_chars,
+            )
+        except Exception as exc:
+            # The optional resolver is never allowed to take the control route
+            # or the public endpoint down.
+            on_demand_result = None
+            print(f"[recommender] on-demand resolver failed closed: {type(exc).__name__}")
+        if on_demand_mode == "fallback" and on_demand_result and on_demand_result.candidates:
+            remote_results = [
+                result
+                for result in on_demand_result.candidates
+                if _passes_routing_filters(result, routing_filters)
+                and candidate_matches_task_contract(query, result)
+            ]
+            if remote_results:
+                remote_results = rerank_candidates(query, remote_results)
+                remote_primary, remote_text = await find_deliverable_primary_candidate(
+                    query,
+                    remote_results,
+                    ranked=True,
+                )
+                if remote_primary is not None:
+                    results = remote_results
+                    results_are_ranked = True
+                    primary_results = remote_results
+                    deliverable_primary = remote_primary
+                    preverified_primary_text = remote_text
     tier_decision_start = time.monotonic()
     if deliverable_primary:
         primary_results = [deliverable_primary]
@@ -1698,6 +1787,18 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
     rerank_ms = int((time.monotonic() - rerank_start) * 1000)
     skill_find_ms = int((time.monotonic() - retrieval_start) * 1000)
     warnings: list[str] = []
+    if on_demand_result:
+        warnings.extend(on_demand_result.warnings[:8])
+        if on_demand_result.status in {
+            "provider_failure",
+            "timeout",
+            "budget_exceeded",
+            "circuit_open",
+            "tokenizer_unavailable",
+        }:
+            warnings.append(
+                f"On-demand resolver returned {on_demand_result.status}; no experimental content was applied."
+            )
     if measurement and measurement["arm"] == "holdout":
         warnings.append(
             "This task was randomly held out from automated guidance delivery for your opted-in "
@@ -1740,6 +1841,7 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
             or str(primary_results[0].get("_content") or "")
             or library.get(skill.get("url") or "")
         )
+        cached_guard = primary_results[0].get("_on_demand_context_guard") if primary_results else None
         # Version pinning: a pinned skill serves the pinned hash's content, so
         # an upstream update never changes what this account gets until they
         # unpin (or re-pin to roll forward). All verification below still runs
@@ -1757,7 +1859,32 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
             else:
                 warnings.append("Pinned version content is unavailable; serving the current version.")
         content_ms = int((time.monotonic() - content_start) * 1000)
-        if not text:
+        if (
+            not text
+            and primary_results[0].get("_on_demand_cached")
+            and isinstance(cached_guard, dict)
+            and cached_guard.get("delivery") == "capsule"
+            and cached_guard.get("complete") is True
+        ):
+            context_guard = dict(cached_guard)
+            skill["verification"] = {
+                "content_hash_verified": True,
+                "static_instruction_only": True,
+                "safe_distilled_capsule": True,
+                "hash_kind": "canonical_normalized",
+                "content_digest": context_guard.get("content_digest"),
+                "capsule_digest": context_guard.get("capsule_digest"),
+                "source": "on-demand-provider",
+                "publisher_verified": False,
+                "tokenizer_id": context_guard.get("tokenizer_id"),
+                "capsule_compiler_version": skill.get("on_demand_capsule_compiler_version"),
+                "context_policy": skill.get("on_demand_context_policy"),
+                "quality_version": skill.get("on_demand_quality_version"),
+                "gate_versions": skill.get("on_demand_gate_versions"),
+                "trust_epoch": skill.get("on_demand_trust_epoch"),
+            }
+            warnings.append("Verified on-demand capsule served from bounded hot cache.")
+        elif not text:
             tier = "hint"
             warnings.append("Matched skill has no locally stored SKILL.md content; downgraded to hint.")
         elif not has_valid_skill_frontmatter(text):
@@ -1799,8 +1926,14 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
                 "hash_kind": "canonical_normalized",
                 "content_digest": digest,
                 "capsule_digest": context_guard.get("capsule_digest"),
-                "source": "indexed-local-copy",
+                "source": "on-demand-provider" if primary_results[0].get("on_demand_mode") else "indexed-local-copy",
                 "publisher_verified": False,
+                "tokenizer_id": context_guard.get("tokenizer_id"),
+                "capsule_compiler_version": primary_results[0].get("on_demand_capsule_compiler_version"),
+                "context_policy": primary_results[0].get("on_demand_context_policy"),
+                "quality_version": primary_results[0].get("on_demand_quality_version"),
+                "gate_versions": primary_results[0].get("on_demand_gate_versions"),
+                "trust_epoch": primary_results[0].get("on_demand_trust_epoch"),
             }
 
     # Family policies are modifiers, never standalone task routes. If the
@@ -1850,7 +1983,20 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
         context_guard["delivery"] = "hint"
         if measurement and measurement["arm"] == "holdout":
             context_guard["reason"] = "measurement_holdout"
+
+    # On-demand verification may have used the raw entrypoint while building
+    # the request-scoped capsule, but the full source is never part of the
+    # conversation response or a later route. Cached delivery has no raw body
+    # at all; first-pass delivery must have the same wire shape.
+    on_demand_primary = bool(primary_results and primary_results[0].get("on_demand_mode"))
+    if on_demand_primary:
+        content = None
+        content_url = None
+
     debug = _score_debug(results, tier)
+    debug["on_demand_mode"] = on_demand_mode
+    if on_demand_result:
+        debug["on_demand_resolver"] = on_demand_result.debug()
     debug["intent_compiler"] = {
         "version": intent.compiler_version,
         "compressed_query": intent.compressed_query,
@@ -1870,7 +2016,7 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
     }
     debug["retrieval_backend"] = sorted(
         {str(row.get("retrieval_backend") or "local") for row in results}
-    )
+    ) if results else (["on_demand"] if on_demand_result else ["local"])
     # The merged route planner currently exposes only primary results here;
     # supporting candidates are tracked in the plan when available but are
     # intentionally not allowed to displace the primary strategy in hints.
@@ -1878,8 +2024,12 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
     input_tokens = _estimate_tokens(query)
     hint_tokens = _estimate_tokens(skill)
     candidate_tokens = _estimate_candidate_tokens(candidates)
-    content_tokens = _estimate_tokens(content)
-    guard_tokens = estimate_guard_tokens(context_guard.get("capsule"))
+    content_tokens = 0 if on_demand_primary else _estimate_tokens(content)
+    guard_tokens = (
+        int(context_guard.get("estimated_tokens") or 0)
+        if on_demand_primary
+        else estimate_guard_tokens(context_guard.get("capsule"))
+    )
     policy_tokens = sum(
         int(policy.get("estimated_tokens") or 0)
         for policy in policy_skills
@@ -1887,7 +2037,9 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
     )
     injected_tokens = 0
     if tier == "full":
-        injected_tokens = hint_tokens + (content_tokens or guard_tokens) + policy_tokens
+        injected_tokens = hint_tokens + (
+            guard_tokens if on_demand_primary else (content_tokens or guard_tokens)
+        ) + policy_tokens
     elif tier == "hint":
         injected_tokens = candidate_tokens
     response_preview = {
@@ -1929,6 +2081,14 @@ async def route(request: Request, body: RouteRequest, authorization: str | None 
         "response_tokens": _estimate_tokens(response_preview),
         "latency_warn_ms": ROUTE_LATENCY_WARN_MS,
         "response_token_warn": ROUTE_RESPONSE_TOKEN_WARN,
+        "on_demand_mode": on_demand_mode,
+        "on_demand_latency_ms": getattr(on_demand_result, "latency_ms", 0) if on_demand_result else 0,
+        "on_demand_provider_calls": (
+            getattr(on_demand_result, "budget", {}).get("provider_calls", 0) if on_demand_result else 0
+        ),
+        "on_demand_fetches": getattr(on_demand_result, "budget", {}).get("fetches", 0) if on_demand_result else 0,
+        "on_demand_bytes": getattr(on_demand_result, "budget", {}).get("bytes_read", 0) if on_demand_result else 0,
+        "on_demand_cache": getattr(on_demand_result, "cache_status", "miss") if on_demand_result else "disabled",
     }
     compression_ratio = round(guard_tokens / content_tokens, 4) if content_tokens else None
     route_confidence = debug.get("top_route_score") if isinstance(debug.get("top_route_score"), (int, float)) else None

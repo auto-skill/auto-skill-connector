@@ -1,0 +1,827 @@
+{
+  "schema_version": 2,
+  "fixture": "on_demand_resolver_heldout.json",
+  "network": "disabled",
+  "control_definition": "current indexed-style rerank/tier/context gates over frozen rows",
+  "experiment_definition": "OnDemandResolver over bounded fixture provider with production budgets",
+  "control": {
+    "tasks": 20,
+    "samples": 2000,
+    "repeats": 100,
+    "latency_ms": {
+      "p50": 0.005,
+      "p95": 0.889
+    },
+    "cold_latency_ms": {
+      "p50": 0.005,
+      "p95": 0.889
+    },
+    "top1_success_rate": 0.8,
+    "topk_success_rate": 0.8,
+    "irrelevant_or_unsafe_route_rate": 0.0,
+    "incomplete_route_rate": 0.0,
+    "false_positive_route_rate": 0.0,
+    "full_unsafe_route_count": 0,
+    "db_miss_recovery": {
+      "recovered": 0,
+      "eligible": 300,
+      "rate": 0.0
+    },
+    "capsule_chars": {
+      "p50": 0.0,
+      "p95": 436.0
+    },
+    "capsule_tokens": {
+      "p50": 0.0,
+      "p95": 109.0
+    },
+    "process_memory_peak_kb_tracemalloc": 2121,
+    "process_memory_observed_kb_rss": 47300,
+    "resolver_cache_hits": 0,
+    "resolver_statuses": {},
+    "provider_calls": 0,
+    "fetches": 0,
+    "bytes_read": 0,
+    "capsule_tokenizer_ids": [],
+    "task_summary": [
+      {
+        "task_id": "calendar-no-match",
+        "samples": 100,
+        "top1_success_rate": 1.0,
+        "topk_success_rate": 1.0,
+        "tiers": [
+          "none"
+        ],
+        "selected_names": [],
+        "false_positive_rate": 0.0,
+        "db_miss_recovery": {
+          "recovered": 0,
+          "eligible": 0
+        },
+        "resolver_statuses": {}
+      },
+      {
+        "task_id": "digest-mismatch",
+        "samples": 100,
+        "top1_success_rate": 1.0,
+        "topk_success_rate": 1.0,
+        "tiers": [
+          "none"
+        ],
+        "selected_names": [],
+        "false_positive_rate": 0.0,
+        "db_miss_recovery": {
+          "recovered": 0,
+          "eligible": 0
+        },
+        "resolver_statuses": {}
+      },
+      {
+        "task_id": "duplicate-content",
+        "samples": 100,
+        "top1_success_rate": 1.0,
+        "topk_success_rate": 1.0,
+        "tiers": [
+          "full"
+        ],
+        "selected_names": [
+          "json-validator"
+        ],
+        "false_positive_rate": 0.0,
+        "db_miss_recovery": {
+          "recovered": 0,
+          "eligible": 0
+        },
+        "resolver_statuses": {}
+      },
+      {
+        "task_id": "feedback-clustering",
+        "samples": 100,
+        "top1_success_rate": 0.0,
+        "topk_success_rate": 0.0,
+        "tiers": [
+          "hint"
+        ],
+        "selected_names": [
+          "data-summary"
+        ],
+        "false_positive_rate": 0.0,
+        "db_miss_recovery": {
+          "recovered": 0,
+          "eligible": 0
+        },
+        "resolver_statuses": {}
+      },
+      {
+        "task_id": "fictional-no-match",
+        "samples": 100,
+        "top1_success_rate": 1.0,
+        "topk_success_rate": 1.0,
+        "tiers": [
+          "none"
+        ],
+        "selected_names": [],
+        "false_positive_rate": 0.0,
+        "db_miss_recovery": {
+          "recovered": 0,
+          "eligible": 0
+        },
+        "resolver_statuses": {}
+      },
+      {
+        "task_id": "malformed-frontmatter",
+        "samples": 100,
+        "top1_success_rate": 1.0,
+        "topk_success_rate": 1.0,
+        "tiers": [
+          "none"
+        ],
+        "selected_names": [],
+        "false_positive_rate": 0.0,
+        "db_miss_recovery": {
+          "recovered": 0,
+          "eligible": 0
+        },
+        "resolver_statuses": {}
+      },
+      {
+        "task_id": "migration-checklist",
+        "samples": 100,
+        "top1_success_rate": 0.0,
+        "topk_success_rate": 0.0,
+        "tiers": [
+          "none"
+        ],
+        "selected_names": [],
+        "false_positive_rate": 0.0,
+        "db_miss_recovery": {
+          "recovered": 0,
+          "eligible": 100
+        },
+        "resolver_statuses": {}
+      },
+      {
+        "task_id": "missing-audit",
+        "samples": 100,
+        "top1_success_rate": 0.0,
+        "topk_success_rate": 0.0,
+        "tiers": [
+          "none"
+        ],
+        "selected_names": [],
+        "false_positive_rate": 0.0,
+        "db_miss_recovery": {
+          "recovered": 0,
+          "eligible": 100
+        },
+        "resolver_statuses": {}
+      },
+      {
+        "task_id": "mutable-branch",
+        "samples": 100,
+        "top1_success_rate": 1.0,
+        "topk_success_rate": 1.0,
+        "tiers": [
+          "none"
+        ],
+        "selected_names": [],
+        "false_positive_rate": 0.0,
+        "db_miss_recovery": {
+          "recovered": 0,
+          "eligible": 0
+        },
+        "resolver_statuses": {}
+      },
+      {
+        "task_id": "nonportable-ops",
+        "samples": 100,
+        "top1_success_rate": 1.0,
+        "topk_success_rate": 1.0,
+        "tiers": [
+          "none"
+        ],
+        "selected_names": [],
+        "false_positive_rate": 0.0,
+        "db_miss_recovery": {
+          "recovered": 0,
+          "eligible": 0
+        },
+        "resolver_statuses": {}
+      },
+      {
+        "task_id": "oversized-entrypoint",
+        "samples": 100,
+        "top1_success_rate": 1.0,
+        "topk_success_rate": 1.0,
+        "tiers": [
+          "none"
+        ],
+        "selected_names": [],
+        "false_positive_rate": 0.0,
+        "db_miss_recovery": {
+          "recovered": 0,
+          "eligible": 0
+        },
+        "resolver_statuses": {}
+      },
+      {
+        "task_id": "pdf-invoice-extraction",
+        "samples": 100,
+        "top1_success_rate": 1.0,
+        "topk_success_rate": 1.0,
+        "tiers": [
+          "full"
+        ],
+        "selected_names": [
+          "invoice-extractor"
+        ],
+        "false_positive_rate": 0.0,
+        "db_miss_recovery": {
+          "recovered": 0,
+          "eligible": 0
+        },
+        "resolver_statuses": {}
+      },
+      {
+        "task_id": "platform-trap",
+        "samples": 100,
+        "top1_success_rate": 1.0,
+        "topk_success_rate": 1.0,
+        "tiers": [
+          "full"
+        ],
+        "selected_names": [
+          "portable-landing-page"
+        ],
+        "false_positive_rate": 0.0,
+        "db_miss_recovery": {
+          "recovered": 0,
+          "eligible": 0
+        },
+        "resolver_statuses": {}
+      },
+      {
+        "task_id": "python-log-parser",
+        "samples": 100,
+        "top1_success_rate": 1.0,
+        "topk_success_rate": 1.0,
+        "tiers": [
+          "full"
+        ],
+        "selected_names": [
+          "python-log-parser"
+        ],
+        "false_positive_rate": 0.0,
+        "db_miss_recovery": {
+          "recovered": 0,
+          "eligible": 0
+        },
+        "resolver_statuses": {}
+      },
+      {
+        "task_id": "release-notes",
+        "samples": 100,
+        "top1_success_rate": 1.0,
+        "topk_success_rate": 1.0,
+        "tiers": [
+          "full"
+        ],
+        "selected_names": [
+          "release-notes-writer"
+        ],
+        "false_positive_rate": 0.0,
+        "db_miss_recovery": {
+          "recovered": 0,
+          "eligible": 0
+        },
+        "resolver_statuses": {}
+      },
+      {
+        "task_id": "terraform-drift",
+        "samples": 100,
+        "top1_success_rate": 0.0,
+        "topk_success_rate": 0.0,
+        "tiers": [
+          "none"
+        ],
+        "selected_names": [],
+        "false_positive_rate": 0.0,
+        "db_miss_recovery": {
+          "recovered": 0,
+          "eligible": 100
+        },
+        "resolver_statuses": {}
+      },
+      {
+        "task_id": "truncated-entrypoint",
+        "samples": 100,
+        "top1_success_rate": 1.0,
+        "topk_success_rate": 1.0,
+        "tiers": [
+          "none"
+        ],
+        "selected_names": [],
+        "false_positive_rate": 0.0,
+        "db_miss_recovery": {
+          "recovered": 0,
+          "eligible": 0
+        },
+        "resolver_statuses": {}
+      },
+      {
+        "task_id": "unsafe-forwarding",
+        "samples": 100,
+        "top1_success_rate": 1.0,
+        "topk_success_rate": 1.0,
+        "tiers": [
+          "none"
+        ],
+        "selected_names": [],
+        "false_positive_rate": 0.0,
+        "db_miss_recovery": {
+          "recovered": 0,
+          "eligible": 0
+        },
+        "resolver_statuses": {}
+      },
+      {
+        "task_id": "unsupported-license",
+        "samples": 100,
+        "top1_success_rate": 1.0,
+        "topk_success_rate": 1.0,
+        "tiers": [
+          "none"
+        ],
+        "selected_names": [],
+        "false_positive_rate": 0.0,
+        "db_miss_recovery": {
+          "recovered": 0,
+          "eligible": 0
+        },
+        "resolver_statuses": {}
+      },
+      {
+        "task_id": "unverifiable-path",
+        "samples": 100,
+        "top1_success_rate": 1.0,
+        "topk_success_rate": 1.0,
+        "tiers": [
+          "none"
+        ],
+        "selected_names": [],
+        "false_positive_rate": 0.0,
+        "db_miss_recovery": {
+          "recovered": 0,
+          "eligible": 0
+        },
+        "resolver_statuses": {}
+      }
+    ]
+  },
+  "experiment": {
+    "tasks": 20,
+    "samples": 2000,
+    "repeats": 100,
+    "latency_ms": {
+      "p50": 0.017,
+      "p95": 0.284
+    },
+    "cold_latency_ms": {
+      "p50": 0.014,
+      "p95": 0.395
+    },
+    "top1_success_rate": 1.0,
+    "topk_success_rate": 1.0,
+    "irrelevant_or_unsafe_route_rate": 0.0,
+    "incomplete_route_rate": 0.0,
+    "false_positive_route_rate": 0.0,
+    "full_unsafe_route_count": 0,
+    "db_miss_recovery": {
+      "recovered": 200,
+      "eligible": 300,
+      "rate": 0.666667
+    },
+    "capsule_chars": {
+      "p50": 0.0,
+      "p95": 703.0
+    },
+    "capsule_tokens": {
+      "p50": 0.0,
+      "p95": 83.0
+    },
+    "process_memory_peak_kb_tracemalloc": 5379,
+    "process_memory_observed_kb_rss": 53144,
+    "resolver_cache_hits": 1980,
+    "resolver_statuses": {
+      "cache_hit": 1980,
+      "no_match": 11,
+      "ok": 9
+    },
+    "provider_calls": 40,
+    "fetches": 22,
+    "bytes_read": 7153,
+    "capsule_tokenizer_ids": [
+      "fixture-tokenizer-v1"
+    ],
+    "task_summary": [
+      {
+        "task_id": "calendar-no-match",
+        "samples": 100,
+        "top1_success_rate": 1.0,
+        "topk_success_rate": 1.0,
+        "tiers": [
+          "none"
+        ],
+        "selected_names": [],
+        "false_positive_rate": 0.0,
+        "db_miss_recovery": {
+          "recovered": 0,
+          "eligible": 0
+        },
+        "resolver_statuses": {
+          "cache_hit": 99,
+          "no_match": 1
+        }
+      },
+      {
+        "task_id": "digest-mismatch",
+        "samples": 100,
+        "top1_success_rate": 1.0,
+        "topk_success_rate": 1.0,
+        "tiers": [
+          "none"
+        ],
+        "selected_names": [],
+        "false_positive_rate": 0.0,
+        "db_miss_recovery": {
+          "recovered": 0,
+          "eligible": 0
+        },
+        "resolver_statuses": {
+          "cache_hit": 99,
+          "no_match": 1
+        }
+      },
+      {
+        "task_id": "duplicate-content",
+        "samples": 100,
+        "top1_success_rate": 1.0,
+        "topk_success_rate": 1.0,
+        "tiers": [
+          "full"
+        ],
+        "selected_names": [
+          "json-validator"
+        ],
+        "false_positive_rate": 0.0,
+        "db_miss_recovery": {
+          "recovered": 0,
+          "eligible": 0
+        },
+        "resolver_statuses": {
+          "cache_hit": 99,
+          "ok": 1
+        }
+      },
+      {
+        "task_id": "feedback-clustering",
+        "samples": 100,
+        "top1_success_rate": 1.0,
+        "topk_success_rate": 1.0,
+        "tiers": [
+          "full"
+        ],
+        "selected_names": [
+          "feedback-clusterer"
+        ],
+        "false_positive_rate": 0.0,
+        "db_miss_recovery": {
+          "recovered": 0,
+          "eligible": 0
+        },
+        "resolver_statuses": {
+          "cache_hit": 99,
+          "ok": 1
+        }
+      },
+      {
+        "task_id": "fictional-no-match",
+        "samples": 100,
+        "top1_success_rate": 1.0,
+        "topk_success_rate": 1.0,
+        "tiers": [
+          "none"
+        ],
+        "selected_names": [],
+        "false_positive_rate": 0.0,
+        "db_miss_recovery": {
+          "recovered": 0,
+          "eligible": 0
+        },
+        "resolver_statuses": {
+          "cache_hit": 99,
+          "no_match": 1
+        }
+      },
+      {
+        "task_id": "malformed-frontmatter",
+        "samples": 100,
+        "top1_success_rate": 1.0,
+        "topk_success_rate": 1.0,
+        "tiers": [
+          "none"
+        ],
+        "selected_names": [],
+        "false_positive_rate": 0.0,
+        "db_miss_recovery": {
+          "recovered": 0,
+          "eligible": 0
+        },
+        "resolver_statuses": {
+          "cache_hit": 99,
+          "no_match": 1
+        }
+      },
+      {
+        "task_id": "migration-checklist",
+        "samples": 100,
+        "top1_success_rate": 1.0,
+        "topk_success_rate": 1.0,
+        "tiers": [
+          "full"
+        ],
+        "selected_names": [
+          "migration-planner"
+        ],
+        "false_positive_rate": 0.0,
+        "db_miss_recovery": {
+          "recovered": 100,
+          "eligible": 100
+        },
+        "resolver_statuses": {
+          "cache_hit": 99,
+          "ok": 1
+        }
+      },
+      {
+        "task_id": "missing-audit",
+        "samples": 100,
+        "top1_success_rate": 1.0,
+        "topk_success_rate": 1.0,
+        "tiers": [
+          "hint"
+        ],
+        "selected_names": [
+          "security-triage"
+        ],
+        "false_positive_rate": 0.0,
+        "db_miss_recovery": {
+          "recovered": 0,
+          "eligible": 100
+        },
+        "resolver_statuses": {
+          "cache_hit": 99,
+          "ok": 1
+        }
+      },
+      {
+        "task_id": "mutable-branch",
+        "samples": 100,
+        "top1_success_rate": 1.0,
+        "topk_success_rate": 1.0,
+        "tiers": [
+          "none"
+        ],
+        "selected_names": [],
+        "false_positive_rate": 0.0,
+        "db_miss_recovery": {
+          "recovered": 0,
+          "eligible": 0
+        },
+        "resolver_statuses": {
+          "cache_hit": 99,
+          "no_match": 1
+        }
+      },
+      {
+        "task_id": "nonportable-ops",
+        "samples": 100,
+        "top1_success_rate": 1.0,
+        "topk_success_rate": 1.0,
+        "tiers": [
+          "none"
+        ],
+        "selected_names": [],
+        "false_positive_rate": 0.0,
+        "db_miss_recovery": {
+          "recovered": 0,
+          "eligible": 0
+        },
+        "resolver_statuses": {
+          "cache_hit": 99,
+          "no_match": 1
+        }
+      },
+      {
+        "task_id": "oversized-entrypoint",
+        "samples": 100,
+        "top1_success_rate": 1.0,
+        "topk_success_rate": 1.0,
+        "tiers": [
+          "none"
+        ],
+        "selected_names": [],
+        "false_positive_rate": 0.0,
+        "db_miss_recovery": {
+          "recovered": 0,
+          "eligible": 0
+        },
+        "resolver_statuses": {
+          "cache_hit": 99,
+          "no_match": 1
+        }
+      },
+      {
+        "task_id": "pdf-invoice-extraction",
+        "samples": 100,
+        "top1_success_rate": 1.0,
+        "topk_success_rate": 1.0,
+        "tiers": [
+          "full"
+        ],
+        "selected_names": [
+          "invoice-extractor"
+        ],
+        "false_positive_rate": 0.0,
+        "db_miss_recovery": {
+          "recovered": 0,
+          "eligible": 0
+        },
+        "resolver_statuses": {
+          "cache_hit": 99,
+          "ok": 1
+        }
+      },
+      {
+        "task_id": "platform-trap",
+        "samples": 100,
+        "top1_success_rate": 1.0,
+        "topk_success_rate": 1.0,
+        "tiers": [
+          "full"
+        ],
+        "selected_names": [
+          "portable-landing-page"
+        ],
+        "false_positive_rate": 0.0,
+        "db_miss_recovery": {
+          "recovered": 0,
+          "eligible": 0
+        },
+        "resolver_statuses": {
+          "cache_hit": 99,
+          "ok": 1
+        }
+      },
+      {
+        "task_id": "python-log-parser",
+        "samples": 100,
+        "top1_success_rate": 1.0,
+        "topk_success_rate": 1.0,
+        "tiers": [
+          "full"
+        ],
+        "selected_names": [
+          "python-log-parser"
+        ],
+        "false_positive_rate": 0.0,
+        "db_miss_recovery": {
+          "recovered": 0,
+          "eligible": 0
+        },
+        "resolver_statuses": {
+          "cache_hit": 99,
+          "ok": 1
+        }
+      },
+      {
+        "task_id": "release-notes",
+        "samples": 100,
+        "top1_success_rate": 1.0,
+        "topk_success_rate": 1.0,
+        "tiers": [
+          "full"
+        ],
+        "selected_names": [
+          "release-notes-writer"
+        ],
+        "false_positive_rate": 0.0,
+        "db_miss_recovery": {
+          "recovered": 0,
+          "eligible": 0
+        },
+        "resolver_statuses": {
+          "cache_hit": 99,
+          "ok": 1
+        }
+      },
+      {
+        "task_id": "terraform-drift",
+        "samples": 100,
+        "top1_success_rate": 1.0,
+        "topk_success_rate": 1.0,
+        "tiers": [
+          "full"
+        ],
+        "selected_names": [
+          "terraform-drift-analyzer"
+        ],
+        "false_positive_rate": 0.0,
+        "db_miss_recovery": {
+          "recovered": 100,
+          "eligible": 100
+        },
+        "resolver_statuses": {
+          "cache_hit": 99,
+          "ok": 1
+        }
+      },
+      {
+        "task_id": "truncated-entrypoint",
+        "samples": 100,
+        "top1_success_rate": 1.0,
+        "topk_success_rate": 1.0,
+        "tiers": [
+          "none"
+        ],
+        "selected_names": [],
+        "false_positive_rate": 0.0,
+        "db_miss_recovery": {
+          "recovered": 0,
+          "eligible": 0
+        },
+        "resolver_statuses": {
+          "cache_hit": 99,
+          "no_match": 1
+        }
+      },
+      {
+        "task_id": "unsafe-forwarding",
+        "samples": 100,
+        "top1_success_rate": 1.0,
+        "topk_success_rate": 1.0,
+        "tiers": [
+          "none"
+        ],
+        "selected_names": [],
+        "false_positive_rate": 0.0,
+        "db_miss_recovery": {
+          "recovered": 0,
+          "eligible": 0
+        },
+        "resolver_statuses": {
+          "cache_hit": 99,
+          "no_match": 1
+        }
+      },
+      {
+        "task_id": "unsupported-license",
+        "samples": 100,
+        "top1_success_rate": 1.0,
+        "topk_success_rate": 1.0,
+        "tiers": [
+          "none"
+        ],
+        "selected_names": [],
+        "false_positive_rate": 0.0,
+        "db_miss_recovery": {
+          "recovered": 0,
+          "eligible": 0
+        },
+        "resolver_statuses": {
+          "cache_hit": 99,
+          "no_match": 1
+        }
+      },
+      {
+        "task_id": "unverifiable-path",
+        "samples": 100,
+        "top1_success_rate": 1.0,
+        "topk_success_rate": 1.0,
+        "tiers": [
+          "none"
+        ],
+        "selected_names": [],
+        "false_positive_rate": 0.0,
+        "db_miss_recovery": {
+          "recovered": 0,
+          "eligible": 0
+        },
+        "resolver_statuses": {
+          "cache_hit": 99,
+          "no_match": 1
+        }
+      }
+    ]
+  }
+}

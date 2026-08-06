@@ -913,7 +913,13 @@ def tier_for_ranked_candidates(candidates: list[dict[str, Any]]) -> str:
     # package boundary at delivery time as well as during ingestion.  A
     # missing/partial package may remain searchable as a hint, but it must
     # never become an injected instruction route.
-    if str(top.get("source") or "") in PACKAGE_REQUIRED_SOURCES:
+    on_demand_verified = bool(
+        top.get("on_demand_mode")
+        and top.get("on_demand_capsule_ready")
+        and top.get("content_hash")
+        and top.get("source_commit_sha")
+    )
+    if str(top.get("source") or "") in PACKAGE_REQUIRED_SOURCES and not on_demand_verified:
         if str(top.get("package_completeness") or "").casefold() != "complete":
             return "hint"
         if str(top.get("dependency_closure_status") or "").casefold() != "complete":
@@ -938,12 +944,13 @@ def tier_for_ranked_candidates(candidates: list[dict[str, Any]]) -> str:
         and int(top.get("risk_score") or 0) == 0
         and int(top.get("lexical_overlap") or 0) >= 3
     )
-    if not top.get("trust_signal") and not remote_authoritative:
+    on_demand_authoritative = on_demand_verified and int(top.get("risk_score") or 0) == 0
+    if not top.get("trust_signal") and not remote_authoritative and not on_demand_authoritative:
         return "hint"
 
     top_similarity = top.get("similarity")
     if top_similarity is None:
-        if not remote_authoritative:
+        if not remote_authoritative and not on_demand_authoritative:
             return "hint"
         if len(candidates) == 1:
             return "full"

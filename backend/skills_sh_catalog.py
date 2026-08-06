@@ -68,6 +68,68 @@ _COMMON_HOST_TLDS = {
     "net", "org", "sh", "site", "tech", "tv", "uk", "us", "xyz",
 }
 
+_METADATA_ONLY_FIELDS = frozenset(
+    {
+        "id",
+        "name",
+        "description",
+        "summary",
+        "source",
+        "registry",
+        "slug",
+        "url",
+        "source_url",
+        "skills_sh_url",
+        "skills_sh_id",
+        "install_url",
+        "installUrl",
+        "repository",
+        "repo",
+        "source_repo",
+        "entrypoint_path",
+        "skill_path",
+        "path",
+        "revision",
+        "ref",
+        "commit_sha",
+        "commitSha",
+        "snapshot_hash",
+        "source_snapshot_hash",
+        "content_hash",
+        "contentHash",
+        "content_digest",
+        "contentDigest",
+        "license",
+        "freshness",
+        "updated_at",
+        "updatedAt",
+        "audit_status",
+        "audit_risk_level",
+        "audit_count",
+        "risk_score",
+        "risk_flags",
+        "platforms",
+        "tags",
+        "sourceType",
+        "source_type",
+        "installs",
+    }
+)
+
+
+def _metadata_only_row(value: dict[str, Any]) -> dict[str, Any]:
+    """Keep search results bounded and body-free before any catalog cache put."""
+    result: dict[str, Any] = {}
+    for key in _METADATA_ONLY_FIELDS:
+        if key not in value:
+            continue
+        item = value[key]
+        if isinstance(item, (str, int, float, bool)):
+            result[key] = str(item)[:2_000] if isinstance(item, str) else item
+        elif isinstance(item, (list, tuple)):
+            result[key] = [str(part)[:256] for part in item[:16] if part is not None]
+    return result
+
 
 class SkillsShCatalogError(RuntimeError):
     """Raised when the live catalog cannot be queried safely."""
@@ -723,6 +785,8 @@ class SkillsShCatalog:
         mirror_enabled: bool | None = None,
         mirror_stale_seconds: float = DEFAULT_MIRROR_STALE_SECONDS,
         transport: httpx.AsyncBaseTransport | None = None,
+        follow_redirects: bool = True,
+        metadata_only: bool = False,
     ) -> None:
         self.api_url = (api_url or os.getenv("SKILLS_SH_API_URL", DEFAULT_API_URL)).rstrip("/")
         self.public_search_url = public_search_url or os.getenv(
@@ -742,6 +806,8 @@ class SkillsShCatalog:
         self.min_request_interval_seconds = max(0.0, float(min_request_interval_seconds))
         self.mirror_stale_seconds = max(0.0, float(mirror_stale_seconds))
         self.transport = transport
+        self.follow_redirects = bool(follow_redirects)
+        self.metadata_only = bool(metadata_only)
         self._cache: dict[tuple[str, str], _CacheEntry] = {}
         # Tests and custom transports stay isolated unless they explicitly
         # opt into persistence. The production singleton uses the configured
@@ -1000,7 +1066,7 @@ class SkillsShCatalog:
         async with httpx.AsyncClient(
             transport=self.transport,
             timeout=self.timeout_seconds,
-            follow_redirects=True,
+            follow_redirects=self.follow_redirects,
         ) as client:
             response = await self._request_with_retry(
                 client,
@@ -1011,6 +1077,8 @@ class SkillsShCatalog:
             )
         if response.status_code == 404:
             raise SkillsShCatalogError("skills.sh resource not found")
+        if 300 <= response.status_code < 400:
+            raise SkillsShCatalogError("skills.sh redirect rejected")
         if response.status_code in {401, 403}:
             raise SkillsShCatalogError("skills.sh authentication rejected")
         if response.status_code >= 400:
@@ -1054,6 +1122,8 @@ class SkillsShCatalog:
         rows = [dict(item) for item in data if isinstance(item, dict)] if isinstance(data, list) else []
         if payload.get("skills") is not None:
             rows = [self._public_listing_row(item) for item in rows]
+        if self.metadata_only:
+            rows = [_metadata_only_row(item) for item in rows]
         # Keep the last listing metadata available for a follow-up selection.
         # This is intentionally a bounded cache; it is not a second catalog.
         for item in rows:
@@ -1067,7 +1137,7 @@ class SkillsShCatalog:
             async with httpx.AsyncClient(
                 transport=self.transport,
                 timeout=self.timeout_seconds,
-                follow_redirects=True,
+                follow_redirects=self.follow_redirects,
             ) as client:
                 response = await self._request_with_retry(
                     client,
@@ -1078,6 +1148,8 @@ class SkillsShCatalog:
                 )
         except SkillsShCatalogError as exc:
             raise SkillsShCatalogError(f"skills.sh public search failed: {exc}") from exc
+        if 300 <= response.status_code < 400:
+            raise SkillsShCatalogError("skills.sh search redirect rejected")
         if response.status_code >= 400:
             raise SkillsShCatalogError(f"skills.sh public search returned HTTP {response.status_code}")
         try:
@@ -1177,7 +1249,7 @@ class SkillsShCatalog:
                 async with httpx.AsyncClient(
                     transport=self.transport,
                     timeout=self.timeout_seconds,
-                    follow_redirects=True,
+                    follow_redirects=self.follow_redirects,
                 ) as client:
                     responses = await asyncio.gather(
                         *(
@@ -1196,7 +1268,7 @@ class SkillsShCatalog:
             for skill_id, response in zip(pending, responses):
                 metadata = (
                     self._parse_public_page_metadata(response.text)
-                    if isinstance(response, httpx.Response) and response.status_code < 400
+                    if isinstance(response, httpx.Response) and 200 <= response.status_code < 300
                     else {}
                 )
                 values[skill_id] = dict(

@@ -196,16 +196,13 @@ resolved to a commit and a complete subtree; if any file cannot be captured or
 the immutable package safety limits are exceeded, the candidate is rejected
 instead of silently shortened. The optional official
 `skills.sh` curated API capture stores its complete file snapshot and registry
-hash when `SKILLS_SH_OIDC_TOKEN` is configured. At route time, the same token
-enables the live skills.sh data gate: Auto-Skill sends the original and
-compiled multi-word queries to `/api/v1/skills/search`, hydrates only a bounded
-shortlist through the detail endpoint, and fetches audit metadata before
-ranking. The live rows carry the stable skills.sh ID, snapshot hash, audit
-state, and a session-scoped `npx skills use <source> --skill <name> --agent codex`
-activation plan. The plan is bounded metadata for a client adapter; the
-backend never executes `npx` or writes to the caller's filesystem. Without a
-token, the same route calls the public skills.sh discovery lane and keeps those
-metadata-only rows hint-only. If skills.sh is unavailable, public routing
+hash when `SKILLS_SH_OIDC_TOKEN` is configured. The production control route
+retains that existing behavior. The experimental internet route is separate:
+it uses skills.sh search as metadata-only discovery, then resolves a pinned
+GitHub commit/blob and never calls the skills.sh detail or audit endpoints on
+the request path. It never executes `npx`, clones a repository, or writes to
+the caller's filesystem. Without a valid immutable GitHub source, a result
+remains discovery metadata only. If skills.sh is unavailable, public routing
 abstains by default; `AUTOSKILL_ALLOW_LOCAL_RETRIEVAL_FALLBACK=1` is an explicit
 offline/outage experiment switch, never a production default. SkillsMP discovery remains
 capped at 100 unique URLs per run by default. Unpinned GitHub content is
@@ -215,6 +212,45 @@ separate from the single entrypoint-first 1,500-character retrieval record, so
 package integrity does not imply all-file embedding. GitHub, SkillsMP, and
 curated-list content without a complete package is discovery metadata only and
 cannot become an active instruction route.
+
+### Experimental on-demand resolver (off by default)
+
+`AUTOSKILL_ON_DEMAND_MODE=off|shadow|fallback` controls the resolver and
+defaults to `off`. The compatibility flag
+`AUTOSKILL_EXPERIMENTAL_ON_DEMAND_ROUTING=1` selects `shadow`; it cannot
+replace the local control route. `fallback` must be explicitly selected and
+is intended only for a later evidence-backed canary.
+
+The resolver uses a pluggable metadata provider, immutable GitHub blob fetcher,
+the existing query compiler/reranker/quality gates, the bounded capsule
+compiler/context guard, and exact token counts from the configured serving
+tokenizer (`AUTOSKILL_SERVING_TOKENIZER_PATH`). It defaults to at most 2
+discovery calls, 2 fetches, 6 candidates, 256 KiB total, 128 KiB per
+`SKILL.md`, and 450 ms wall time. A missing tokenizer, mutable source, digest
+mismatch, unsafe/non-portable body, or incomplete response is discovery-only
+and cannot become an active route. Only compact metadata and a bounded hot
+cache of verified capsules are retained; raw bodies are request-scoped and are
+never written to the legacy database, CAS, mirror, or route response. The
+route injects the bounded capsule only, never the full internet `SKILL.md`.
+
+Only compact metadata, route results, and verified capsules are cached in
+bounded process-local memory. Each verified capsule records an identity made
+from the content digest, serving-tokenizer ID, capsule compiler, context policy,
+and trust epoch; route-result lookup is additionally keyed by the compiled
+task query and these serving versions. Raw internet bodies are request-scoped
+and are removed before cache insertion. Use
+the deterministic held-out replay for the current experiment report:
+
+```powershell
+python backend/bench/on_demand_route_replay.py `
+  --fixture backend/bench/on_demand_resolver_heldout.json `
+  --repeats 100 `
+  --json-out backend/bench/autoskill-route-heldout.json `
+  --markdown-out backend/bench/ON_DEMAND_RESOLVER_HELDOUT_REPORT.md
+```
+
+The fixture is authored in-repo rather than independently labeled, so its
+results are diagnostic only; keep the feature flag disabled by default.
 
 Collector delta exports use format v2 when immutable package tables are
 available. The archive carries complete package manifests and content-addressed

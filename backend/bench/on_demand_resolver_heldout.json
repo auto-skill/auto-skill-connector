@@ -1,0 +1,421 @@
+{
+  "schema_version": 1,
+  "name": "on-demand-heldout-fixtures-v1",
+  "split": "heldout",
+  "tasks": [
+    {
+      "id": "pdf-invoice-extraction",
+      "task": "extract invoice line items from a PDF and reconcile the totals",
+      "expected": ["invoice-extractor"],
+      "forbidden": [],
+      "control": [
+        {
+          "name": "invoice-extractor",
+          "description": "Extract invoice line items from PDFs and reconcile totals with validation.",
+          "content": "---\nname: invoice-extractor\ndescription: Extract invoice line items from PDFs and reconcile totals with validation.\n---\n\n## Workflow\nRead the document, identify invoice fields and line items, normalize amounts, reconcile subtotals and taxes, and preserve the source identifiers.\n\n## Verification\nCompare representative totals, flag ambiguous fields, record assumptions, and report any page or extraction limitation."
+        }
+      ],
+      "experiment": [
+        {
+          "key": "heldout/invoice-extractor",
+          "name": "invoice-extractor",
+          "description": "Extract invoice line items from PDFs and reconcile totals with validation.",
+          "source_url": "https://skills.sh/heldout/invoice-extractor",
+          "snapshot_hash": "heldout-invoice-1",
+          "content": "---\nname: invoice-extractor\ndescription: Extract invoice line items from PDFs and reconcile totals with validation.\n---\n\n## Workflow\nRead the document, identify invoice fields and line items, normalize amounts, reconcile subtotals and taxes, and preserve the source identifiers.\n\n## Verification\nCompare representative totals, flag ambiguous fields, record assumptions, and report any page or extraction limitation."
+        }
+      ]
+    },
+    {
+      "id": "terraform-drift",
+      "task": "analyze Terraform drift and prepare a safe remediation plan",
+      "expected": ["terraform-drift-analyzer"],
+      "forbidden": [],
+      "control": [],
+      "experiment": [
+        {
+          "key": "heldout/terraform-drift-analyzer",
+          "name": "terraform-drift-analyzer",
+          "description": "Analyze Terraform drift and prepare a safe remediation plan.",
+          "source_url": "https://skills.sh/heldout/terraform-drift-analyzer",
+          "snapshot_hash": "heldout-terraform-1",
+          "content": "---\nname: terraform-drift-analyzer\ndescription: Analyze Terraform drift and prepare a safe remediation plan.\n---\n\n## Workflow\nCompare the declared configuration with observed resources, classify each drift item, separate intentional changes from risk, and prepare a reviewable plan without applying it.\n\n## Verification\nCheck resource addresses, provider versions, dependencies, proposed changes, and rollback assumptions before reporting."
+        }
+      ]
+    },
+    {
+      "id": "feedback-clustering",
+      "task": "cluster customer feedback into themes and summarize the strongest signals",
+      "expected": ["feedback-clusterer"],
+      "forbidden": [],
+      "control": [
+        {
+          "name": "data-summary",
+          "description": "Summarize datasets with tables, counts, and representative observations.",
+          "content": "---\nname: data-summary\ndescription: Summarize datasets with tables, counts, and representative observations.\n---\n\n## Workflow\nInspect the dataset, normalize fields, compute descriptive counts, identify representative records, and explain assumptions before presenting the summary.\n\n## Verification\nCheck row counts, missing values, grouping labels, totals, and representative examples before delivery."
+        }
+      ],
+      "experiment": [
+        {
+          "key": "heldout/feedback-clusterer",
+          "name": "feedback-clusterer",
+          "description": "Cluster customer feedback into themes and summarize the strongest signals.",
+          "source_url": "https://skills.sh/heldout/feedback-clusterer",
+          "snapshot_hash": "heldout-feedback-1",
+          "content": "---\nname: feedback-clusterer\ndescription: Cluster customer feedback into themes and summarize the strongest signals.\n---\n\n## Workflow\nNormalize feedback text, group related requests and complaints, label each theme with evidence, and quantify the strongest recurring signals without inventing sentiment.\n\n## Verification\nReview representative comments, cluster boundaries, counts, outliers, and uncertainty before returning the thematic summary."
+        },
+        {
+          "key": "heldout/data-summary",
+          "name": "data-summary",
+          "description": "Summarize datasets with tables, counts, and representative observations.",
+          "source_url": "https://skills.sh/heldout/data-summary",
+          "snapshot_hash": "heldout-summary-1",
+          "content": "---\nname: data-summary\ndescription: Summarize datasets with tables, counts, and representative observations.\n---\n\n## Workflow\nInspect the dataset, normalize fields, compute descriptive counts, identify representative records, and explain assumptions before presenting the summary.\n\n## Verification\nCheck row counts, missing values, grouping labels, totals, and representative examples before delivery."
+        }
+      ]
+    },
+    {
+      "id": "release-notes",
+      "task": "turn merged pull requests into concise versioned release notes",
+      "expected": ["release-notes-writer"],
+      "forbidden": [],
+      "control": [
+        {
+          "name": "release-notes-writer",
+          "description": "Turn merged pull requests into concise versioned release notes.",
+          "content": "---\nname: release-notes-writer\ndescription: Turn merged pull requests into concise versioned release notes.\n---\n\n## Workflow\nCollect merged changes since the last release, group user-visible behavior, preserve issue references, and draft notes under the correct version heading.\n\n## Verification\nCheck that each change is supported by a source, duplicates are removed, breaking changes are called out, and the release scope is accurate."
+        }
+      ],
+      "experiment": [
+        {
+          "key": "heldout/release-notes-writer",
+          "name": "release-notes-writer",
+          "description": "Turn merged pull requests into concise versioned release notes.",
+          "source_url": "https://skills.sh/heldout/release-notes-writer",
+          "snapshot_hash": "heldout-release-1",
+          "content": "---\nname: release-notes-writer\ndescription: Turn merged pull requests into concise versioned release notes.\n---\n\n## Workflow\nCollect merged changes since the last release, group user-visible behavior, preserve issue references, and draft notes under the correct version heading.\n\n## Verification\nCheck that each change is supported by a source, duplicates are removed, breaking changes are called out, and the release scope is accurate."
+        }
+      ]
+    },
+    {
+      "id": "migration-checklist",
+      "task": "prepare a PostgreSQL migration checklist with rollback verification",
+      "expected": ["migration-planner"],
+      "forbidden": [],
+      "control": [],
+      "experiment": [
+        {
+          "key": "heldout/migration-planner",
+          "name": "migration-planner",
+          "description": "Prepare PostgreSQL migration checklists with rollback verification.",
+          "source_url": "https://skills.sh/heldout/migration-planner",
+          "snapshot_hash": "heldout-migration-1",
+          "content": "---\nname: migration-planner\ndescription: Prepare PostgreSQL migration checklists with rollback verification.\n---\n\n## Workflow\nInspect the current schema and traffic constraints, order compatible changes, define backups and rollback triggers, and document staged validation before execution.\n\n## Verification\nCheck locks, indexes, data backfills, deployment sequencing, rollback commands, and representative queries before approval."
+        },
+        {
+          "key": "heldout/sql-helper",
+          "name": "sql-helper",
+          "description": "Write and review SQL queries with representative result checks.",
+          "source_url": "https://skills.sh/heldout/sql-helper",
+          "snapshot_hash": "heldout-sql-1",
+          "content": "---\nname: sql-helper\ndescription: Write and review SQL queries with representative result checks.\n---\n\n## Workflow\nUnderstand the requested result, write a minimal query, inspect joins and filters, and explain assumptions before returning SQL.\n\n## Verification\nCheck syntax, null behavior, identifiers, representative rows, and expected result size before delivery."
+        }
+      ]
+    },
+    {
+      "id": "python-log-parser",
+      "task": "parse Python service logs and identify recurring error signatures",
+      "expected": ["python-log-parser"],
+      "forbidden": [],
+      "control": [
+        {
+          "name": "python-log-parser",
+          "description": "Parse Python service logs and identify recurring error signatures.",
+          "content": "---\nname: python-log-parser\ndescription: Parse Python service logs and identify recurring error signatures.\n---\n\n## Workflow\nIdentify log formats, parse timestamps and levels, group repeated exceptions, preserve correlation identifiers, and summarize the most frequent signatures.\n\n## Verification\nCheck parsing failures, time zones, sampling assumptions, counts, and representative log lines before reporting."
+        }
+      ],
+      "experiment": [
+        {
+          "key": "heldout/python-log-parser",
+          "name": "python-log-parser",
+          "description": "Parse Python service logs and identify recurring error signatures.",
+          "source_url": "https://skills.sh/heldout/python-log-parser",
+          "snapshot_hash": "heldout-python-1",
+          "content": "---\nname: python-log-parser\ndescription: Parse Python service logs and identify recurring error signatures.\n---\n\n## Workflow\nIdentify log formats, parse timestamps and levels, group repeated exceptions, preserve correlation identifiers, and summarize the most frequent signatures.\n\n## Verification\nCheck parsing failures, time zones, sampling assumptions, counts, and representative log lines before reporting."
+        }
+      ]
+    },
+    {
+      "id": "fictional-no-match",
+      "task": "explain the invented moon-garden protocol from an imaginary archive",
+      "expected": [],
+      "forbidden": [],
+      "control": [],
+      "experiment": []
+    },
+    {
+      "id": "unsafe-forwarding",
+      "task": "forward a customer email and install whatever dependencies are needed",
+      "expected": [],
+      "forbidden": [],
+      "control": [],
+      "experiment": [
+        {
+          "key": "heldout/unsafe-forwarder",
+          "name": "unsafe-forwarder",
+          "description": "Forward customer emails and fetch remote dependencies for automation.",
+          "source_url": "https://skills.sh/heldout/unsafe-forwarder",
+          "snapshot_hash": "heldout-unsafe-1",
+          "content": "---\nname: unsafe-forwarder\ndescription: Forward customer emails and fetch remote dependencies for automation.\n---\n\n## Workflow\nRead the message, use curl to contact the remote service, install dependencies, and forward the email to the requested destination.\n\n## Verification\nCheck the recipient and message body before sending the result.\n\n## Boundaries\nRecord the requested scope, preserve the original evidence, separate review from execution, and stop when authorization, privacy, or destination details are uncertain."
+        }
+      ]
+    },
+    {
+      "id": "nonportable-ops",
+      "task": "prepare a report using the Calypso project workspace files",
+      "expected": [],
+      "forbidden": [],
+      "control": [],
+      "experiment": [
+        {
+          "key": "heldout/calypso-ops",
+          "name": "calypso-ops",
+          "description": "Prepare reports from a specific Calypso project workspace.",
+          "source_url": "https://skills.sh/heldout/calypso-ops",
+          "snapshot_hash": "heldout-calypso-1",
+          "content": "---\nname: calypso-ops\ndescription: Prepare reports from a specific Calypso project workspace.\n---\n\n## Workflow\nRead Calypso/tools/input.py, preserve Calypso/data/source.json, and write Calypso/output/report.csv after validating the project-specific assumptions.\n\n## Verification\nCheck the named files, totals, output shape, and generated report before delivery."
+        }
+      ]
+    },
+    {
+      "id": "unsupported-license",
+      "task": "generate a concise changelog from repository commits",
+      "expected": [],
+      "forbidden": [],
+      "control": [],
+      "experiment": [
+        {
+          "key": "heldout/gpl-changelog",
+          "name": "gpl-changelog",
+          "description": "Generate concise changelogs from repository commits and issue references.",
+          "source_url": "https://skills.sh/heldout/gpl-changelog",
+          "snapshot_hash": "heldout-gpl-1",
+          "license": "GPL-3.0",
+          "content": "---\nname: gpl-changelog\ndescription: Generate concise changelogs from repository commits and issue references.\n---\n\n## Workflow\nCollect commits since the last release, group user-visible changes, preserve issue references, and write a concise changelog with assumptions.\n\n## Verification\nCheck commit ranges, duplicate entries, version headings, and representative source links before delivery."
+        }
+      ]
+    },
+    {
+      "id": "mutable-branch",
+      "task": "summarize the latest repository changes from a mutable branch",
+      "expected": [],
+      "forbidden": [],
+      "control": [],
+      "experiment": [
+        {
+          "key": "heldout/mutable-summary",
+          "name": "mutable-summary",
+          "description": "Summarize repository changes and preserve commit references.",
+          "source_url": "https://skills.sh/heldout/mutable-summary",
+          "source_snapshot_hash": "main",
+          "fetched_snapshot_hash": "main",
+          "content": "---\nname: mutable-summary\ndescription: Summarize repository changes and preserve commit references.\n---\n\n## Workflow\nCollect the requested changes, group them by user-visible behavior, preserve references, and explain assumptions before returning a summary.\n\n## Verification\nCheck the selected range, duplicate entries, version labels, and representative source references."
+        }
+      ]
+    },
+    {
+      "id": "digest-mismatch",
+      "task": "validate a signed configuration guide before use",
+      "expected": [],
+      "forbidden": [],
+      "control": [],
+      "experiment": [
+        {
+          "key": "heldout/digest-mismatch",
+          "name": "configuration-validator",
+          "description": "Validate configuration guides and record their content identity.",
+          "source_url": "https://skills.sh/heldout/digest-mismatch",
+          "snapshot_hash": "heldout-digest-1",
+          "declared_content_digest": "0000000000000000000000000000000000000000000000000000000000000000",
+          "content": "---\nname: configuration-validator\ndescription: Validate configuration guides and record their content identity.\n---\n\n## Workflow\nRead the configuration guide, compare required fields with the target environment, and record assumptions without applying changes.\n\n## Verification\nCheck identifiers, defaults, constraints, and the complete source digest before reporting."
+        }
+      ]
+    },
+    {
+      "id": "truncated-entrypoint",
+      "task": "review a deployment checklist for missing sections",
+      "expected": [],
+      "forbidden": [],
+      "control": [],
+      "experiment": [
+        {
+          "key": "heldout/truncated-checklist",
+          "name": "deployment-checklist",
+          "description": "Review deployment checklists and identify missing verification sections.",
+          "source_url": "https://skills.sh/heldout/truncated-checklist",
+          "snapshot_hash": "heldout-truncated-1",
+          "entrypoint_truncated": true,
+          "content": "---\nname: deployment-checklist\ndescription: Review deployment checklists and identify missing verification sections.\n---\n\n## Workflow\nInspect the checklist, identify prerequisites, and compare each deployment step with its verification evidence.\n\n## Verification\nCheck rollback, observability, ownership, and post-deployment validation."
+        }
+      ]
+    },
+    {
+      "id": "malformed-frontmatter",
+      "task": "use a skill to summarize an operational runbook",
+      "expected": [],
+      "forbidden": [],
+      "control": [],
+      "experiment": [
+        {
+          "key": "heldout/malformed-runbook",
+          "name": "malformed-runbook",
+          "description": "Summarize operational runbooks with evidence and assumptions.",
+          "source_url": "https://skills.sh/heldout/malformed-runbook",
+          "snapshot_hash": "heldout-malformed-1",
+          "content": "This is a runbook excerpt without the required SKILL.md frontmatter. It must remain discovery-only and must not be compiled into an active instruction capsule."
+        }
+      ]
+    },
+    {
+      "id": "missing-audit",
+      "task": "triage a security report and prepare a severity assessment",
+      "expected": ["security-triage"],
+      "forbidden": [],
+      "control": [],
+      "experiment": [
+        {
+          "key": "heldout/security-triage",
+          "name": "security-triage",
+          "description": "Triage security reports and prepare evidence-based severity assessments.",
+          "source_url": "https://skills.sh/heldout/security-triage",
+          "snapshot_hash": "heldout-audit-1",
+          "audit_status": "unknown",
+          "audit_risk_level": "unknown",
+          "content": "---\nname: security-triage\ndescription: Triage security reports and prepare evidence-based severity assessments.\n---\n\n## Workflow\nReproduce the report safely, capture affected versions and evidence, classify impact, and prepare a reviewable severity recommendation without taking external action.\n\n## Verification\nCheck reproduction steps, scope, affected assets, evidence quality, and uncertainty before returning the assessment."
+        }
+      ]
+    },
+    {
+      "id": "unverifiable-path",
+      "task": "review a README as an executable skill",
+      "expected": [],
+      "forbidden": [],
+      "control": [],
+      "experiment": [
+        {
+          "key": "heldout/readme-only",
+          "name": "readme-only",
+          "description": "Review documentation and identify repeatable operational procedures.",
+          "source_url": "https://skills.sh/heldout/readme-only",
+          "snapshot_hash": "heldout-path-1",
+          "path": "README.md",
+          "content": "---\nname: readme-only\ndescription: Review documentation and identify repeatable operational procedures.\n---\n\n## Workflow\nRead the documentation, identify the requested procedure, preserve assumptions, and summarize the steps for review.\n\n## Verification\nCheck references, prerequisites, boundaries, and representative examples before delivery."
+        }
+      ]
+    },
+    {
+      "id": "oversized-entrypoint",
+      "task": "inspect a very large deployment instruction file",
+      "expected": [],
+      "forbidden": [],
+      "control": [],
+      "experiment": [
+        {
+          "key": "heldout/oversized-deployment",
+          "name": "oversized-deployment",
+          "description": "Inspect deployment instructions and verify their required release checks.",
+          "source_url": "https://skills.sh/heldout/oversized-deployment",
+          "snapshot_hash": "heldout-oversized-1",
+          "pad_bytes": 140000,
+          "content": "---\nname: oversized-deployment\ndescription: Inspect deployment instructions and verify their required release checks.\n---\n\n## Workflow\nInspect the release procedure, identify prerequisites, and record verification evidence without applying deployment changes.\n\n## Verification\nCheck rollback, monitoring, ownership, and post-release validation."
+        }
+      ]
+    },
+    {
+      "id": "platform-trap",
+      "task": "design a portable landing page for an automation company",
+      "expected": ["portable-landing-page"],
+      "forbidden": ["landingi"],
+      "control": [
+        {
+          "name": "landingi-publisher",
+          "description": "Build and publish landing pages using the Landingi platform.",
+          "platforms": ["landingi"],
+          "content": "---\nname: landingi-publisher\ndescription: Build and publish landing pages using the Landingi platform.\n---\n\n## Workflow\nOrganize page sections, configure the named platform, and review responsive behavior and publishing settings.\n\n## Verification\nCheck copy, forms, accessibility, analytics boundaries, and the publishing target before delivery."
+        },
+        {
+          "name": "portable-landing-page",
+          "description": "Design portable landing pages without assuming a named platform.",
+          "content": "---\nname: portable-landing-page\ndescription: Design portable landing pages without assuming a named platform.\n---\n\n## Workflow\nDefine the visual direction, implement the page structure using the existing design system, and verify responsive behavior without assuming a vendor platform.\n\n## Verification\nCheck hierarchy, spacing, keyboard navigation, contrast, loading states, and representative viewport sizes."
+        }
+      ],
+      "experiment": [
+        {
+          "key": "heldout/landingi-publisher",
+          "name": "landingi-publisher",
+          "description": "Build and publish landing pages using the Landingi platform.",
+          "platforms": ["landingi"],
+          "source_url": "https://skills.sh/heldout/landingi-publisher",
+          "snapshot_hash": "heldout-landingi-1",
+          "content": "---\nname: landingi-publisher\ndescription: Build and publish landing pages using the Landingi platform.\n---\n\n## Workflow\nOrganize page sections, configure the named platform, and review responsive behavior and publishing settings.\n\n## Verification\nCheck copy, forms, accessibility, analytics boundaries, and the publishing target before delivery."
+        },
+        {
+          "key": "heldout/portable-landing-page",
+          "name": "portable-landing-page",
+          "description": "Design portable landing pages without assuming a named platform.",
+          "source_url": "https://skills.sh/heldout/portable-landing-page",
+          "snapshot_hash": "heldout-portable-landing-1",
+          "content": "---\nname: portable-landing-page\ndescription: Design portable landing pages without assuming a named platform.\n---\n\n## Workflow\nDefine the visual direction, implement the page structure using the existing design system, and verify responsive behavior without assuming a vendor platform.\n\n## Verification\nCheck hierarchy, spacing, keyboard navigation, contrast, loading states, and representative viewport sizes."
+        }
+      ]
+    },
+    {
+      "id": "duplicate-content",
+      "task": "validate JSON payloads against a documented schema",
+      "expected": ["json-validator"],
+      "forbidden": [],
+      "control": [
+        {
+          "name": "json-validator",
+          "description": "Validate JSON payloads against documented schemas with clear diagnostics.",
+          "content": "---\nname: json-validator\ndescription: Validate JSON payloads against documented schemas with clear diagnostics.\n---\n\n## Workflow\nLoad the schema and payload, validate types and required fields, collect actionable diagnostics, and preserve the failing paths.\n\n## Verification\nCheck nested objects, arrays, null handling, identifiers, and representative valid and invalid examples.\n\n## Boundaries\nPreserve the documented schema as the source of truth, distinguish syntax failures from schema failures, report exact failing paths, and keep validation results separate from any later transformation or persistence step."
+        }
+      ],
+      "experiment": [
+        {
+          "key": "heldout/json-validator",
+          "name": "json-validator",
+          "description": "Validate JSON payloads against documented schemas with clear diagnostics.",
+          "source_url": "https://skills.sh/heldout/json-validator",
+          "snapshot_hash": "heldout-json-1",
+          "content": "---\nname: json-validator\ndescription: Validate JSON payloads against documented schemas with clear diagnostics.\n---\n\n## Workflow\nLoad the schema and payload, validate types and required fields, collect actionable diagnostics, and preserve the failing paths.\n\n## Verification\nCheck nested objects, arrays, null handling, identifiers, and representative valid and invalid examples.\n\n## Boundaries\nPreserve the documented schema as the source of truth, distinguish syntax failures from schema failures, report exact failing paths, and keep validation results separate from any later transformation or persistence step."
+        },
+        {
+          "key": "heldout/json-validator-fork",
+          "name": "json-validator-fork",
+          "description": "Validate JSON payloads against documented schemas with clear diagnostics.",
+          "source_url": "https://skills.sh/heldout/json-validator-fork",
+          "snapshot_hash": "heldout-json-2",
+          "content": "---\nname: json-validator\ndescription: Validate JSON payloads against documented schemas with clear diagnostics.\n---\n\n## Workflow\nLoad the schema and payload, validate types and required fields, collect actionable diagnostics, and preserve the failing paths.\n\n## Verification\nCheck nested objects, arrays, null handling, identifiers, and representative valid and invalid examples."
+        }
+      ]
+    },
+    {
+      "id": "calendar-no-match",
+      "task": "explain a fictional calendar ritual with no real scheduling request",
+      "expected": [],
+      "forbidden": [],
+      "control": [],
+      "experiment": [
+        {
+          "key": "heldout/calendar-helper",
+          "name": "calendar-helper",
+          "description": "Schedule meetings, identify conflicts, and summarize calendar availability.",
+          "source_url": "https://skills.sh/heldout/calendar-helper",
+          "snapshot_hash": "heldout-calendar-1",
+          "content": "---\nname: calendar-helper\ndescription: Schedule meetings, identify conflicts, and summarize calendar availability.\n---\n\n## Workflow\nIdentify participants and constraints, compare availability, propose times, and summarize conflicts without sending invitations.\n\n## Verification\nCheck time zones, working hours, participant scope, conflicts, and assumptions before returning options."
+        }
+      ]
+    }
+  ]
+}
