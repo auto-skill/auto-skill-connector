@@ -1,0 +1,416 @@
+{
+ "summary": {
+  "prod": {
+   "counts": {
+    "RELEVANT": 19,
+    "RELATED": 10,
+    "IRRELEVANT": 1
+   },
+   "graded": 30,
+   "precision_at_1": 63.3,
+   "no_hit": 0
+  },
+  "new": {
+   "counts": {
+    "RELATED": 8,
+    "RELEVANT": 21,
+    "IRRELEVANT": 1
+   },
+   "graded": 30,
+   "precision_at_1": 70.0,
+   "no_hit": 0
+  }
+ },
+ "rows": [
+  {
+   "query": "how do I speed up a slow postgres query",
+   "prod": {
+    "hit": "query-optimizer",
+    "label": "RELEVANT",
+    "why": "Directly addresses slow Postgres query optimization"
+   },
+   "new": {
+    "hit": "ignition-sql-authoring",
+    "label": "RELATED",
+    "why": "Performance tuning mentioned but Ignition-specific, not gene"
+   }
+  },
+  {
+   "query": "set up CI with github actions for a python project",
+   "prod": {
+    "hit": "workflow-setup",
+    "label": "RELEVANT",
+    "why": "Directly configures GitHub Actions for Python projects"
+   },
+   "new": {
+    "hit": "ln-732-cicd-generator",
+    "label": "RELEVANT",
+    "why": "Generates GitHub Actions workflows for Python projects"
+   }
+  },
+  {
+   "query": "write a dockerfile for a node app",
+   "prod": {
+    "hit": "forge-dockerfile",
+    "label": "RELEVANT",
+    "why": "Skill includes production-grade Node Dockerfile examples"
+   },
+   "new": {
+    "hit": "docker-patterns",
+    "label": "RELEVANT",
+    "why": "Directly provides Dockerfile patterns for Node.js services"
+   }
+  },
+  {
+   "query": "debug a memory leak in a python service",
+   "prod": {
+    "hit": "memory-leak-detector",
+    "label": "RELATED",
+    "why": "Memory leak debugging, but targets desktop apps not services"
+   },
+   "new": {
+    "hit": "ros1",
+    "label": "RELATED",
+    "why": "ROS1-specific; general Python debugging sought"
+   }
+  },
+  {
+   "query": "configure nginx as a reverse proxy with TLS",
+   "prod": {
+    "hit": "nginx-config-pro",
+    "label": "RELEVANT",
+    "why": "Directly covers nginx reverse proxy with TLS termination set"
+   },
+   "new": {
+    "hit": "nginx-config",
+    "label": "RELEVANT",
+    "why": "Directly covers reverse proxy and TLS setup"
+   }
+  },
+  {
+   "query": "terraform module for an AWS VPC",
+   "prod": {
+    "hit": "terraform-aws-architect",
+    "label": "RELEVANT",
+    "why": "Terraform AWS VPC module design directly matches skill scope"
+   },
+   "new": {
+    "hit": "terraform-module-library",
+    "label": "RELATED",
+    "why": "General Terraform module design guidance, not VPC-specific"
+   }
+  },
+  {
+   "query": "add authentication to a fastapi app",
+   "prod": {
+    "hit": "authentication",
+    "label": "RELATED",
+    "why": "PyWry framework, not FastAPI"
+   },
+   "new": {
+    "hit": "fastapi",
+    "label": "RELEVANT",
+    "why": "Skill explicitly covers JWT authentication in FastAPI"
+   }
+  },
+  {
+   "query": "profile and optimise react rendering performance",
+   "prod": {
+    "hit": "react-patterns",
+    "label": "RELATED",
+    "why": "Covers optimization patterns, not profiling tools."
+   },
+   "new": {
+    "hit": "react-performance",
+    "label": "RELEVANT",
+    "why": "Directly addresses profiling and optimizing React rendering"
+   }
+  },
+  {
+   "query": "set up structured logging and tracing",
+   "prod": {
+    "hit": "python-observability",
+    "label": "RELEVANT",
+    "why": "Directly covers structured logging and distributed tracing"
+   },
+   "new": {
+    "hit": "golang-observability",
+    "label": "RELEVANT",
+    "why": "covers structured logs and OpenTelemetry tracing directly"
+   }
+  },
+  {
+   "query": "write property-based tests in python",
+   "prod": {
+    "hit": "property-based-testing-with-kotest",
+    "label": "RELATED",
+    "why": "Property-based testing concept, but Kotlin/JVM not Python"
+   },
+   "new": {
+    "hit": "verify-property",
+    "label": "RELEVANT",
+    "why": "Directly guides property-based testing in Python with Hypoth"
+   }
+  },
+  {
+   "query": "migrate a database schema with zero downtime",
+   "prod": {
+    "hit": "Database Migration Testing",
+    "label": "RELEVANT",
+    "why": "Directly covers zero-downtime migration patterns"
+   },
+   "new": {
+    "hit": "database-migration",
+    "label": "RELEVANT",
+    "why": "Directly covers zero-downtime database schema migration"
+   }
+  },
+  {
+   "query": "convert video formats with ffmpeg",
+   "prod": {
+    "hit": "video-to-gif",
+    "label": "RELATED",
+    "why": "specific to GIF conversion, not general formats"
+   },
+   "new": {
+    "hit": "media-processing",
+    "label": "RELEVANT",
+    "why": "FFmpeg video conversion workflows directly addressed"
+   }
+  },
+  {
+   "query": "build a RAG pipeline with embeddings",
+   "prod": {
+    "hit": "rag-patterns",
+    "label": "RELEVANT",
+    "why": "Directly covers RAG pipelines and embedding strategies"
+   },
+   "new": {
+    "hit": "rag-development",
+    "label": "RELEVANT",
+    "why": "Directly covers RAG pipeline architecture and components"
+   }
+  },
+  {
+   "query": "kubernetes pod keeps crashing how do I debug",
+   "prod": {
+    "hit": "pod-management",
+    "label": "RELEVANT",
+    "why": "Directly addresses pod debugging and troubleshooting"
+   },
+   "new": {
+    "hit": "crashlog",
+    "label": "RELATED",
+    "why": "Kubernetes pod debugging but narrowly scoped to vLLM"
+   }
+  },
+  {
+   "query": "parse and transform large CSV files efficiently",
+   "prod": {
+    "hit": "csv-data-handling",
+    "label": "RELATED",
+    "why": "CSV parsing/transform covered, but D3.js-specific not necess"
+   },
+   "new": {
+    "hit": "python-data-pipeline",
+    "label": "RELEVANT",
+    "why": "Directly addresses CSV parsing, transformation, efficient pr"
+   }
+  },
+  {
+   "query": "set up pre-commit hooks and linting",
+   "prod": {
+    "hit": "setup-pre-commit",
+    "label": "RELEVANT",
+    "why": "Directly sets up pre-commit hooks and linting"
+   },
+   "new": {
+    "hit": "git-hooks-automation",
+    "label": "RELEVANT",
+    "why": "Directly teaches pre-commit hooks and linting setup"
+   }
+  },
+  {
+   "query": "implement rate limiting on an API",
+   "prod": {
+    "hit": "rate-limiting-apis",
+    "label": "RELEVANT",
+    "why": "Directly addresses API rate limiting implementation techniqu"
+   },
+   "new": {
+    "hit": "rate-limiting-abuse-protection",
+    "label": "RELEVANT",
+    "why": "Directly explains API rate limiting implementation approache"
+   }
+  },
+  {
+   "query": "analyse a heap dump from a JVM service",
+   "prod": {
+    "hit": "heap-dump-analyzer",
+    "label": "RELEVANT",
+    "why": "Directly for Java heap dump analysis and troubleshooting"
+   },
+   "new": {
+    "hit": "analyzing-heap-spray-exploitation",
+    "label": "IRRELEVANT",
+    "why": "JVM heap dumps vs system memory exploitation analysis"
+   }
+  },
+  {
+   "query": "scrape a website politely with rate limits",
+   "prod": {
+    "hit": "polite",
+    "label": "RELEVANT",
+    "why": "Polite package provides rate-limited ethical web scraping"
+   },
+   "new": {
+    "hit": "skills",
+    "label": "RELEVANT",
+    "why": "Directly covers web scraping with rate limiting"
+   }
+  },
+  {
+   "query": "write a bash script that is safe by default",
+   "prod": {
+    "hit": "bash",
+    "label": "RELEVANT",
+    "why": "Directly covers safe bash scripting patterns"
+   },
+   "new": {
+    "hit": "bash-defensive-patterns",
+    "label": "RELEVANT",
+    "why": "Directly teaches defensive Bash practices including strict m"
+   }
+  },
+  {
+   "query": "set up a monorepo with pnpm workspaces",
+   "prod": {
+    "hit": "pnpm-monorepo",
+    "label": "RELEVANT",
+    "why": "Skill directly covers pnpm monorepo setup"
+   },
+   "new": {
+    "hit": "monorepo-management",
+    "label": "RELEVANT",
+    "why": "Directly covers pnpm monorepo setup and management"
+   }
+  },
+  {
+   "query": "fine-tune a small language model",
+   "prod": {
+    "hit": "fine-tune-slm",
+    "label": "RELEVANT",
+    "why": "Directly addresses fine-tuning small language models"
+   },
+   "new": {
+    "hit": "nlp-pipeline",
+    "label": "RELATED",
+    "why": "NLP framework but not fine-tuning specific"
+   }
+  },
+  {
+   "query": "handle timezone-aware datetimes correctly",
+   "prod": {
+    "hit": "datetime-mcp",
+    "label": "RELEVANT",
+    "why": "MCP server for datetime awareness directly addresses timezon"
+   },
+   "new": {
+    "hit": "agentry-datetime-handling",
+    "label": "RELEVANT",
+    "why": "Directly teaches timezone-aware datetime best practices"
+   }
+  },
+  {
+   "query": "secure secrets in a CI pipeline",
+   "prod": {
+    "hit": "building-devsecops-pipeline-with-gitlab-ci",
+    "label": "RELATED",
+    "why": "DevSecOps pipeline skill broader than secrets focus"
+   },
+   "new": {
+    "hit": "building-devsecops-pipeline-with-gitlab-ci",
+    "label": "RELEVANT",
+    "why": "Directly covers secret scanning in CI/CD"
+   }
+  },
+  {
+   "query": "design an event-driven system with kafka",
+   "prod": {
+    "hit": "event-driven-architecture",
+    "label": "RELEVANT",
+    "why": "Directly addresses event-driven design with Kafka"
+   },
+   "new": {
+    "hit": "kafka-event-driven",
+    "label": "RELEVANT",
+    "why": "Directly covers Kafka event-driven system design"
+   }
+  },
+  {
+   "query": "make a CLI with good UX in rust",
+   "prod": {
+    "hit": "-claude-design-mcp-",
+    "label": "RELATED",
+    "why": "Rust and UX, but MCP integration not CLI-building"
+   },
+   "new": {
+    "hit": "domain-cli",
+    "label": "RELEVANT",
+    "why": "Directly covers Rust CLI design, UX patterns, error handling"
+   }
+  },
+  {
+   "query": "optimise docker image size",
+   "prod": {
+    "hit": "image-processing",
+    "label": "IRRELEVANT",
+    "why": "Docker image optimization vs image file optimization"
+   },
+   "new": {
+    "hit": "devcontainers",
+    "label": "RELATED",
+    "why": "Dev Containers involve Docker but focus on development envir"
+   }
+  },
+  {
+   "query": "set up feature flags for gradual rollout",
+   "prod": {
+    "hit": "Feature Flag Testing",
+    "label": "RELATED",
+    "why": "Tests gradual rollout, not setup configuration"
+   },
+   "new": {
+    "hit": "strangler-fig-orchestrator",
+    "label": "RELATED",
+    "why": "Focuses on strangler fig pattern specifically, not general f"
+   }
+  },
+  {
+   "query": "write clear API documentation with openapi",
+   "prod": {
+    "hit": "aspnet-minimal-api-openapi",
+    "label": "RELEVANT",
+    "why": "Directly addresses OpenAPI documentation creation"
+   },
+   "new": {
+    "hit": "aspnet-minimal-api-openapi",
+    "label": "RELEVANT",
+    "why": "Skill directly covers OpenAPI documentation procedures"
+   }
+  },
+  {
+   "query": "troubleshoot DNS resolution failures",
+   "prod": {
+    "hit": "homelab-pihole-dns",
+    "label": "RELATED",
+    "why": "Specialized to Pi-hole/home networks, not general DNS troubl"
+   },
+   "new": {
+    "hit": "azure-dns",
+    "label": "RELATED",
+    "why": "Azure-specific DNS tool, query is general DNS troubleshootin"
+   }
+  }
+ ]
+}

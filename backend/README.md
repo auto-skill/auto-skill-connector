@@ -210,6 +210,8 @@ python bench/evidence_eval.py outcomes eval-results/agent-outcomes.jsonl `
   --output eval-results/outcome-gate.json
 python bench/evidence_eval.py parity data/local_skills.db `
   --output eval-results/v6-parity.json
+python corpus_canary.py --db data/local_skills.db `
+  --json-out eval-results/corpus-canary.json
 ```
 
 The outcome input requires at least two replicates for each of `no-skill`,
@@ -218,6 +220,12 @@ excluded. The report includes paired wins/losses, bootstrap confidence
 intervals, cost, latency, tokens, safety failures, and strategy displacement.
 The parity gate must pass before a hosted result can be attributed to this
 router/corpus version.
+
+`corpus_canary.py` opens SQLite read-only and measures whether the frozen public
+`SKILL.md` canaries were discovered as raw GitHub records, reached the active
+catalog, and retained their expected digest. Its per-canary drop stage separates
+missed discovery from frontmatter, package-capture, deduplication, and quality
+gate failures.
 
 Route benchmark cases live in `evals/routes.jsonl`. Add false positives,
 direct hits, ambiguous matches, and conversation/meta negatives so behavior

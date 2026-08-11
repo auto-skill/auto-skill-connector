@@ -1,0 +1,3595 @@
+{
+ "03983835-08fd-41ad-b03a-cc5d0ee83943": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "prashanthvara/cs-automation-skills"
+ },
+ "0427b58a-08b1-4e06-a438-64dec42b5ffa": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "tiagomonteiro0715/pessoa"
+ },
+ "02d01f17-95f7-4848-80a8-cabc92819bb5": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "auravixstudio/caelo"
+ },
+ "02a00325-482b-4b13-9090-aa5a006a424b": {
+  "status": "ok",
+  "repo": "brycewang-stanford/auto-empirical-research-skills",
+  "entry_path": "skills/14-luischanci-claude-code-research-starter/dot-claude/skills/compile-latex/SKILL.md",
+  "entry_hash": "7e2799ff929f60446478d814352fef665d5361cd6661e63ee32aac544e466a7c",
+  "skill_dir": "skills/14-luischanci-claude-code-research-starter/dot-claude/skills/compile-latex",
+  "tree": [
+   {
+    "path": "skills/14-luischanci-claude-code-research-starter/dot-claude/skills/compile-latex/SKILL.md",
+    "type": "file",
+    "size": 1444
+   }
+  ],
+  "chars": 1444
+ },
+ "0485f22e-8a19-42ab-b440-1bacdfac215a": {
+  "status": "ok",
+  "repo": "nxproxystudios/apple-bento-grid",
+  "entry_path": "skills/apple-bento-grid/SKILL.md",
+  "entry_hash": "953e989d76ad3054cc84967bd18bf12a126d895c9d792baa611df691f792e11b",
+  "skill_dir": "skills/apple-bento-grid",
+  "tree": [
+   {
+    "path": "skills/apple-bento-grid/SKILL.md",
+    "type": "file",
+    "size": 14
+   },
+   {
+    "path": "skills/apple-bento-grid/bento_grid_apple_2.9.zip",
+    "type": "file",
+    "size": 538362
+   },
+   {
+    "path": "skills/apple-bento-grid/design-system.md",
+    "type": "file",
+    "size": 22
+   },
+   {
+    "path": "skills/apple-bento-grid/examples",
+    "type": "symlink",
+    "size": 14
+   },
+   {
+    "path": "skills/apple-bento-grid/scripts",
+    "type": "symlink",
+    "size": 13
+   }
+  ],
+  "chars": 11236
+ },
+ "0683ef22-6541-4718-b744-0ba0d54c5454": {
+  "status": "ok",
+  "repo": "falcol/nghetruyen",
+  "entry_path": ".claude/skills/bmad-review-edge-case-hunter/SKILL.md",
+  "entry_hash": "f49ed9976f46b4cefa1fc8b4f0a495f16089905e6a7bbf4ce73b8f05c9ae3ee6",
+  "skill_dir": ".claude/skills/bmad-review-edge-case-hunter",
+  "tree": [
+   {
+    "path": ".claude/skills/bmad-review-edge-case-hunter/SKILL.md",
+    "type": "file",
+    "size": 4024
+   }
+  ],
+  "chars": 4002
+ },
+ "07b7c7ce-1e87-40ab-9cc1-d814f2bf8a56": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=unresolvable)",
+  "repo": null
+ },
+ "08a43973-69b5-41bc-b2ed-4ba8ae02ef36": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "xue9712/agent"
+ },
+ "098059ca-353a-43de-a2c1-3b6c80530f6d": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "infotalks/at-dev-harness"
+ },
+ "0568e9da-cd3a-42e2-83e2-17b9596d4a6b": {
+  "status": "ok",
+  "repo": "naveedharri/benai-skills",
+  "entry_path": "plugins/content/skills/research/SKILL.md",
+  "entry_hash": "fac46c7ff7618dce274634ae62dfe6a589ef6d607ef8ed31fd7b5045c34005bd",
+  "skill_dir": "plugins/content/skills/research",
+  "tree": [
+   {
+    "path": "plugins/content/skills/research/CHANGELOG.md",
+    "type": "file",
+    "size": 2660
+   },
+   {
+    "path": "plugins/content/skills/research/SKILL.md",
+    "type": "file",
+    "size": 2737
+   },
+   {
+    "path": "plugins/content/skills/research/assets",
+    "type": "dir",
+    "size": 0
+   },
+   {
+    "path": "plugins/content/skills/research/references",
+    "type": "dir",
+    "size": 0
+   },
+   {
+    "path": "plugins/content/skills/research/scripts",
+    "type": "dir",
+    "size": 0
+   },
+   {
+    "path": "plugins/content/skills/research/assets/deep_research.py",
+    "type": "file",
+    "size": 7010
+   },
+   {
+    "path": "plugins/content/skills/research/references/cli.md",
+    "type": "file",
+    "size": 1584
+   },
+   {
+    "path": "plugins/content/skills/research/references/prompt-enhancement.md",
+    "type": "file",
+    "size": 2681
+   },
+   {
+    "path": "plugins/content/skills/research/references/troubleshooting.md",
+    "type": "file",
+    "size": 992
+   },
+   {
+    "path": "plugins/content/skills/research/scripts/run_deep_research.py",
+    "type": "file",
+    "size": 8468
+   }
+  ],
+  "chars": 2737
+ },
+ "0a6d7067-9745-4bae-8d1b-f1c48dbf7a6d": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=unresolvable)",
+  "repo": null
+ },
+ "07329f77-779a-45d3-b45d-cf0e8f578d94": {
+  "status": "ok",
+  "repo": "kmansoni/ecomansoni",
+  "entry_path": ".agents/skills/html-ppt-retro-quarterly-review/SKILL.md",
+  "entry_hash": "b247a581aa52ea9c9ca5686ab79179abe0a82f7caa521775a7e981c2ea168b29",
+  "skill_dir": ".agents/skills/html-ppt-retro-quarterly-review",
+  "tree": [
+   {
+    "path": ".agents/skills/html-ppt-retro-quarterly-review/SKILL.md",
+    "type": "file",
+    "size": 2267
+   },
+   {
+    "path": ".agents/skills/html-ppt-retro-quarterly-review/assets",
+    "type": "dir",
+    "size": 0
+   },
+   {
+    "path": ".agents/skills/html-ppt-retro-quarterly-review/example.html",
+    "type": "file",
+    "size": 13114
+   },
+   {
+    "path": ".agents/skills/html-ppt-retro-quarterly-review/references",
+    "type": "dir",
+    "size": 0
+   },
+   {
+    "path": ".agents/skills/html-ppt-retro-quarterly-review/assets/template.html",
+    "type": "file",
+    "size": 13750
+   },
+   {
+    "path": ".agents/skills/html-ppt-retro-quarterly-review/references/checklist.md",
+    "type": "file",
+    "size": 955
+   }
+  ],
+  "chars": 2197
+ },
+ "0a28c1c9-9ad3-4ed9-b095-cad71f4882be": {
+  "status": "ok",
+  "repo": "github/awesome-copilot",
+  "entry_path": "skills/refactor/SKILL.md",
+  "entry_hash": "58a38edd230cdcdd866939906321c8ba6f47c98a70d0cda373360196ee2ca1a7",
+  "skill_dir": "skills/refactor",
+  "tree": [
+   {
+    "path": "skills/refactor/SKILL.md",
+    "type": "file",
+    "size": 16843
+   }
+  ],
+  "chars": 16843
+ },
+ "0e347289-50b4-423c-9022-22273612acfb": {
+  "status": "ok",
+  "repo": "breaktapes/breaktapes-dev",
+  "entry_path": ".claude/skills/gstack/.opencode/skills/gstack-autoplan/SKILL.md",
+  "entry_hash": "ebc5835397d0a77d7a3090e7c8b3bd2a7a912d75e28c945e7a907473cf0aa66a",
+  "skill_dir": ".claude/skills/gstack/.opencode/skills/gstack-autoplan",
+  "tree": [
+   {
+    "path": ".claude/skills/gstack/.opencode/skills/gstack-autoplan/SKILL.md",
+    "type": "file",
+    "size": 79123
+   }
+  ],
+  "chars": 77499
+ },
+ "121041cc-509f-457c-8d79-a5a6d1cc2308": {
+  "status": "ok",
+  "repo": "alirezarezvani/claude-skills",
+  "entry_path": ".gemini/skills/slo-design/SKILL.md",
+  "entry_hash": "eac59a6d5a84bead0162334fdea179f400edeb795909b77d7c5b5958596a7127",
+  "skill_dir": ".gemini/skills/slo-design",
+  "tree": [
+   {
+    "path": ".gemini/skills/slo-design/SKILL.md",
+    "type": "file",
+    "size": 31
+   }
+  ],
+  "chars": 2009
+ },
+ "12dac872-61be-4890-a5be-cfa0a1bbeb42": {
+  "status": "ok",
+  "repo": "jleechanorg/claude-commands",
+  "entry_path": ".claude/skills/repro/SKILL.md",
+  "entry_hash": "7be042490e5b00c962bddb3ba8636aa9244698438942b944cd7a34ea8e2cc037",
+  "skill_dir": ".claude/skills/repro",
+  "tree": [
+   {
+    "path": ".claude/skills/repro/SKILL.md",
+    "type": "file",
+    "size": 7367
+   }
+  ],
+  "chars": 7337
+ },
+ "13421b0a-95d4-49a4-b876-e494458a64fa": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "agentberg/agentberg"
+ },
+ "12e710f4-8cb4-4939-900e-7f64445b7465": {
+  "status": "ok",
+  "repo": "jeffgreen311/eve-agent-v2-unleashed",
+  "entry_path": ".claude/skills/risk-metrics-calculation/SKILL.md",
+  "entry_hash": "cb46aeecb27cbab2f73959c67ff2a32eb186c28cc6ac541e447a020ffb04a089",
+  "skill_dir": ".claude/skills/risk-metrics-calculation",
+  "tree": [
+   {
+    "path": ".claude/skills/risk-metrics-calculation/SKILL.md",
+    "type": "file",
+    "size": 19059
+   }
+  ],
+  "chars": 19059
+ },
+ "13d31ec4-36db-4b4e-a3d6-9948c3b52586": {
+  "status": "ok",
+  "repo": "alirezarezvani/claude-skills",
+  "entry_path": ".gemini/skills/persona/SKILL.md",
+  "entry_hash": "7ce2e21c741c06273959c811f7d4b30639c3e6217035556238f878e38f573071",
+  "skill_dir": ".gemini/skills/persona",
+  "tree": [
+   {
+    "path": ".gemini/skills/persona/SKILL.md",
+    "type": "file",
+    "size": 28
+   }
+  ],
+  "chars": 1047
+ },
+ "15e6a16a-88d6-4931-a767-745ff6e6fb98": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=unresolvable)",
+  "repo": null
+ },
+ "17b63b89-8090-4fad-89eb-6d79500a7548": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "my-outcasts/codepet-ver-1.2"
+ },
+ "1311543c-28f8-4c0a-9fec-0a75c1f9b43a": {
+  "status": "ok",
+  "repo": "markoblogo/abvx-agent-skills",
+  "entry_path": "skills/browser-verification/SKILL.md",
+  "entry_hash": "f857d483ef96364352a4db077b0ae0613ee558029c188a092e66bfa15e2c7b96",
+  "skill_dir": "skills/browser-verification",
+  "tree": [
+   {
+    "path": "skills/browser-verification/SKILL.md",
+    "type": "file",
+    "size": 2399
+   },
+   {
+    "path": "skills/browser-verification/SKILL_CARD.md",
+    "type": "file",
+    "size": 1291
+   },
+   {
+    "path": "skills/browser-verification/agents",
+    "type": "dir",
+    "size": 0
+   },
+   {
+    "path": "skills/browser-verification/agents/openai.yaml",
+    "type": "file",
+    "size": 200
+   }
+  ],
+  "chars": 2399
+ },
+ "14e45607-7f99-40fd-b18d-e67b6ffb60fa": {
+  "status": "ok",
+  "repo": "jeffgreen311/eve-agent-v2-unleashed",
+  "entry_path": ".claude/skills/tailwind-patterns/SKILL.md",
+  "entry_hash": "bc64b47c56a44183441f3c908457dd4dcaaf1dfe4dc2c508b83f56ecdb017667",
+  "skill_dir": ".claude/skills/tailwind-patterns",
+  "tree": [
+   {
+    "path": ".claude/skills/tailwind-patterns/SKILL.md",
+    "type": "file",
+    "size": 6757
+   }
+  ],
+  "chars": 6757
+ },
+ "1b473678-3cc3-40fb-b6ad-58a5d9650108": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "ckanner/agent-skills"
+ },
+ "1a0b15f3-7434-40d2-9e35-dad718e87e8a": {
+  "status": "ok",
+  "repo": "khaledsaeed18/dotclaude",
+  "entry_path": "skills/engineering/api-design-review/SKILL.md",
+  "entry_hash": "249a67f912defa8037f88a219ddf042b72041b8e79982198fdb7bc6107d89e23",
+  "skill_dir": "skills/engineering/api-design-review",
+  "tree": [
+   {
+    "path": "skills/engineering/api-design-review/SKILL.md",
+    "type": "file",
+    "size": 4371
+   },
+   {
+    "path": "skills/engineering/api-design-review/registry.json",
+    "type": "file",
+    "size": 1027
+   }
+  ],
+  "chars": 4371
+ },
+ "1b88fa20-1116-40a7-a26c-9539f325594e": {
+  "status": "ok",
+  "repo": "vodailocz/kilo-kit-mcp",
+  "entry_path": "skills/engineering/code-review/SKILL.md",
+  "entry_hash": "d7ae241ea6db2cf782b4d4c07374dad7f9dfa8a7882a147668b9f26fe72bac9b",
+  "skill_dir": "skills/engineering/code-review",
+  "tree": [
+   {
+    "path": "skills/engineering/code-review/SKILL.md",
+    "type": "file",
+    "size": 5422
+   },
+   {
+    "path": "skills/engineering/code-review/references",
+    "type": "dir",
+    "size": 0
+   },
+   {
+    "path": "skills/engineering/code-review/references/code-review-reception.md",
+    "type": "file",
+    "size": 6110
+   },
+   {
+    "path": "skills/engineering/code-review/references/requesting-code-review.md",
+    "type": "file",
+    "size": 2773
+   },
+   {
+    "path": "skills/engineering/code-review/references/verification-before-completion.md",
+    "type": "file",
+    "size": 4200
+   }
+  ],
+  "chars": 5324
+ },
+ "199404cc-a331-4151-ba3a-c7c8f44a70ab": {
+  "status": "ok",
+  "repo": "microsoft/aspire-skills",
+  "entry_path": ".github/skills/pr-review/SKILL.md",
+  "entry_hash": "78d4a2069bc9eac80d785ca15bb71eaf669a1739628f60581d6129ca929882d3",
+  "skill_dir": ".github/skills/pr-review",
+  "tree": [
+   {
+    "path": ".github/skills/pr-review/SKILL.md",
+    "type": "file",
+    "size": 17122
+   },
+   {
+    "path": ".github/skills/pr-review/references",
+    "type": "dir",
+    "size": 0
+   },
+   {
+    "path": ".github/skills/pr-review/references/aspire-skills-review-checklist.md",
+    "type": "file",
+    "size": 8678
+   },
+   {
+    "path": ".github/skills/pr-review/references/code-review-best-practices.md",
+    "type": "file",
+    "size": 6479
+   },
+   {
+    "path": ".github/skills/pr-review/references/common-bugs-checklist.md",
+    "type": "file",
+    "size": 9610
+   },
+   {
+    "path": ".github/skills/pr-review/references/severity-labels.md",
+    "type": "file",
+    "size": 5121
+   }
+  ],
+  "chars": 17002
+ },
+ "1ddd8911-cc6c-4ff8-83f9-6e15f2e05505": {
+  "status": "ok",
+  "repo": "alirezarezvani/claude-skills",
+  "entry_path": ".gemini/skills/TEMPLATE/SKILL.md",
+  "entry_hash": "b2dab1fa629771b97c7f315a536c153fa672391c75dc89814c2681ad7e651d3b",
+  "skill_dir": ".gemini/skills/TEMPLATE",
+  "tree": [
+   {
+    "path": ".gemini/skills/TEMPLATE/SKILL.md",
+    "type": "file",
+    "size": 36
+   }
+  ],
+  "chars": 2298
+ },
+ "1e1769e0-ccbe-4d5c-bf0a-13cc02300028": {
+  "status": "ok",
+  "repo": "skillboss-ai/agent-skills",
+  "entry_path": "ai-meeting-notes/SKILL.md",
+  "entry_hash": "255f25c7f8fbba3b9896c03b016e5a46a5c3289020b524fbe3e094db0dc28bdb",
+  "skill_dir": "ai-meeting-notes",
+  "tree": [
+   {
+    "path": "ai-meeting-notes/SKILL.md",
+    "type": "file",
+    "size": 3558
+   }
+  ],
+  "chars": 3540
+ },
+ "1e5fb288-60cb-4cd5-95ea-45aa54f7d7a4": {
+  "status": "ok",
+  "repo": "blcoyote/agentic-dev-team",
+  "entry_path": "plugins/agentic-dev-team/skills/agent-skill-authoring/SKILL.md",
+  "entry_hash": "a4e1a348c435b7517bd031fb3562d27d7e243726826d947c645ddcb703712476",
+  "skill_dir": "plugins/agentic-dev-team/skills/agent-skill-authoring",
+  "tree": [
+   {
+    "path": "plugins/agentic-dev-team/skills/agent-skill-authoring/SKILL.md",
+    "type": "file",
+    "size": 6176
+   },
+   {
+    "path": "plugins/agentic-dev-team/skills/agent-skill-authoring/references",
+    "type": "dir",
+    "size": 0
+   },
+   {
+    "path": "plugins/agentic-dev-team/skills/agent-skill-authoring/references/templates.md",
+    "type": "file",
+    "size": 5135
+   }
+  ],
+  "chars": 5904
+ },
+ "204c8345-da5d-4c6f-97c1-3614c51f79b4": {
+  "status": "ok",
+  "repo": "fire17/ladder-abstraction",
+  "entry_path": "skills/ladder/SKILL.md",
+  "entry_hash": "7e9120b9ec365cc34a28e7508e0ec21cdc9666ccebd641f6fd3ccdbcbd73eadd",
+  "skill_dir": "skills/ladder",
+  "tree": [
+   {
+    "path": "skills/ladder/SKILL.md",
+    "type": "file",
+    "size": 30
+   }
+  ],
+  "chars": 13471
+ },
+ "201db9c8-0da0-491d-bc48-c13007c508c7": {
+  "status": "ok",
+  "repo": "RynoCrypto/braiins-os-mcp-server",
+  "entry_path": ".claude/skills/mcp-server-dev/SKILL.md",
+  "entry_hash": "ff300417113de00b1cd6fe9a9e78da2c4465384a7e8b8844dfe28e76d76ef3be",
+  "skill_dir": ".claude/skills/mcp-server-dev",
+  "tree": [
+   {
+    "path": ".claude/skills/mcp-server-dev/SKILL.md",
+    "type": "file",
+    "size": 23762
+   }
+  ],
+  "chars": 23736
+ },
+ "2607c5f9-45b1-499a-a671-08c5801a7394": {
+  "status": "fetch_failed",
+  "detail": "could not fetch geraldothuler/workflow-starter:.claude/skills/promote-skill/SKILL.md",
+  "repo": "geraldothuler/workflow-starter",
+  "entry_path": ".claude/skills/promote-skill/SKILL.md"
+ },
+ "2760dfb2-16c0-4e52-89d9-2704461d2d81": {
+  "status": "ok",
+  "repo": "alirezarezvani/claude-skills",
+  "entry_path": ".gemini/skills/cs-aeo/SKILL.md",
+  "entry_hash": "97f9039c7696348ee8bab69df9a940a450d76e2ce50a5128ab68718ef44321e2",
+  "skill_dir": ".gemini/skills/cs-aeo",
+  "tree": [
+   {
+    "path": ".gemini/skills/cs-aeo/SKILL.md",
+    "type": "file",
+    "size": 35
+   }
+  ],
+  "chars": 6115
+ },
+ "2999fd9b-bc5d-4a37-b700-42a9336ca23a": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "parallaxion-sl/wise-mcp"
+ },
+ "216e4ffe-ab2e-4b66-975f-ec45dec12722": {
+  "status": "ok",
+  "repo": "davidifebueme/notclicky",
+  "entry_path": "resources/skills/claude-code/SKILL.md",
+  "entry_hash": "791c82988fe3ea9753cec49b7a2f34bb1e64bdfaf363545229e554718eebd7f9",
+  "skill_dir": "resources/skills/claude-code",
+  "tree": [
+   {
+    "path": "resources/skills/claude-code/SKILL.md",
+    "type": "file",
+    "size": 34790
+   }
+  ],
+  "chars": 34659
+ },
+ "2a2c7a7a-0217-43dd-a728-73acc6c8a410": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "toddshaner/insurancexdate-mcp"
+ },
+ "29c550bc-7cc1-40c4-850a-8dc2e2bd6718": {
+  "status": "ok",
+  "repo": "rysweet/amplihack",
+  "entry_path": "docs/claude/skills/quality/testing-code/SKILL.md",
+  "entry_hash": "86a3b86ca366b95bc8674e134d383e61c8c549a820d08b2e8dfba4a7aed34c11",
+  "skill_dir": "docs/claude/skills/quality/testing-code",
+  "tree": [
+   {
+    "path": "docs/claude/skills/quality/testing-code/SKILL.md",
+    "type": "file",
+    "size": 14305
+   }
+  ],
+  "chars": 14213
+ },
+ "2bf57fdc-bfb2-4ef7-b661-30b4c650af98": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=unresolvable)",
+  "repo": null
+ },
+ "2d8a1c30-abf6-43ad-b3e9-76e3d5e4b2f4": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "xyb/worklog"
+ },
+ "2b2bfeba-66e9-4e45-b129-e23c65c4176c": {
+  "status": "ok",
+  "repo": "randoneering/randoneering-agent-guide",
+  "entry_path": "skills/trail_of_bits/constant-time-testing/SKILL.md",
+  "entry_hash": "ddf883f5659af688370e82b0d58d1c7554d322d6566ce29aa493cc5735678061",
+  "skill_dir": "skills/trail_of_bits/constant-time-testing",
+  "tree": [
+   {
+    "path": "skills/trail_of_bits/constant-time-testing/SKILL.md",
+    "type": "file",
+    "size": 21567
+   }
+  ],
+  "chars": 20621
+ },
+ "2e6faf5c-60c2-4291-9af9-2f128aa287f9": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "kayon0209/context-engineer"
+ },
+ "2e1c1434-f7bf-465e-a99f-f4a4e0ea2bd4": {
+  "status": "ok",
+  "repo": "sordi-ai/skill-everything",
+  "entry_path": "skills/debugging/SKILL.md",
+  "entry_hash": "db805c516a3c2cc0d94d5dac7a5cf6797ebc01a38e522de151e2f1d19e1cda22",
+  "skill_dir": "skills/debugging",
+  "tree": [
+   {
+    "path": "skills/debugging/SKILL.md",
+    "type": "file",
+    "size": 3827
+   }
+  ],
+  "chars": 3817
+ },
+ "28e6488e-b998-49cf-a4d3-5dfca939210b": {
+  "status": "ok",
+  "repo": "brycewang-stanford/auto-empirical-research-skills",
+  "entry_path": "skills/12-pedrohcgs-claude-code-my-workflow/dot-claude/skills/commit/SKILL.md",
+  "entry_hash": "75a3ffe78d4b150257a95afe7bb1c6ef7ff4aa84908fd04e3307a1c60f49137d",
+  "skill_dir": "skills/12-pedrohcgs-claude-code-my-workflow/dot-claude/skills/commit",
+  "tree": [
+   {
+    "path": "skills/12-pedrohcgs-claude-code-my-workflow/dot-claude/skills/commit/SKILL.md",
+    "type": "file",
+    "size": 1691
+   }
+  ],
+  "chars": 1684
+ },
+ "30f5a581-9193-45bf-ba16-80b21be8fd2f": {
+  "status": "ok",
+  "repo": "pavel-kravchenko/bioinformatics",
+  "entry_path": "Skills/bio-core-biopython-essentials/SKILL.md",
+  "entry_hash": "4136216158527e768fd61a62ace2b37c771488892edeee912d5065c5ca49d71e",
+  "skill_dir": "Skills/bio-core-biopython-essentials",
+  "tree": [
+   {
+    "path": "Skills/bio-core-biopython-essentials/SKILL.md",
+    "type": "file",
+    "size": 8211
+   }
+  ],
+  "chars": 8195
+ },
+ "31e9f247-b5fc-47d4-a294-a69415b53898": {
+  "status": "ok",
+  "repo": "brycewang-stanford/awesome-journal-skills",
+  "entry_path": "Agricultural-Systems-Skills/skills/agsy-reproducibility-and-data-policy/SKILL.md",
+  "entry_hash": "12e874a1596bcc07061af34d3aaf23882fd1163a6cb547adc4d0195ff3fd2ac7",
+  "skill_dir": "Agricultural-Systems-Skills/skills/agsy-reproducibility-and-data-policy",
+  "tree": [
+   {
+    "path": "Agricultural-Systems-Skills/skills/agsy-reproducibility-and-data-policy/SKILL.md",
+    "type": "file",
+    "size": 6088
+   }
+  ],
+  "chars": 6036
+ },
+ "343b8ed4-7da1-4fba-b721-9f8f65b96f19": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=unresolvable)",
+  "repo": null
+ },
+ "326bb458-04da-4684-aed0-334a48d46c3d": {
+  "status": "ok",
+  "repo": "alirezarezvani/claude-skills",
+  "entry_path": ".gemini/skills/cmd-focused-fix/SKILL.md",
+  "entry_hash": "a2a88a04f484bf396a0ec02580a34578605e59fd7ab6a97fbc315e57491679c1",
+  "skill_dir": ".gemini/skills/cmd-focused-fix",
+  "tree": [
+   {
+    "path": ".gemini/skills/cmd-focused-fix/SKILL.md",
+    "type": "file",
+    "size": 32
+   }
+  ],
+  "chars": 3204
+ },
+ "362d88ab-b81a-451a-a558-e698984c8439": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "aaksethi/thehog-gtm-os"
+ },
+ "32a736a1-8459-46eb-9abb-ac2649eb9d81": {
+  "status": "ok",
+  "repo": "housegarofalo/claude-code-base",
+  "entry_path": ".claude/skills/nginx-proxy/SKILL.md",
+  "entry_hash": "4cdd08656cd51458d342cd70d6addca67a23c1495827e3f54178bc392b4a791b",
+  "skill_dir": ".claude/skills/nginx-proxy",
+  "tree": [
+   {
+    "path": ".claude/skills/nginx-proxy/SKILL.md",
+    "type": "file",
+    "size": 8459
+   }
+  ],
+  "chars": 8459
+ },
+ "381e9ee5-0570-434a-b1c6-9d1c3b2a109f": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "yu-yan05/commit-report-tool"
+ },
+ "349097f7-d6b2-4da8-ac25-9c8a60dacaed": {
+  "status": "ok",
+  "repo": "steph-frtech/cdesign-expo",
+  "entry_path": ".claude/marketplaces/wshobson/plugins/llm-application-dev/skills/embedding-strategies/SKILL.md",
+  "entry_hash": "d949436dadf376e247674cd6b08cf56ff983f8d54fcc3439ec6ba132bb631d36",
+  "skill_dir": ".claude/marketplaces/wshobson/plugins/llm-application-dev/skills/embedding-strategies",
+  "tree": [
+   {
+    "path": ".claude/marketplaces/wshobson/plugins/llm-application-dev/skills/embedding-strategies/SKILL.md",
+    "type": "file",
+    "size": 19444
+   }
+  ],
+  "chars": 19434
+ },
+ "370db285-19c7-45f8-8fc7-bfa315119871": {
+  "status": "ok",
+  "repo": "alirezarezvani/claude-skills",
+  "entry_path": ".gemini/skills/wiki-query/SKILL.md",
+  "entry_hash": "4f146d7099c0ab34ce16f10fd7fb7d5e15292ee28e8eca8010863f815e300fa7",
+  "skill_dir": ".gemini/skills/wiki-query",
+  "tree": [
+   {
+    "path": ".gemini/skills/wiki-query/SKILL.md",
+    "type": "file",
+    "size": 31
+   }
+  ],
+  "chars": 2549
+ },
+ "39cb65ef-d4fb-484c-9394-566849f613f9": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=unresolvable)",
+  "repo": null
+ },
+ "390c6ba6-191d-41e4-bab9-1db4068c5811": {
+  "status": "entrypoint_absent",
+  "detail": "no SKILL.md under README.md",
+  "repo": "anthropics/claude-code"
+ },
+ "3d71194b-f313-459d-a4eb-7c2983e57cd2": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "abhipuja1995/prd-scorer"
+ },
+ "39364a56-b3eb-4023-9f1d-2ba1ec810893": {
+  "status": "ok",
+  "repo": "gulajavaministudio/awesome-copilot-id",
+  "entry_path": ".agents/skills/brainstorming-explorer/SKILL.md",
+  "entry_hash": "4a74f28727323b158c0d23dff529c203d4dc61491890e7b4e6e743eb2edd0cfc",
+  "skill_dir": ".agents/skills/brainstorming-explorer",
+  "tree": [
+   {
+    "path": ".agents/skills/brainstorming-explorer/SKILL.md",
+    "type": "file",
+    "size": 7329
+   }
+  ],
+  "chars": 7318
+ },
+ "3ce12064-9cee-465e-9e22-fc013bf45f22": {
+  "status": "ok",
+  "repo": "alirezarezvani/claude-skills",
+  "entry_path": ".gemini/skills/tc/SKILL.md",
+  "entry_hash": "f92f80e86aeb2534bf93d976378d25cfc872ea64e01d138a77315aefdbec8b0d",
+  "skill_dir": ".gemini/skills/tc",
+  "tree": [
+   {
+    "path": ".gemini/skills/tc/SKILL.md",
+    "type": "file",
+    "size": 23
+   }
+  ],
+  "chars": 6131
+ },
+ "411d7e21-7105-4c51-aa6f-3a9b83687000": {
+  "status": "ok",
+  "repo": "0xgetz/xi-agent-skills",
+  "entry_path": "trading-skills/sector-rotation/SKILL.md",
+  "entry_hash": "4e514334f4fb1df1c1f8def92a83312b03aca8010aeffe53ff1ac0772d76672e",
+  "skill_dir": "trading-skills/sector-rotation",
+  "tree": [
+   {
+    "path": "trading-skills/sector-rotation/SKILL.md",
+    "type": "file",
+    "size": 1819
+   }
+  ],
+  "chars": 1815
+ },
+ "3edf3667-4e57-4ee0-851a-4ee5efd26d79": {
+  "status": "ok",
+  "repo": "srg-sphynx/mdforge",
+  "entry_path": "Sources/MDForge/Resources/SkillLibrary/Development/advogado-especialista/SKILL.md",
+  "entry_hash": "39c2117df20037c49c2615533bbee5c0a23d1320fdb530fb4989b1f29c30fbe5",
+  "skill_dir": "Sources/MDForge/Resources/SkillLibrary/Development/advogado-especialista",
+  "tree": [
+   {
+    "path": "Sources/MDForge/Resources/SkillLibrary/Development/advogado-especialista/SKILL.md",
+    "type": "file",
+    "size": 44039
+   }
+  ],
+  "chars": 43809
+ },
+ "3de951b0-b7df-4de2-bd93-8b7bb97e52d8": {
+  "status": "ok",
+  "repo": "minorcell/minorcell-skills",
+  "entry_path": "skills/web-design/SKILL.md",
+  "entry_hash": "31b4ccbcfbac7d5f3608d8e76fa0e089184bec7ae03d4d8c71336d6e79a4d33d",
+  "skill_dir": "skills/web-design",
+  "tree": [
+   {
+    "path": "skills/web-design/SKILL.md",
+    "type": "file",
+    "size": 15534
+   }
+  ],
+  "chars": 15455
+ },
+ "42d4178d-0e81-4ec0-b8e9-5c0a01faa3ae": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "gfoxsupport/impeccable"
+ },
+ "430dd878-4b40-4a85-9da6-184c77a95f3a": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "younesZT/agentic-coding-standards"
+ },
+ "41f1ba23-9dc0-438a-8b75-2a38f04696cd": {
+  "status": "ok",
+  "repo": "alirezarezvani/claude-skills",
+  "entry_path": ".gemini/skills/README/SKILL.md",
+  "entry_hash": "b5c0af2536ce754ce06a85e45143ad8c876f2ee72f0cf4d59ba1985010a7428d",
+  "skill_dir": ".gemini/skills/README",
+  "tree": [
+   {
+    "path": ".gemini/skills/README/SKILL.md",
+    "type": "file",
+    "size": 34
+   }
+  ],
+  "chars": 2638
+ },
+ "460889f3-b48d-4610-9e01-afdf7b1c2071": {
+  "status": "ok",
+  "repo": "sq-cm/claude-template",
+  "entry_path": ".claude/skills/humaniser/SKILL.md",
+  "entry_hash": "a43967be31ea405270def823b894a7e3c22a6948c30a8d2deb9baf1549dfddef",
+  "skill_dir": ".claude/skills/humaniser",
+  "tree": [
+   {
+    "path": ".claude/skills/humaniser/SKILL.md",
+    "type": "file",
+    "size": 34685
+   }
+  ],
+  "chars": 34595
+ },
+ "484fcb5f-6dcb-4d6e-9b2e-39501adf881c": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "cannavis/imessage-rich-search"
+ },
+ "42a1aef3-68f4-4431-8736-553223a32800": {
+  "status": "ok",
+  "repo": "kiterlin/intelligent-detection-system",
+  "entry_path": ".claude/skills/huggingface-tokenizers/SKILL.md",
+  "entry_hash": "d2ff3f9eed2cb8e15cb98e8e2398ca359325a32fd5d16ebfe0d115d7624583af",
+  "skill_dir": ".claude/skills/huggingface-tokenizers",
+  "tree": [
+   {
+    "path": ".claude/skills/huggingface-tokenizers/.openskills.json",
+    "type": "file",
+    "size": 243
+   },
+   {
+    "path": ".claude/skills/huggingface-tokenizers/SKILL.md",
+    "type": "file",
+    "size": 13674
+   },
+   {
+    "path": ".claude/skills/huggingface-tokenizers/references",
+    "type": "dir",
+    "size": 0
+   },
+   {
+    "path": ".claude/skills/huggingface-tokenizers/references/algorithms.md",
+    "type": "file",
+    "size": 15182
+   },
+   {
+    "path": ".claude/skills/huggingface-tokenizers/references/integration.md",
+    "type": "file",
+    "size": 15389
+   },
+   {
+    "path": ".claude/skills/huggingface-tokenizers/references/pipeline.md",
+    "type": "file",
+    "size": 16746
+   },
+   {
+    "path": ".claude/skills/huggingface-tokenizers/references/training.md",
+    "type": "file",
+    "size": 14559
+   }
+  ],
+  "chars": 13643
+ },
+ "46781d0e-4682-4bcd-9d4a-b164a5e1bfba": {
+  "status": "ok",
+  "repo": "alirezarezvani/claude-skills",
+  "entry_path": ".gemini/skills/changelog/SKILL.md",
+  "entry_hash": "7cafc8f6f034e2815350ae10112b17c6eff588d194e40bd6d7b74f4975121a98",
+  "skill_dir": ".gemini/skills/changelog",
+  "tree": [
+   {
+    "path": ".gemini/skills/changelog/SKILL.md",
+    "type": "file",
+    "size": 30
+   }
+  ],
+  "chars": 1098
+ },
+ "488041af-a6e7-4e2e-9579-cea1e05aa31f": {
+  "status": "ok",
+  "repo": "github/awesome-copilot",
+  "entry_path": "skills/git-commit/SKILL.md",
+  "entry_hash": "554d1a3c6d95f15bc1170160659ecdc9a9958b64f377f3988941b672c249b13f",
+  "skill_dir": "skills/git-commit",
+  "tree": [
+   {
+    "path": "skills/git-commit/SKILL.md",
+    "type": "file",
+    "size": 3198
+   }
+  ],
+  "chars": 3198
+ },
+ "4bb1cdcd-1429-4666-bfe3-42955af33933": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "0xcjt/templonixlite"
+ },
+ "49854396-cc19-4371-a75e-91f0a14e076c": {
+  "status": "ok",
+  "repo": "shieldnet-360/secure-vibe",
+  "entry_path": "dist/claude-skills/.claude/skills/websocket-security/SKILL.md",
+  "entry_hash": "3a2e5ae8041ec665d80daa46562d6b88503725df144bee9d5dac4349273ad0ea",
+  "skill_dir": "dist/claude-skills/.claude/skills/websocket-security",
+  "tree": [
+   {
+    "path": "dist/claude-skills/.claude/skills/websocket-security/SKILL.md",
+    "type": "file",
+    "size": 4795
+   },
+   {
+    "path": "dist/claude-skills/.claude/skills/websocket-security/metadata.json",
+    "type": "file",
+    "size": 1091
+   }
+  ],
+  "chars": 4777
+ },
+ "4a9c8c42-e755-4111-bca3-61c0385c8443": {
+  "status": "ok",
+  "repo": "alirezarezvani/claude-skills",
+  "entry_path": ".gemini/skills/tdd/SKILL.md",
+  "entry_hash": "7e5304892262d6d1dce6b0080c3b760833f1c49d84a15f8d83427a8618783f13",
+  "skill_dir": ".gemini/skills/tdd",
+  "tree": [
+   {
+    "path": ".gemini/skills/tdd/SKILL.md",
+    "type": "file",
+    "size": 24
+   }
+  ],
+  "chars": 3864
+ },
+ "4c504e97-75dc-4fd6-a28f-3f75560eb18f": {
+  "status": "ok",
+  "repo": "alirezarezvani/claude-skills",
+  "entry_path": ".gemini/skills/chaos-experiment/SKILL.md",
+  "entry_hash": "3c7165a65f53f3e1e1bcef44c23a9022398559973e7ab82be4ac533e27778065",
+  "skill_dir": ".gemini/skills/chaos-experiment",
+  "tree": [
+   {
+    "path": ".gemini/skills/chaos-experiment/SKILL.md",
+    "type": "file",
+    "size": 37
+   }
+  ],
+  "chars": 2073
+ },
+ "4e438ed8-ede7-4298-bef9-cfe411d641e3": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "cablate/mcp-google-map"
+ },
+ "50378ede-75ad-45a3-ad02-532d105c76ee": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "Mrguanglei/Budy"
+ },
+ "509f3985-19f3-4adb-877f-44e4eabd29a6": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "neosapience/douzonebot-plugin"
+ },
+ "4cf0140f-c55c-40fe-ad38-6ff2eecbe5d1": {
+  "status": "ok",
+  "repo": "dietrichgebert/ponytail",
+  "entry_path": "skills/ponytail/SKILL.md",
+  "entry_hash": "1316a2f3f95741d2300b116fe0c2d81ce4a9568656ed0a62643f54aaf09957f2",
+  "skill_dir": "skills/ponytail",
+  "tree": [
+   {
+    "path": "skills/ponytail/SKILL.md",
+    "type": "file",
+    "size": 6637
+   }
+  ],
+  "chars": 6616
+ },
+ "4e433128-4f5d-4e35-b02f-ad6c00b00884": {
+  "status": "ok",
+  "repo": "alirezarezvani/claude-skills",
+  "entry_path": ".gemini/skills/rice/SKILL.md",
+  "entry_hash": "7e21d535304113e2f5b163a55daddc81e1e61ea63fda8ab1adb74edb9e902403",
+  "skill_dir": ".gemini/skills/rice",
+  "tree": [
+   {
+    "path": ".gemini/skills/rice/SKILL.md",
+    "type": "file",
+    "size": 25
+   }
+  ],
+  "chars": 1012
+ },
+ "566663c8-a140-4b4b-b6e6-41bde2716634": {
+  "status": "fetch_failed",
+  "detail": "could not fetch jhamidun/claude-code-config-pack:.claude/skills/writing-skills/SKILL.md",
+  "repo": "jhamidun/claude-code-config-pack",
+  "entry_path": ".claude/skills/writing-skills/SKILL.md"
+ },
+ "56359650-73c9-4d80-8091-6302a35d9fa9": {
+  "status": "ok",
+  "repo": "github/awesome-copilot",
+  "entry_path": "skills/sql-optimization/SKILL.md",
+  "entry_hash": "d87639dea8e0208e2161b78b22f6427b0fdf59e95e693b40d48b1226a0c35ccf",
+  "skill_dir": "skills/sql-optimization",
+  "tree": [
+   {
+    "path": "skills/sql-optimization/SKILL.md",
+    "type": "file",
+    "size": 9255
+   }
+  ],
+  "chars": 9183
+ },
+ "51e971ce-abf4-4ad8-a925-d5fbb0352207": {
+  "status": "ok",
+  "repo": "notque/vexjoy-agent",
+  "entry_path": "skills/process/planning/SKILL.md",
+  "entry_hash": "08495e83cadfb132d3d7b6d01c1e71b28c98500670e697faf69845421026852f",
+  "skill_dir": "skills/process/planning",
+  "tree": [
+   {
+    "path": "skills/process/planning/SKILL.md",
+    "type": "file",
+    "size": 6329
+   },
+   {
+    "path": "skills/process/planning/references",
+    "type": "dir",
+    "size": 0
+   },
+   {
+    "path": "skills/process/planning/references/check-dimensions.md",
+    "type": "file",
+    "size": 7628
+   },
+   {
+    "path": "skills/process/planning/references/check-errors.md",
+    "type": "file",
+    "size": 824
+   },
+   {
+    "path": "skills/process/planning/references/check-verdict-format.md",
+    "type": "file",
+    "size": 3226
+   },
+   {
+    "path": "skills/process/planning/references/check.md",
+    "type": "file",
+    "size": 6617
+   },
+   {
+    "path": "skills/process/planning/references/depth-first-interview.md",
+    "type": "file",
+    "size": 6493
+   },
+   {
+    "path": "skills/process/planning/references/executor-ready-plan-template.md",
+    "type": "file",
+    "size": 7852
+   },
+   {
+    "path": "skills/process/planning/references/manage.md",
+    "type": "file",
+    "size": 5223
+   },
+   {
+    "path": "skills/process/planning/references/pause-confirm-and-errors.md",
+    "type": "file",
+    "size": 2164
+   },
+   {
+    "path": "skills/process/planning/references/pause-extract-learnings.md",
+    "type": "file",
+    "size": 2980
+   },
+   {
+    "path": "skills/process/planning/references/pause-gather-steps.md",
+    "type": "file",
+    "size": 2381
+   },
+   {
+    "path": "skills/process/planning/references/pause-synthesize-fields.md",
+    "type": "file",
+    "size": 2380
+   },
+   {
+    "path": "skills/process/planning/references/pause-write-templates.md",
+    "type": "file",
+    "size": 4404
+   },
+   {
+    "path": "skills/process/planning/references/pause.md",
+    "type": "file",
+    "size": 6526
+   },
+   {
+    "path": "skills/process/planning/references/plan-files.md",
+    "type": "file",
+    "size": 8587
+   },
+   {
+    "path": "skills/process/planning/references/pre-plan.md",
+    "type": "file",
+    "size": 11838
+   },
+   {
+    "path": "skills/process/planning/references/resume.md",
+    "type": "file",
+    "size": 11244
+   },
+   {
+    "path": "skills/process/planning/references/spec.md",
+    "type": "file",
+    "size": 5374
+   }
+  ],
+  "chars": 6325
+ },
+ "56d7280d-1eb1-48d2-93d6-6f3fb8e3bb12": {
+  "status": "ok",
+  "repo": "alirezarezvani/claude-skills",
+  "entry_path": ".gemini/skills/wiki-lint/SKILL.md",
+  "entry_hash": "dc9eeaa65276b8b0bf4c088aa5a2c608bfafb06d20b12a4fcdec899320c03673",
+  "skill_dir": ".gemini/skills/wiki-lint",
+  "tree": [
+   {
+    "path": ".gemini/skills/wiki-lint/SKILL.md",
+    "type": "file",
+    "size": 30
+   }
+  ],
+  "chars": 2684
+ },
+ "5936cffb-93be-4798-b967-75ec7c378013": {
+  "status": "ok",
+  "repo": "alirezarezvani/claude-skills",
+  "entry_path": ".gemini/skills/sprint-plan/SKILL.md",
+  "entry_hash": "47097feb602c618cbe5c1d9084a019e0e050d7bd5c380dfd34fbd418b14f20dd",
+  "skill_dir": ".gemini/skills/sprint-plan",
+  "tree": [
+   {
+    "path": ".gemini/skills/sprint-plan/SKILL.md",
+    "type": "file",
+    "size": 32
+   }
+  ],
+  "chars": 3491
+ },
+ "59d1a9bb-990e-4819-b06b-8875949a91d2": {
+  "status": "ok",
+  "repo": "alirezarezvani/claude-skills",
+  "entry_path": ".gemini/skills/cs-frontend-review/SKILL.md",
+  "entry_hash": "0658017b0a5f1f908587a11756b17057a4996a4ed35d1362ecaba558f34faf65",
+  "skill_dir": ".gemini/skills/cs-frontend-review",
+  "tree": [
+   {
+    "path": ".gemini/skills/cs-frontend-review/SKILL.md",
+    "type": "file",
+    "size": 39
+   }
+  ],
+  "chars": 3298
+ },
+ "59e0db43-65be-4c0d-8159-c0b2d87c2c01": {
+  "status": "ok",
+  "repo": "thedotmack/claude-mem",
+  "entry_path": "openclaw/skills/do/SKILL.md",
+  "entry_hash": "993ea03d417bb8ddcc32b62f2a09408a06a6a71889466046fb05ebc0ec9a994a",
+  "skill_dir": "openclaw/skills/do",
+  "tree": [
+   {
+    "path": "openclaw/skills/do/SKILL.md",
+    "type": "file",
+    "size": 34
+   }
+  ],
+  "chars": 2031
+ },
+ "5abc44d3-556d-46cc-b52a-07cdf0a8424f": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "rizzdev/rizzdev-detective"
+ },
+ "5a388f45-fa60-4e00-a7d4-1398a83aa1cc": {
+  "status": "ok",
+  "repo": "alirezarezvani/claude-skills",
+  "entry_path": ".gemini/skills/sprint-health/SKILL.md",
+  "entry_hash": "140399e8dbd1d590382b4ed7e9c856da15f42bc174c66b4aa2ce9e5218f40ffd",
+  "skill_dir": ".gemini/skills/sprint-health",
+  "tree": [
+   {
+    "path": ".gemini/skills/sprint-health/SKILL.md",
+    "type": "file",
+    "size": 34
+   }
+  ],
+  "chars": 1338
+ },
+ "5f144d19-c5cd-4706-bad6-ebd8ac7420f5": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "dsribalaji/audiobook"
+ },
+ "57e4999d-932b-42e0-9bb0-e7bd4d8b3996": {
+  "status": "ok",
+  "repo": "miethe/artifact_atlas",
+  "entry_path": ".claude/skills/dev-execution/SKILL.md",
+  "entry_hash": "e4eea8561c3bd5d0522630bb09492fff95fefbe0dce5b458c4d707cf54b93214",
+  "skill_dir": ".claude/skills/dev-execution",
+  "tree": [
+   {
+    "path": ".claude/skills/dev-execution/CHANGELOG.md",
+    "type": "file",
+    "size": 4398
+   },
+   {
+    "path": ".claude/skills/dev-execution/README.md",
+    "type": "file",
+    "size": 5395
+   },
+   {
+    "path": ".claude/skills/dev-execution/SKILL.md",
+    "type": "file",
+    "size": 44930
+   },
+   {
+    "path": ".claude/skills/dev-execution/git-worktree-pr-protocol.md",
+    "type": "file",
+    "size": 8811
+   },
+   {
+    "path": ".claude/skills/dev-execution/hooks",
+    "type": "dir",
+    "size": 0
+   },
+   {
+    "path": ".claude/skills/dev-execution/integrations",
+    "type": "dir",
+    "size": 0
+   },
+   {
+    "path": ".claude/skills/dev-execution/modes",
+    "type": "dir",
+    "size": 0
+   },
+   {
+    "path": ".claude/skills/dev-execution/orchestration",
+    "type": "dir",
+    "size": 0
+   },
+   {
+    "path": ".claude/skills/dev-execution/references",
+    "type": "dir",
+    "size": 0
+   },
+   {
+    "path": ".claude/skills/dev-execution/scripts",
+    "type": "dir",
+    "size": 0
+   },
+   {
+    "path": ".claude/skills/dev-execution/validation",
+    "type": "dir",
+    "size": 0
+   },
+   {
+    "path": ".claude/skills/dev-execution/hooks/phase-complete-capsule.sh",
+    "type": "file",
+    "size": 6178
+   },
+   {
+    "path": ".claude/skills/dev-execution/hooks/pre-commit-sdlc-sync.sh",
+    "type": "file",
+    "size": 3377
+   },
+   {
+    "path": ".claude/skills/dev-execution/hooks/provision-artifacts.sh",
+    "type": "file",
+    "size": 5905
+   },
+   {
+    "path": ".claude/skills/dev-execution/hooks/provision_artifacts.py",
+    "type": "file",
+    "size": 18133
+   },
+   {
+    "path": ".claude/skills/dev-execution/hooks/sdlc-sync.sh",
+    "type": "file",
+    "size": 6084
+   },
+   {
+    "path": ".claude/skills/dev-execution/hooks/seed-dossier.sh",
+    "type": "file",
+    "size": 6653
+   },
+   {
+    "path": ".claude/skills/dev-execution/hooks/seed_dossier.py",
+    "type": "file",
+    "size": 21648
+   },
+   {
+    "path": ".claude/skills/dev-execution/hooks/tests",
+    "type": "dir",
+    "size": 0
+   },
+   {
+    "path": ".claude/skills/dev-execution/hooks/update-dossier.sh",
+    "type": "file",
+    "size": 6532
+   },
+   {
+    "path": ".claude/skills/dev-execution/hooks/verify-delivery-report.sh",
+    "type": "file",
+    "size": 3017
+   },
+   {
+    "path": ".claude/skills/dev-execution/hooks/verify-skillmeat-writeback.sh",
+    "type": "file",
+    "size": 10753
+   },
+   {
+    "path": ".claude/skills/dev-execution/hooks/verify-writeback.sh",
+    "type": "file",
+    "size": 3334
+   },
+   {
+    "path": ".claude/skills/dev-execution/integrations/artifact-tracking.md",
+    "type": "file",
+    "size": 2636
+   },
+   {
+    "path": ".claude/skills/dev-execution/integrations/request-log-workflow.md",
+    "type": "file",
+    "size": 5279
+   },
+   {
+    "path": ".claude/skills/dev-execution/modes/phase-execution.md",
+    "type": "file",
+    "size": 17670
+   },
+   {
+    "path": ".claude/skills/dev-execution/modes/plan-execution.md",
+    "type": "file",
+    "size": 23404
+   },
+   {
+    "path": ".claude/skills/dev-execution/modes/plan-optimization.md",
+    "type": "file",
+    "size": 7242
+   },
+   {
+    "path": ".claude/skills/dev-execution/modes/quick-execution.md",
+    "type": "file",
+    "size": 6086
+   },
+   {
+    "path": ".claude/skills/dev-execution/modes/scaffold-execution.md",
+    "type": "file",
+    "size": 4663
+   },
+   {
+    "path": ".claude/skills/dev-execution/modes/story-execution.md",
+    "type": "file",
+    "size": 6986
+   },
+   {
+    "path": ".claude/skills/dev-execution/orchestration/agent-assignments.md",
+    "type": "file",
+    "size": 5167
+   },
+   {
+    "path": ".claude/skills/dev-execution/orchestration/batch-delegation.md",
+    "type": "file",
+    "size": 4567
+   },
+   {
+    "path": ".claude/skills/dev-execution/orchestration/parallel-patterns.md",
+    "type": "file",
+    "size": 3967
+   },
+   {
+    "path": ".claude/skills/dev-execution/orchestration/workflow-patterns.md",
+    "type": "file",
+    "size": 30924
+   }
+  ],
+  "chars": 44628
+ },
+ "5ef1d14b-1d10-4773-9e69-d98508f41d78": {
+  "status": "ok",
+  "repo": "fabioeducacross/designsystem-vuexy",
+  "entry_path": ".agent/skills/html-injection-testing/SKILL.md",
+  "entry_hash": "779795725d9738bda7a8b409f081131b0a0518f9e869f647217c9c0f1d143e3f",
+  "skill_dir": ".agent/skills/html-injection-testing",
+  "tree": [
+   {
+    "path": ".agent/skills/html-injection-testing/SKILL.md",
+    "type": "file",
+    "size": 13044
+   }
+  ],
+  "chars": 13044
+ },
+ "651bfb72-3f74-44c6-bc36-5130d1c377e5": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "yingwang/paper-reads"
+ },
+ "5fe7bf4f-d072-4313-b270-2346d599e7a1": {
+  "status": "ok",
+  "repo": "alirezarezvani/claude-skills",
+  "entry_path": ".gemini/skills/cmd-cs-aeo/SKILL.md",
+  "entry_hash": "30c9f037807efe1f68738d64361c7ae23b3142bb30650c2c5e2ffc8fc6e8de72",
+  "skill_dir": ".gemini/skills/cmd-cs-aeo",
+  "tree": [
+   {
+    "path": ".gemini/skills/cmd-cs-aeo/SKILL.md",
+    "type": "file",
+    "size": 27
+   }
+  ],
+  "chars": 6117
+ },
+ "66a15152-272f-4516-855a-be98a6760ec8": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "elitekaycy/qkt-lab"
+ },
+ "65659518-d312-4348-9447-0963cb85997b": {
+  "status": "ok",
+  "repo": "amadeus-dlc/amadeus",
+  "entry_path": "dist/claude/.claude/skills/amadeus-code-generation/SKILL.md",
+  "entry_hash": "19febd4a5890650816f7c8942dbe5cf0bb1e1dbee70a4a5ced2bcf1d782aec40",
+  "skill_dir": "dist/claude/.claude/skills/amadeus-code-generation",
+  "tree": [
+   {
+    "path": "dist/claude/.claude/skills/amadeus-code-generation/SKILL.md",
+    "type": "file",
+    "size": 1673
+   }
+  ],
+  "chars": 1665
+ },
+ "63defaea-6643-44e5-b36d-7f41ee158e27": {
+  "status": "ok",
+  "repo": "doriangallo/antigravity-awesome-skills-local",
+  "entry_path": "plugins/antigravity-awesome-skills-claude/skills/linear-claude-skill/SKILL.md",
+  "entry_hash": "35c0a6375b7f6c9932468b4773564d0d563d3a38fef0640acb524fb79c1a155e",
+  "skill_dir": "plugins/antigravity-awesome-skills-claude/skills/linear-claude-skill",
+  "tree": [
+   {
+    "path": "plugins/antigravity-awesome-skills-claude/skills/linear-claude-skill/SKILL.md",
+    "type": "file",
+    "size": 14574
+   }
+  ],
+  "chars": 14551
+ },
+ "682f5516-b5e2-46b3-bd40-c890f210376d": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "juergenkoller-software/freezetext-mcp"
+ },
+ "6ab21fa5-d883-4ed8-8f4a-94c87362d765": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "yi5oyu/yi5oyu"
+ },
+ "6abea679-de68-4f97-9c5f-18286ad77662": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "rexx-gif/project-pkl"
+ },
+ "6c62e509-d8e2-49a5-8691-aadad1f4ac68": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "codedrichy/anthropicskilljar"
+ },
+ "6e8305c4-992b-469d-9e35-87d364806c62": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "slimliu/gaozhong-yuwen-skills"
+ },
+ "6717150e-1386-4f3f-9d5b-91de245d58cf": {
+  "status": "ok",
+  "repo": "shieldnet-360/secure-vibe",
+  "entry_path": "dist/copilot-skills/.github/skills/error-handling-security/SKILL.md",
+  "entry_hash": "6896e9d46cdb1329a8a471165a5cacc35b57f7565a1a0da8bd76ab2df223ca99",
+  "skill_dir": "dist/copilot-skills/.github/skills/error-handling-security",
+  "tree": [
+   {
+    "path": "dist/copilot-skills/.github/skills/error-handling-security/SKILL.md",
+    "type": "file",
+    "size": 3283
+   },
+   {
+    "path": "dist/copilot-skills/.github/skills/error-handling-security/metadata.json",
+    "type": "file",
+    "size": 927
+   }
+  ],
+  "chars": 3273
+ },
+ "71d51cd0-f337-42cf-8c62-fd83e62b4e8d": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=unresolvable)",
+  "repo": null
+ },
+ "678f5b07-af1c-46d1-a00c-976b0e271593": {
+  "status": "ok",
+  "repo": "leolin990405/claude-code-skills",
+  "entry_path": "research/claude-scientific-skills/scientific-skills/matlab/SKILL.md",
+  "entry_hash": "0414644e5d6a80fa6f7f5e8d9dba3c0f2ba0ef84bbb9d7db5f18b2526dfc8bc1",
+  "skill_dir": "research/claude-scientific-skills/scientific-skills/matlab",
+  "tree": [
+   {
+    "path": "research/claude-scientific-skills/scientific-skills/matlab/SKILL.md",
+    "type": "file",
+    "size": 10044
+   },
+   {
+    "path": "research/claude-scientific-skills/scientific-skills/matlab/references",
+    "type": "dir",
+    "size": 0
+   },
+   {
+    "path": "research/claude-scientific-skills/scientific-skills/matlab/references/data-import-export.md",
+    "type": "file",
+    "size": 10600
+   },
+   {
+    "path": "research/claude-scientific-skills/scientific-skills/matlab/references/executing-scripts.md",
+    "type": "file",
+    "size": 9508
+   },
+   {
+    "path": "research/claude-scientific-skills/scientific-skills/matlab/references/graphics-visualization.md",
+    "type": "file",
+    "size": 12845
+   },
+   {
+    "path": "research/claude-scientific-skills/scientific-skills/matlab/references/mathematics.md",
+    "type": "file",
+    "size": 15237
+   },
+   {
+    "path": "research/claude-scientific-skills/scientific-skills/matlab/references/matrices-arrays.md",
+    "type": "file",
+    "size": 10913
+   },
+   {
+    "path": "research/claude-scientific-skills/scientific-skills/matlab/references/octave-compatibility.md",
+    "type": "file",
+    "size": 9977
+   },
+   {
+    "path": "research/claude-scientific-skills/scientific-skills/matlab/references/programming.md",
+    "type": "file",
+    "size": 11885
+   },
+   {
+    "path": "research/claude-scientific-skills/scientific-skills/matlab/references/python-integration.md",
+    "type": "file",
+    "size": 9504
+   }
+  ],
+  "chars": 10044
+ },
+ "7173db61-a675-4f5f-a414-e6b706234539": {
+  "status": "ok",
+  "repo": "skyllwt/AutoSci",
+  "entry_path": ".claude/skills/poster/SKILL.md",
+  "entry_hash": "b7d4e1fb509ad7725297c8d64fb8aa39170fe8416fe1dce4482df7275ce04a94",
+  "skill_dir": ".claude/skills/poster",
+  "tree": [
+   {
+    "path": ".claude/skills/poster/SKILL.md",
+    "type": "file",
+    "size": 48139
+   }
+  ],
+  "chars": 47762
+ },
+ "72de3bf8-5162-4501-8698-69cdd04e14bd": {
+  "status": "ok",
+  "repo": "creepyblues/kstorybridge-integrated",
+  "entry_path": ".claude/skills/batch-intelligence/SKILL.md",
+  "entry_hash": "9f8c2d4a4d0a102b7e9d0075802925017db8007584c6235f0b6e2f5e060d481f",
+  "skill_dir": ".claude/skills/batch-intelligence",
+  "tree": [
+   {
+    "path": ".claude/skills/batch-intelligence/SKILL.md",
+    "type": "file",
+    "size": 13591
+   }
+  ],
+  "chars": 13553
+ },
+ "7aedba85-013b-4d18-96a5-091671dea1c9": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "DanSessions/security-posture-skill"
+ },
+ "763e36e9-e7e8-456b-816f-837515c79faa": {
+  "status": "ok",
+  "repo": "ryukyagamilight/terminal-skills",
+  "entry_path": "database/sql-optimization/SKILL.md",
+  "entry_hash": "bf610d3d8783b5b2c2dfcadb13b2c98d5748411c783e48ac5e5a1e6f78048e4f",
+  "skill_dir": "database/sql-optimization",
+  "tree": [
+   {
+    "path": "database/sql-optimization/SKILL.md",
+    "type": "file",
+    "size": 6995
+   }
+  ],
+  "chars": 5641
+ },
+ "7c178d55-414e-4214-a678-8812f4bb0a7e": {
+  "status": "ok",
+  "repo": "timdevai/proteus",
+  "entry_path": "skills/community/from-alireza/engineering-team/self-improving-agent/skills/promote/SKILL.md",
+  "entry_hash": "ca10c09ae03bc92997cbaf5199cd107f993b7c5fc82ad7e7713aaf3495bd2ce6",
+  "skill_dir": "skills/community/from-alireza/engineering-team/self-improving-agent/skills/promote",
+  "tree": [
+   {
+    "path": "skills/community/from-alireza/engineering-team/self-improving-agent/skills/promote/SKILL.md",
+    "type": "file",
+    "size": 4510
+   }
+  ],
+  "chars": 4496
+ },
+ "7e7d8fb3-4493-4318-b79e-9c82c1a0f6b4": {
+  "status": "ok",
+  "repo": "zeveck/zskills",
+  "entry_path": ".claude/skills/refine-plan/SKILL.md",
+  "entry_hash": "7f438292e323133fe85cc7ac844930d08f8a7fe6e7b8448a37c73c7d501bd160",
+  "skill_dir": ".claude/skills/refine-plan",
+  "tree": [
+   {
+    "path": ".claude/skills/refine-plan/SKILL.md",
+    "type": "file",
+    "size": 43852
+   }
+  ],
+  "chars": 43648
+ },
+ "842e6205-c061-405c-98b1-4638b9f76375": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "cesardemacedo/pursuitvision"
+ },
+ "84a9bbbb-0793-4271-82aa-a23e62f3ed31": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "ironfisto/ping"
+ },
+ "855c8c58-a999-4614-99e6-2f497bbe4327": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "gbergeret/ai-engineering-team-demo"
+ },
+ "887d7db9-2ea6-4734-9a71-11bfeeb07ca8": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "gusbavia/pbi-theme"
+ },
+ "8c75dc46-bfbd-4f7f-85c3-3faca65c10ae": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "stammdxb/janus"
+ },
+ "81576c1f-b959-4b81-98e4-5d1424fddfb7": {
+  "status": "ok",
+  "repo": "datasurface/demo1",
+  "entry_path": ".claude/skills/driver-performance-guide/SKILL.md",
+  "entry_hash": "d5745a517842a8d774e2e0d959dd0fd9d7f1c911574e60b3279689992820431f",
+  "skill_dir": ".claude/skills/driver-performance-guide",
+  "tree": [
+   {
+    "path": ".claude/skills/driver-performance-guide/SKILL.md",
+    "type": "file",
+    "size": 6124
+   }
+  ],
+  "chars": 6102
+ },
+ "8e5a9836-e54c-45d0-b12a-3272e9900b33": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "vvvvvvvince/semifin-ai-daily"
+ },
+ "8e808bfb-e4e4-43ff-97a8-182049f24ae6": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "dean0x/self"
+ },
+ "7300f3a8-1dc1-4d5e-8e24-405f029822b4": {
+  "status": "ok",
+  "repo": "jesusfilm/core",
+  "entry_path": ".agents/skills/research/SKILL.md",
+  "entry_hash": "af378829f015775a3bcd65ff466826722e99359017ae6bae227ca4c9bd14049c",
+  "skill_dir": ".agents/skills/research",
+  "tree": [
+   {
+    "path": ".agents/skills/research/SKILL.md",
+    "type": "file",
+    "size": 799
+   },
+   {
+    "path": ".agents/skills/research/agents",
+    "type": "dir",
+    "size": 0
+   },
+   {
+    "path": ".agents/skills/research/agents/openai.yaml",
+    "type": "file",
+    "size": 94
+   }
+  ],
+  "chars": 795
+ },
+ "91551b39-2172-4e74-b371-63d1c46aa603": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=unresolvable)",
+  "repo": null
+ },
+ "94696ffe-1963-4a3e-a95e-537f58274734": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=unresolvable)",
+  "repo": null
+ },
+ "8f5bc401-bbae-4c36-95fd-0f27d683309b": {
+  "status": "ok",
+  "repo": "furkangonel/cowrangler",
+  "entry_path": "bundled_skills/mlops/huggingface-hub/SKILL.md",
+  "entry_hash": "e77c210448a63180f00a396f99b1142552d087ce51411ce9be11df5e231133e7",
+  "skill_dir": "bundled_skills/mlops/huggingface-hub",
+  "tree": [
+   {
+    "path": "bundled_skills/mlops/huggingface-hub/SKILL.md",
+    "type": "file",
+    "size": 9556
+   }
+  ],
+  "chars": 9536
+ },
+ "8e104e88-bcad-4fe1-b8c8-9cf67917ab1b": {
+  "status": "ok",
+  "repo": "robertbr123/Linket-Agent",
+  "entry_path": "skills/software-development/linket-agent-skill-authoring/SKILL.md",
+  "entry_hash": "b2964521f5dee31d23307f14846689e924e669d83457f398824f5756dc283f58",
+  "skill_dir": "skills/software-development/linket-agent-skill-authoring",
+  "tree": [
+   {
+    "path": "skills/software-development/linket-agent-skill-authoring/SKILL.md",
+    "type": "file",
+    "size": 7618
+   }
+  ],
+  "chars": 7582
+ },
+ "95446157-497e-4660-80a1-c7e7547c4c16": {
+  "status": "ok",
+  "repo": "mattakushi432/claude-code-skills-custom-devtools-pack",
+  "entry_path": "plugins/devtools-pack/skills/react-performance/SKILL.md",
+  "entry_hash": "97fd23300b6f470a460ac4b8dd45091f3ffd2956402bfe616292be6b6cc7c696",
+  "skill_dir": "plugins/devtools-pack/skills/react-performance",
+  "tree": [
+   {
+    "path": "plugins/devtools-pack/skills/react-performance/SKILL.md",
+    "type": "file",
+    "size": 5610
+   }
+  ],
+  "chars": 5602
+ },
+ "95b8cc57-be00-46b1-9278-b309fd55e32a": {
+  "status": "ok",
+  "repo": "wewpellex21/code-sensei",
+  "entry_path": "skills/debugging/SKILL.md",
+  "entry_hash": "7812de715f7c5f9671e0bf06b8a2b23957e62722d833f4a938ed168abc9fd138",
+  "skill_dir": "skills/debugging",
+  "tree": [
+   {
+    "path": "skills/debugging/SKILL.md",
+    "type": "file",
+    "size": 3169
+   }
+  ],
+  "chars": 3127
+ },
+ "96458f7a-8028-4c3d-81df-9cbb857dfeea": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "chenbstack/fleet-skill"
+ },
+ "98481caa-ff23-427c-a146-ebd842638379": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "putrabadiws/claude-config"
+ },
+ "958815e4-85bb-43ea-9a35-09e07a5f2956": {
+  "status": "ok",
+  "repo": "m-binimran/marketing-pack",
+  "entry_path": "skills/email-sequence/SKILL.md",
+  "entry_hash": "84933e00281b8cf957c5b520644d58385a0cbb3bb986efff65c7fa8b56b30525",
+  "skill_dir": "skills/email-sequence",
+  "tree": [
+   {
+    "path": "skills/email-sequence/SKILL.md",
+    "type": "file",
+    "size": 1339
+   }
+  ],
+  "chars": 1339
+ },
+ "9aa4511d-2aac-4a24-82cc-fb0088d61fae": {
+  "status": "ok",
+  "repo": "apokamo/kaji",
+  "entry_path": ".claude/skills/issue-review-ready/SKILL.md",
+  "entry_hash": "7eba868cd4f2b98452f2e003fc0bbca3a6e9b4cde527a19bfe8f59c3a8cb091d",
+  "skill_dir": ".claude/skills/issue-review-ready",
+  "tree": [
+   {
+    "path": ".claude/skills/issue-review-ready/SKILL.md",
+    "type": "file",
+    "size": 17494
+   }
+  ],
+  "chars": 9289
+ },
+ "a3e8014a-e187-40f5-a4bb-6f93209cd3df": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=unresolvable)",
+  "repo": null
+ },
+ "9b2e8404-cd70-4a9e-a6bc-7fab8976a003": {
+  "status": "ok",
+  "repo": "oliver-kriska/claude-elixir-phoenix",
+  "entry_path": "plugins/elixir-phoenix/skills/testing/SKILL.md",
+  "entry_hash": "787a70641699ab9beff352ff72fa78897e4e16d9a773b4f6ddd6a932309dda97",
+  "skill_dir": "plugins/elixir-phoenix/skills/testing",
+  "tree": [
+   {
+    "path": "plugins/elixir-phoenix/skills/testing/SKILL.md",
+    "type": "file",
+    "size": 3226
+   },
+   {
+    "path": "plugins/elixir-phoenix/skills/testing/references",
+    "type": "dir",
+    "size": 0
+   },
+   {
+    "path": "plugins/elixir-phoenix/skills/testing/references/exunit-patterns.md",
+    "type": "file",
+    "size": 4917
+   },
+   {
+    "path": "plugins/elixir-phoenix/skills/testing/references/factory-patterns.md",
+    "type": "file",
+    "size": 2959
+   },
+   {
+    "path": "plugins/elixir-phoenix/skills/testing/references/liveview-testing.md",
+    "type": "file",
+    "size": 2427
+   },
+   {
+    "path": "plugins/elixir-phoenix/skills/testing/references/mox-patterns.md",
+    "type": "file",
+    "size": 2026
+   }
+  ],
+  "chars": 3196
+ },
+ "963e683f-d26c-4060-8a0c-8d82f577cc07": {
+  "status": "ok",
+  "repo": "yanacuti1121/yana-ai",
+  "entry_path": ".claude/skills/analyzing-web-server-logs-for-intrusion/SKILL.md",
+  "entry_hash": "583ee03dce8bfd7f6f56577931d9425ff9d737688c55f053709a970bb030b911",
+  "skill_dir": ".claude/skills/analyzing-web-server-logs-for-intrusion",
+  "tree": [
+   {
+    "path": ".claude/skills/analyzing-web-server-logs-for-intrusion/LICENSE",
+    "type": "file",
+    "size": 11255
+   },
+   {
+    "path": ".claude/skills/analyzing-web-server-logs-for-intrusion/SKILL.md",
+    "type": "file",
+    "size": 2697
+   },
+   {
+    "path": ".claude/skills/analyzing-web-server-logs-for-intrusion/references",
+    "type": "dir",
+    "size": 0
+   },
+   {
+    "path": ".claude/skills/analyzing-web-server-logs-for-intrusion/scripts",
+    "type": "dir",
+    "size": 0
+   },
+   {
+    "path": ".claude/skills/analyzing-web-server-logs-for-intrusion/references/api-reference.md",
+    "type": "file",
+    "size": 1450
+   },
+   {
+    "path": ".claude/skills/analyzing-web-server-logs-for-intrusion/scripts/agent.py",
+    "type": "file",
+    "size": 8481
+   }
+  ],
+  "chars": 2697
+ },
+ "a83806fd-7f24-4d5e-b136-b8b4ffa77d5c": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "asgard-ai-platform/mcp-twfood"
+ },
+ "a8fc18c6-7e88-46f1-a90b-baf2e9de67df": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "biffcodev/andale"
+ },
+ "af18ea25-3dfa-4412-b9cd-032493d025dc": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "mikechen01/claudedotmd"
+ },
+ "af2c49fc-1921-42d7-b5a2-f1eeb02471df": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "jmr85/e2e-agent-skills"
+ },
+ "af63e748-db9e-4321-96ba-b5bd6eff4f66": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "stevenke1981/suno-mcp"
+ },
+ "b165de13-2dce-4b7e-a8ca-bf41a448aeff": {
+  "status": "ok",
+  "repo": "mustaphasteph/agent-bus-plugins",
+  "entry_path": "skills/agent-bus-coordinator/SKILL.md",
+  "entry_hash": "71a6ed6bcd63e1f75b0cc9ecc77e651115530688baced8446224da797328bf57",
+  "skill_dir": "skills/agent-bus-coordinator",
+  "tree": [
+   {
+    "path": "skills/agent-bus-coordinator/SKILL.md",
+    "type": "file",
+    "size": 1762
+   }
+  ],
+  "chars": 1762
+ },
+ "b319cd99-0340-46a7-a8bf-4c5f6a241753": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=unresolvable)",
+  "repo": null
+ },
+ "b5f1005f-111c-4414-9bb4-4165b29ad93b": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "bochen2029-pixel/orrery"
+ },
+ "a7bbfa7f-f4cb-4e03-a247-36be2fa57cd6": {
+  "status": "ok",
+  "repo": "hackermanishackerman/claude-skills-vault",
+  "entry_path": ".claude/skills/token-formatter/SKILL.md",
+  "entry_hash": "fd5b2696597c1a856a2c3616750e5d713ec565e670ff8930581a8946a94b396b",
+  "skill_dir": ".claude/skills/token-formatter",
+  "tree": [
+   {
+    "path": ".claude/skills/token-formatter/SKILL.md",
+    "type": "file",
+    "size": 11418
+   },
+   {
+    "path": ".claude/skills/token-formatter/cheatsheet.md",
+    "type": "file",
+    "size": 0
+   },
+   {
+    "path": ".claude/skills/token-formatter/scripts",
+    "type": "dir",
+    "size": 0
+   },
+   {
+    "path": ".claude/skills/token-formatter/scripts/compress.py",
+    "type": "file",
+    "size": 6601
+   },
+   {
+    "path": ".claude/skills/token-formatter/scripts/count_tokens.py",
+    "type": "file",
+    "size": 1969
+   }
+  ],
+  "chars": 11396
+ },
+ "a54a5c76-1c17-437f-ae2a-4a6929d5139a": {
+  "status": "ok",
+  "repo": "denderson2013-bot/agente-claude-telegram-setup-alunos-denderson",
+  "entry_path": "skills/criar-subagente/SKILL.md",
+  "entry_hash": "0aab61e571b9aadbcc0a1556f269d40e98318ddac10c0b977c9c75eb4731e07b",
+  "skill_dir": "skills/criar-subagente",
+  "tree": [
+   {
+    "path": "skills/criar-subagente/CATALOGO-TOOLS.md",
+    "type": "file",
+    "size": 5012
+   },
+   {
+    "path": "skills/criar-subagente/EXEMPLOS.md",
+    "type": "file",
+    "size": 12244
+   },
+   {
+    "path": "skills/criar-subagente/PLAYBOOK.md",
+    "type": "file",
+    "size": 5416
+   },
+   {
+    "path": "skills/criar-subagente/SKILL.md",
+    "type": "file",
+    "size": 7621
+   },
+   {
+    "path": "skills/criar-subagente/scripts",
+    "type": "dir",
+    "size": 0
+   },
+   {
+    "path": "skills/criar-subagente/templates",
+    "type": "dir",
+    "size": 0
+   },
+   {
+    "path": "skills/criar-subagente/scripts/criar-subagente-claude.sh",
+    "type": "file",
+    "size": 2610
+   },
+   {
+    "path": "skills/criar-subagente/scripts/criar-subagente-openclaw.py",
+    "type": "file",
+    "size": 8832
+   },
+   {
+    "path": "skills/criar-subagente/templates/subagent-soul-template.md",
+    "type": "file",
+    "size": 2017
+   },
+   {
+    "path": "skills/criar-subagente/templates/subagent-template.md",
+    "type": "file",
+    "size": 1955
+   }
+  ],
+  "chars": 7597
+ },
+ "b60ff846-db0c-496f-a37c-563cf92f5eed": {
+  "status": "ok",
+  "repo": "klotzkette/claude-fuer-deutsches-recht",
+  "entry_path": "aktenauszug-gerichtsverfahren/skills/arbeitsgerichtsverfahren-modus-terminkalender/SKILL.md",
+  "entry_hash": "7ee189f96a206f80c3c40af19a9b9b7c11bada6481dd21a9efcd6537ab04621d",
+  "skill_dir": "aktenauszug-gerichtsverfahren/skills/arbeitsgerichtsverfahren-modus-terminkalender",
+  "tree": [
+   {
+    "path": "aktenauszug-gerichtsverfahren/skills/arbeitsgerichtsverfahren-modus-terminkalender/SKILL.md",
+    "type": "file",
+    "size": 7365
+   }
+  ],
+  "chars": 7170
+ },
+ "b793d549-d328-4472-a421-696a02085717": {
+  "status": "ok",
+  "repo": "huiyonghkw/hekouwang-claude-skill-doctor-skill",
+  "entry_path": "tests/fixtures/bad/SKILL.md",
+  "entry_hash": "f8b60976a6b412c93b199f624189fec8ede9aa1c607ae4139e14596889050d30",
+  "skill_dir": "tests/fixtures/bad",
+  "tree": [
+   {
+    "path": "tests/fixtures/bad/SKILL.md",
+    "type": "file",
+    "size": 379
+   }
+  ],
+  "chars": 233
+ },
+ "b809a613-874c-4b24-bcab-9e93a89ebe4d": {
+  "status": "ok",
+  "repo": "outlinedriven/odin-claude-plugin",
+  "entry_path": "skills/test-driven/SKILL.md",
+  "entry_hash": "80a4ded18164cf32d90595b512dc0ebc830a2c9126d601c1d8a2ce2ee7e98c34",
+  "skill_dir": "skills/test-driven",
+  "tree": [
+   {
+    "path": "skills/test-driven/SKILL.md",
+    "type": "file",
+    "size": 3475
+   },
+   {
+    "path": "skills/test-driven/references",
+    "type": "dir",
+    "size": 0
+   },
+   {
+    "path": "skills/test-driven/references/examples.md",
+    "type": "file",
+    "size": 6426
+   },
+   {
+    "path": "skills/test-driven/references/frameworks.md",
+    "type": "file",
+    "size": 1319
+   },
+   {
+    "path": "skills/test-driven/references/mocking.md",
+    "type": "file",
+    "size": 2473
+   },
+   {
+    "path": "skills/test-driven/references/tests.md",
+    "type": "file",
+    "size": 3567
+   }
+  ],
+  "chars": 3441
+ },
+ "bb1c6199-995b-4336-8e2b-5c86a4ec3e72": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "shepsci/kaggle-skill"
+ },
+ "b9415d5b-f506-43eb-a884-f93a70679a70": {
+  "status": "ok",
+  "repo": "naveedharri/benai-skills",
+  "entry_path": "plugins/all-skills/skills/generate-visual/SKILL.md",
+  "entry_hash": "e680966120cbecdff22ce829548790b974214c18298ecef31c945392a747834f",
+  "skill_dir": "plugins/all-skills/skills/generate-visual",
+  "tree": [
+   {
+    "path": "plugins/all-skills/skills/generate-visual/SKILL.md",
+    "type": "file",
+    "size": 14090
+   },
+   {
+    "path": "plugins/all-skills/skills/generate-visual/references",
+    "type": "dir",
+    "size": 0
+   },
+   {
+    "path": "plugins/all-skills/skills/generate-visual/references/models.md",
+    "type": "file",
+    "size": 4934
+   },
+   {
+    "path": "plugins/all-skills/skills/generate-visual/references/progressive-disclosure.md",
+    "type": "file",
+    "size": 9486
+   },
+   {
+    "path": "plugins/all-skills/skills/generate-visual/references/prompt-builder.md",
+    "type": "file",
+    "size": 10173
+   },
+   {
+    "path": "plugins/all-skills/skills/generate-visual/references/troubleshooting.md",
+    "type": "file",
+    "size": 6928
+   },
+   {
+    "path": "plugins/all-skills/skills/generate-visual/references/visual-language.md",
+    "type": "file",
+    "size": 7060
+   }
+  ],
+  "chars": 14014
+ },
+ "ba738516-ad73-4592-80bc-702aa7d19b49": {
+  "status": "ok",
+  "repo": "knownasnaffy/prompthound",
+  "entry_path": "dataset/case_00264/SKILL.md",
+  "entry_hash": "bb88dbf69a0d22ef4478117ef9469e36bb157c2a677a09768b646094815ed4ba",
+  "skill_dir": "dataset/case_00264",
+  "tree": [
+   {
+    "path": "dataset/case_00264/SKILL.md",
+    "type": "file",
+    "size": 3300
+   },
+   {
+    "path": "dataset/case_00264/requirements.txt",
+    "type": "file",
+    "size": 2173
+   },
+   {
+    "path": "dataset/case_00264/scripts",
+    "type": "dir",
+    "size": 0
+   },
+   {
+    "path": "dataset/case_00264/scripts/_tool_policy_note.py",
+    "type": "file",
+    "size": 283
+   },
+   {
+    "path": "dataset/case_00264/scripts/skill_csv.py",
+    "type": "file",
+    "size": 11457
+   },
+   {
+    "path": "dataset/case_00264/scripts/skill_excel.py",
+    "type": "file",
+    "size": 10342
+   },
+   {
+    "path": "dataset/case_00264/scripts/skill_image.py",
+    "type": "file",
+    "size": 12375
+   },
+   {
+    "path": "dataset/case_00264/scripts/skill_pdf.py",
+    "type": "file",
+    "size": 8599
+   },
+   {
+    "path": "dataset/case_00264/scripts/skill_router.py",
+    "type": "file",
+    "size": 4213
+   }
+  ],
+  "chars": 3285
+ },
+ "bea642ef-97e9-4a1d-871d-81b8498f7f09": {
+  "status": "entrypoint_absent",
+  "detail": "no SKILL.md under skills/834948655/skill-doc-enhancer",
+  "repo": "AgentWorkers/skills"
+ },
+ "bf809146-7d54-449e-b5f3-95dbab45a390": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "sdamkkk/openclaw-data-analyst-skills"
+ },
+ "be65a6e9-7281-46b6-9130-92f15e18da34": {
+  "status": "ok",
+  "repo": "l4ci/latticework",
+  "entry_path": "skills/value-chain-analysis/SKILL.md",
+  "entry_hash": "59be9b9c79f735d743061f8270f75c954a3babfa998502e3f026c9ffa0b94fc7",
+  "skill_dir": "skills/value-chain-analysis",
+  "tree": [
+   {
+    "path": "skills/value-chain-analysis/README.md",
+    "type": "file",
+    "size": 2851
+   },
+   {
+    "path": "skills/value-chain-analysis/SKILL.md",
+    "type": "file",
+    "size": 5994
+   },
+   {
+    "path": "skills/value-chain-analysis/references",
+    "type": "dir",
+    "size": 0
+   },
+   {
+    "path": "skills/value-chain-analysis/references/example.md",
+    "type": "file",
+    "size": 996
+   },
+   {
+    "path": "skills/value-chain-analysis/references/value-chain-analysis-trailhead-coffee-2026-06-19.md",
+    "type": "file",
+    "size": 16959
+   },
+   {
+    "path": "skills/value-chain-analysis/references/value-chain.md",
+    "type": "file",
+    "size": 3699
+   }
+  ],
+  "chars": 5946
+ },
+ "bc32a600-a12f-492e-961e-90600de28a6d": {
+  "status": "ok",
+  "repo": "drolu/agent-skills",
+  "entry_path": "skills/interminai/SKILL.md",
+  "entry_hash": "7843e3d76869003323b453ddb4077643c8fbceca4ac9b4659f95209bf4c36993",
+  "skill_dir": "skills/interminai",
+  "tree": [
+   {
+    "path": "skills/interminai/SKILL.md",
+    "type": "file",
+    "size": 13826
+   },
+   {
+    "path": "skills/interminai/examples.md",
+    "type": "file",
+    "size": 20555
+   },
+   {
+    "path": "skills/interminai/reference.md",
+    "type": "file",
+    "size": 11425
+   },
+   {
+    "path": "skills/interminai/scripts",
+    "type": "dir",
+    "size": 0
+   },
+   {
+    "path": "skills/interminai/scripts/.gitkeep",
+    "type": "file",
+    "size": 0
+   },
+   {
+    "path": "skills/interminai/scripts/interminai",
+    "type": "file",
+    "size": 58451
+   }
+  ],
+  "chars": 13804
+ },
+ "c92efd2d-b474-433e-849c-d13c154e22a2": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "tintinweb/claude-code-container"
+ },
+ "bff5bf3d-cb29-4f08-a281-857baddbd6eb": {
+  "status": "ok",
+  "repo": "alpharomerojl/invarianteval",
+  "entry_path": "agent-skill/invarianteval/SKILL.md",
+  "entry_hash": "38558fa6258f9fe1f669358f014db015e2df724e08f39e900ea835472a23078c",
+  "skill_dir": "agent-skill/invarianteval",
+  "tree": [
+   {
+    "path": "agent-skill/invarianteval/README.md",
+    "type": "file",
+    "size": 1487
+   },
+   {
+    "path": "agent-skill/invarianteval/SKILL.md",
+    "type": "file",
+    "size": 3004
+   },
+   {
+    "path": "agent-skill/invarianteval/check.py",
+    "type": "file",
+    "size": 4533
+   },
+   {
+    "path": "agent-skill/invarianteval/suite.template.yaml",
+    "type": "file",
+    "size": 976
+   }
+  ],
+  "chars": 3004
+ },
+ "c20e7fc8-e2e0-4007-840c-6ad7ae810aee": {
+  "status": "ok",
+  "repo": "yanacuti1121/yana-ai",
+  "entry_path": ".claude/skills/alirezarezvani--app-store-optimization/SKILL.md",
+  "entry_hash": "9bee8ca720ccb353a7fc58db21ee408faa34ffaa2d4b649a1e3463db96a24364",
+  "skill_dir": ".claude/skills/alirezarezvani--app-store-optimization",
+  "tree": [
+   {
+    "path": ".claude/skills/alirezarezvani--app-store-optimization/SKILL.md",
+    "type": "file",
+    "size": 16670
+   }
+  ],
+  "chars": 16648
+ },
+ "cb656bf1-e32e-4c5c-a8c6-63eadd7e52ed": {
+  "status": "ok",
+  "repo": "zegocover/techops-tf_aws_metadata",
+  "entry_path": ".claude/skills/zego-fix-merge-conflict/SKILL.md",
+  "entry_hash": "813b408fe5a6986c4d07308c63274c08e8375a5ce0de80d9f9411edd46de987b",
+  "skill_dir": ".claude/skills/zego-fix-merge-conflict",
+  "tree": [
+   {
+    "path": ".claude/skills/zego-fix-merge-conflict/SKILL.md",
+    "type": "file",
+    "size": 24512
+   },
+   {
+    "path": ".claude/skills/zego-fix-merge-conflict/conflict-resolution-patterns.md",
+    "type": "file",
+    "size": 11121
+   }
+  ],
+  "chars": 24356
+ },
+ "cc73dacf-cd30-4b01-b372-bbedd8e0c9e4": {
+  "status": "ok",
+  "repo": "xopoko/plug-n-skills",
+  "entry_path": "plugins/capability-workbench/skills/plugin-factory/SKILL.md",
+  "entry_hash": "b63da6c3f667c5e9a97870dcd3eeb383763db56711f88b53186fda988de521df",
+  "skill_dir": "plugins/capability-workbench/skills/plugin-factory",
+  "tree": [
+   {
+    "path": "plugins/capability-workbench/skills/plugin-factory/SKILL.md",
+    "type": "file",
+    "size": 7117
+   },
+   {
+    "path": "plugins/capability-workbench/skills/plugin-factory/agents",
+    "type": "dir",
+    "size": 0
+   },
+   {
+    "path": "plugins/capability-workbench/skills/plugin-factory/agents/openai.yaml",
+    "type": "file",
+    "size": 336
+   }
+  ],
+  "chars": 7117
+ },
+ "d14f01e9-1131-45f8-98f3-d4c9f2b66906": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=unresolvable)",
+  "repo": null
+ },
+ "ce16328a-df38-4780-b6ff-d82f1d6cc385": {
+  "status": "ok",
+  "repo": "goldenwing-360/claude-security-skills",
+  "entry_path": "secret-hygiene/SKILL.md",
+  "entry_hash": "d20387b3fdb9bd73fd417a215690c7c2bdb5d7bd080bbd3346ff2339813eefe3",
+  "skill_dir": "secret-hygiene",
+  "tree": [
+   {
+    "path": "secret-hygiene/SKILL.md",
+    "type": "file",
+    "size": 6863
+   }
+  ],
+  "chars": 6821
+ },
+ "cdd5c219-e545-4380-95c9-ecd032fbdc2d": {
+  "status": "ok",
+  "repo": "markus41/claude",
+  "entry_path": "plugins/claude-code-expert/archive/v7.6.0/skills/enterprise-security/SKILL.md",
+  "entry_hash": "811101e6e8d24abb8213a5ad213f1b147bb442c2707947cae1f0d599ed753d89",
+  "skill_dir": "plugins/claude-code-expert/archive/v7.6.0/skills/enterprise-security",
+  "tree": [
+   {
+    "path": "plugins/claude-code-expert/archive/v7.6.0/skills/enterprise-security/SKILL.md",
+    "type": "file",
+    "size": 15242
+   }
+  ],
+  "chars": 15240
+ },
+ "d6414aa6-e738-4ed3-bb0d-b71f08bc8ed7": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "petitones/m5-petit-relations"
+ },
+ "d4ca283d-69a2-453f-9113-cf155373b7c9": {
+  "status": "ok",
+  "repo": "ddttom/allaboutv2",
+  "entry_path": ".claude/skills/template-skill/SKILL.md",
+  "entry_hash": "6b2816ce33f927c8f56a81697985d8b9da1d1c0a05b030c3cb8542646b665bf7",
+  "skill_dir": ".claude/skills/template-skill",
+  "tree": [
+   {
+    "path": ".claude/skills/template-skill/SKILL.md",
+    "type": "file",
+    "size": 257
+   }
+  ],
+  "chars": 257
+ },
+ "d6c0aa1f-c980-4fe9-91c6-0bab04fae39e": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "maryam2001-ux/claude-app-server"
+ },
+ "d6bbe838-e647-44a7-95da-6b01d408cf52": {
+  "status": "ok",
+  "repo": "sickn33/agentic-awesome-skills",
+  "entry_path": "plugins/agentic-awesome-skills-claude/skills/code-showcase-systematic-debugging/SKILL.md",
+  "entry_hash": "ff958200713aea57712f9e23c3e826c38ef62a8e32dd67b23b7094866989f4c8",
+  "skill_dir": "plugins/agentic-awesome-skills-claude/skills/code-showcase-systematic-debugging",
+  "tree": [
+   {
+    "path": "plugins/agentic-awesome-skills-claude/skills/code-showcase-systematic-debugging/SKILL.md",
+    "type": "file",
+    "size": 5827
+   }
+  ],
+  "chars": 5825
+ },
+ "d4abce75-7a5b-4f4f-b52e-ceeac20c3059": {
+  "status": "ok",
+  "repo": "paldom/python-skills",
+  "entry_path": "skills/python-packaging/SKILL.md",
+  "entry_hash": "935fba3bf0ccafd1a61a6741f27242c0008b9be9703b6f39fe40c9a3714ea86e",
+  "skill_dir": "skills/python-packaging",
+  "tree": [
+   {
+    "path": "skills/python-packaging/SKILL.md",
+    "type": "file",
+    "size": 12806
+   },
+   {
+    "path": "skills/python-packaging/evals",
+    "type": "dir",
+    "size": 0
+   },
+   {
+    "path": "skills/python-packaging/references",
+    "type": "dir",
+    "size": 0
+   },
+   {
+    "path": "skills/python-packaging/scripts",
+    "type": "dir",
+    "size": 0
+   },
+   {
+    "path": "skills/python-packaging/evals/evals.json",
+    "type": "file",
+    "size": 5458
+   },
+   {
+    "path": "skills/python-packaging/references/build-backends.md",
+    "type": "file",
+    "size": 10140
+   },
+   {
+    "path": "skills/python-packaging/scripts/check_wheel.py",
+    "type": "file",
+    "size": 6566
+   }
+  ],
+  "chars": 12690
+ },
+ "dd3cb2ae-23eb-49d1-b030-3c05a5b6757a": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "simply007/proactive-digital-twin-workshop"
+ },
+ "df7ee34f-a8a6-4b64-b82a-d366280ee22a": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=unresolvable)",
+  "repo": null
+ },
+ "db051d37-e932-4bd1-bdda-bbea138dc64d": {
+  "status": "ok",
+  "repo": "marzun9620/agent_skills",
+  "entry_path": "workflow/skills/workflow-repository/SKILL.md",
+  "entry_hash": "7aacb81ee7041219e4bd56e21ded47f131266179481a0415fcce105f1815ee25",
+  "skill_dir": "workflow/skills/workflow-repository",
+  "tree": [
+   {
+    "path": "workflow/skills/workflow-repository/SKILL.md",
+    "type": "file",
+    "size": 8830
+   }
+  ],
+  "chars": 7913
+ },
+ "e70b356c-bb0a-42c8-b66e-71eb6ccef50a": {
+  "status": "ok",
+  "repo": "davidondrej/skills",
+  "entry_path": "skills/skill-authoring/effective-agent-skills/SKILL.md",
+  "entry_hash": "a8d1f3be30ee3edcd72baf4c3eeff46b01307d4cb59ea882abe9314f948673e2",
+  "skill_dir": "skills/skill-authoring/effective-agent-skills",
+  "tree": [
+   {
+    "path": "skills/skill-authoring/effective-agent-skills/SKILL.md",
+    "type": "file",
+    "size": 16097
+   }
+  ],
+  "chars": 16003
+ },
+ "e9df2cae-1341-48ee-8842-eb90da42e9e7": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "xixu-me/paseo-relay"
+ },
+ "dc1fab73-fb9d-4b8f-bb83-fc69398c89ec": {
+  "status": "ok",
+  "repo": "dimaad5017-dotcom/secret-hygiene",
+  "entry_path": "skills/secret-hygiene/SKILL.md",
+  "entry_hash": "b1ba09fa32c4f06d740d444b3fbf86bfff32d71e8493193faf2d4153d2e72af3",
+  "skill_dir": "skills/secret-hygiene",
+  "tree": [
+   {
+    "path": "skills/secret-hygiene/SKILL.md",
+    "type": "file",
+    "size": 5803
+   },
+   {
+    "path": "skills/secret-hygiene/references",
+    "type": "dir",
+    "size": 0
+   },
+   {
+    "path": "skills/secret-hygiene/scripts",
+    "type": "dir",
+    "size": 0
+   },
+   {
+    "path": "skills/secret-hygiene/tests",
+    "type": "dir",
+    "size": 0
+   },
+   {
+    "path": "skills/secret-hygiene/references/patterns.md",
+    "type": "file",
+    "size": 1874
+   },
+   {
+    "path": "skills/secret-hygiene/references/pre-commit.md",
+    "type": "file",
+    "size": 1418
+   },
+   {
+    "path": "skills/secret-hygiene/references/remediation.md",
+    "type": "file",
+    "size": 1690
+   },
+   {
+    "path": "skills/secret-hygiene/scripts/scan.py",
+    "type": "file",
+    "size": 8251
+   },
+   {
+    "path": "skills/secret-hygiene/tests/test_scan.py",
+    "type": "file",
+    "size": 6893
+   }
+  ],
+  "chars": 5771
+ },
+ "ed752265-35c6-452f-bdd2-faf930cb027c": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "huajielong/industry-atlas"
+ },
+ "e9161048-96ce-43db-ae89-b05064f99d0f": {
+  "status": "ok",
+  "repo": "lord1egypt/scientific-agent-toolkit",
+  "entry_path": "scientific-skills/scvelo/SKILL.md",
+  "entry_hash": "8a83fbc446890b8dfa690f86706b218c4cf5814fa0290d958297b0449b3fa60a",
+  "skill_dir": "scientific-skills/scvelo",
+  "tree": [
+   {
+    "path": "scientific-skills/scvelo/SKILL.md",
+    "type": "file",
+    "size": 10288
+   },
+   {
+    "path": "scientific-skills/scvelo/references",
+    "type": "dir",
+    "size": 0
+   },
+   {
+    "path": "scientific-skills/scvelo/scripts",
+    "type": "dir",
+    "size": 0
+   },
+   {
+    "path": "scientific-skills/scvelo/references/velocity_models.md",
+    "type": "file",
+    "size": 5010
+   },
+   {
+    "path": "scientific-skills/scvelo/scripts/rna_velocity_workflow.py",
+    "type": "file",
+    "size": 8072
+   }
+  ],
+  "chars": 10274
+ },
+ "eda4c3d2-817e-43aa-9681-7ebb0eb215d5": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "decantr-ai/decantr"
+ },
+ "ea1c2207-a71e-450e-b70f-b9540b5153e5": {
+  "status": "ok",
+  "repo": "pyfagorass/bookofspells",
+  "entry_path": "skills/expo/expo-module/SKILL.md",
+  "entry_hash": "c73c2b80929199ce837b4e6f23d91f222f9ad0863efc7c199e27275588517ece",
+  "skill_dir": "skills/expo/expo-module",
+  "tree": [
+   {
+    "path": "skills/expo/expo-module/SKILL.md",
+    "type": "file",
+    "size": 5577
+   },
+   {
+    "path": "skills/expo/expo-module/references",
+    "type": "dir",
+    "size": 0
+   },
+   {
+    "path": "skills/expo/expo-module/references/config-plugin.md",
+    "type": "file",
+    "size": 2040
+   },
+   {
+    "path": "skills/expo/expo-module/references/create-expo-module.md",
+    "type": "file",
+    "size": 10075
+   },
+   {
+    "path": "skills/expo/expo-module/references/lifecycle.md",
+    "type": "file",
+    "size": 3763
+   },
+   {
+    "path": "skills/expo/expo-module/references/module-config.md",
+    "type": "file",
+    "size": 1762
+   },
+   {
+    "path": "skills/expo/expo-module/references/native-module.md",
+    "type": "file",
+    "size": 5869
+   },
+   {
+    "path": "skills/expo/expo-module/references/native-view.md",
+    "type": "file",
+    "size": 3590
+   }
+  ],
+  "chars": 5575
+ },
+ "eeda0c8a-59f1-4e47-a3a3-3d3e35cc4d45": {
+  "status": "ok",
+  "repo": "skillmedev/skills",
+  "entry_path": "skills/regex-master/SKILL.md",
+  "entry_hash": "46470af4cffb4fc7caf4fa92e603dad1018e008ddd9be59c3b788d6cd1d87d0a",
+  "skill_dir": "skills/regex-master",
+  "tree": [
+   {
+    "path": "skills/regex-master/SKILL.md",
+    "type": "file",
+    "size": 6905
+   }
+  ],
+  "chars": 6899
+ },
+ "ed7c5604-e6d0-4d93-8071-bfd2b2a3990f": {
+  "status": "ok",
+  "repo": "oabdelmaksoud/agention",
+  "entry_path": "skills/ecc-claude-marketing-skill-copywriting/SKILL.md",
+  "entry_hash": "bafca89483a8c3d5f0e1bc85fe853238b3862e182f2dfde82d15208631df1d2e",
+  "skill_dir": "skills/ecc-claude-marketing-skill-copywriting",
+  "tree": [
+   {
+    "path": "skills/ecc-claude-marketing-skill-copywriting/SKILL.md",
+    "type": "file",
+    "size": 1234
+   },
+   {
+    "path": "skills/ecc-claude-marketing-skill-copywriting/references",
+    "type": "dir",
+    "size": 0
+   },
+   {
+    "path": "skills/ecc-claude-marketing-skill-copywriting/references/examples-pointer.txt",
+    "type": "file",
+    "size": 41
+   },
+   {
+    "path": "skills/ecc-claude-marketing-skill-copywriting/references/upstream-path.txt",
+    "type": "file",
+    "size": 94
+   }
+  ],
+  "chars": 1234
+ },
+ "f27dba32-33b5-4082-aeba-873c09f503b0": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "brianlechthaler/skills"
+ },
+ "f34c1f02-fd2d-4840-b623-d011a903dc3a": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=unresolvable)",
+  "repo": null
+ },
+ "f1ad030f-1c7b-4319-bbd1-47d3d18431c2": {
+  "status": "ok",
+  "repo": "jia-hong-peng/jolike.com",
+  "entry_path": ".claude/skills/gstack/design-html/SKILL.md",
+  "entry_hash": "3f889cf3d97cb56bba200b02ae0df33896c3e555f01f16d3982741e0595e8f86",
+  "skill_dir": ".claude/skills/gstack/design-html",
+  "tree": [
+   {
+    "path": ".claude/skills/gstack/design-html/SKILL.md",
+    "type": "file",
+    "size": 54099
+   },
+   {
+    "path": ".claude/skills/gstack/design-html/SKILL.md.tmpl",
+    "type": "file",
+    "size": 22476
+   },
+   {
+    "path": ".claude/skills/gstack/design-html/vendor",
+    "type": "dir",
+    "size": 0
+   },
+   {
+    "path": ".claude/skills/gstack/design-html/vendor/pretext.js",
+    "type": "file",
+    "size": 30602
+   }
+  ],
+  "chars": 53925
+ },
+ "f4a58cef-7747-46f3-8cb8-5a2fcc6a733a": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "gudakesh07/ai-engineering-from-scratch-"
+ },
+ "f55bbfef-49cc-488f-a7c9-4f9c72e6e35b": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "mshadmanrahman/pm-operating-system"
+ },
+ "f3a6b22b-a865-4fd7-9265-909d6d6bf943": {
+  "status": "ok",
+  "repo": "pavel-kravchenko/bioinformatics",
+  "entry_path": "Skills/bio-applied-primer-design/SKILL.md",
+  "entry_hash": "3b3babbe318bc746db53b49d40dcccbc8e833ad9d18dbf7ae398c12cc1d6af13",
+  "skill_dir": "Skills/bio-applied-primer-design",
+  "tree": [
+   {
+    "path": "Skills/bio-applied-primer-design/SKILL.md",
+    "type": "file",
+    "size": 11556
+   }
+  ],
+  "chars": 11536
+ },
+ "f5c5916d-87fb-43f3-b006-c5bbc034076d": {
+  "status": "ok",
+  "repo": "jeeva0104/connector-service-mini",
+  "entry_path": ".claude/skills/database/SKILL.md",
+  "entry_hash": "27def3cab3efab47c5c4a49c8773befa4036777312919c26e56390aa97879f50",
+  "skill_dir": ".claude/skills/database",
+  "tree": [
+   {
+    "path": ".claude/skills/database/SKILL.md",
+    "type": "file",
+    "size": 4421
+   }
+  ],
+  "chars": 4421
+ },
+ "f5a177dc-1fe3-421e-a501-a222af4f3eac": {
+  "status": "ok",
+  "repo": "autohandai/community-skills",
+  "entry_path": "azure-kusto-ms/SKILL.md",
+  "entry_hash": "bb2e17c37564fcf25c72e98eade560a37cba1e90cd3f62cc1080bcbbddd17497",
+  "skill_dir": "azure-kusto-ms",
+  "tree": [
+   {
+    "path": "azure-kusto-ms/SKILL.md",
+    "type": "file",
+    "size": 8706
+   }
+  ],
+  "chars": 8697
+ },
+ "f09bd99b-928b-4e9a-821d-ebfa44e77808": {
+  "status": "ok",
+  "repo": "event4u-app/agent-config",
+  "entry_path": "dist/agent-src/skills/source-discovery/SKILL.md",
+  "entry_hash": "de17355b0052ffd76e40f67d71a50feec9fd439d103e86a11ab2702a28f9f789",
+  "skill_dir": "dist/agent-src/skills/source-discovery",
+  "tree": [
+   {
+    "path": "dist/agent-src/skills/source-discovery/SKILL.md",
+    "type": "file",
+    "size": 10418
+   }
+  ],
+  "chars": 10316
+ },
+ "f7bdced8-0b53-4114-8c47-6c38a4728712": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "marceausolutions/md-to-pdf-mcp"
+ },
+ "f884457c-f0b4-479a-a6ed-f7e7944a7d44": {
+  "status": "ok",
+  "repo": "microck/ordinary-claude-skills",
+  "entry_path": "skills_all/chroma/SKILL.md",
+  "entry_hash": "834733e201d4f7d6c20089c93d13c945d7a62b6581d55631546a5ad74b9ec164",
+  "skill_dir": "skills_all/chroma",
+  "tree": [
+   {
+    "path": "skills_all/chroma/SKILL.md",
+    "type": "file",
+    "size": 9165
+   },
+   {
+    "path": "skills_all/chroma/metadata.json",
+    "type": "file",
+    "size": 765
+   }
+  ],
+  "chars": 9163
+ },
+ "f616c271-e2fb-47a9-8aba-af1c1fb5962b": {
+  "status": "ok",
+  "repo": "po4yka/llm-wiki-skills",
+  "entry_path": "skills/llm-wiki-paf-adoption/SKILL.md",
+  "entry_hash": "083bff358ab99ea736a6c46639991fed85b317254375d8a1ebf5ce03b419ee10",
+  "skill_dir": "skills/llm-wiki-paf-adoption",
+  "tree": [
+   {
+    "path": "skills/llm-wiki-paf-adoption/SKILL.md",
+    "type": "file",
+    "size": 7058
+   },
+   {
+    "path": "skills/llm-wiki-paf-adoption/references",
+    "type": "dir",
+    "size": 0
+   },
+   {
+    "path": "skills/llm-wiki-paf-adoption/references/docs",
+    "type": "dir",
+    "size": 0
+   }
+  ],
+  "chars": 7058
+ },
+ "fa958201-31d1-448f-a8d6-b9de5eedd8cd": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "modeled-information-format/research-harness-template"
+ },
+ "fac237a0-f8e6-401a-bd68-24124d119b2e": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "sanjeevpandita/mannokintegrations"
+ },
+ "fbe130a6-f181-4ccb-92a8-30cc3f150e72": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "akhilgovind02/india-stock-mcp"
+ },
+ "f71e4fbd-c747-4c49-90dd-f7f6a1794ee4": {
+  "status": "ok",
+  "repo": "yash000/9tattvas",
+  "entry_path": ".claude/skills/canvas-design/SKILL.md",
+  "entry_hash": "191dc6fe55e57704c23bbcecbe64b9d005c53eadcb5cdd98d5316837778d68f3",
+  "skill_dir": ".claude/skills/canvas-design",
+  "tree": [
+   {
+    "path": ".claude/skills/canvas-design/LICENSE.txt",
+    "type": "file",
+    "size": 11357
+   },
+   {
+    "path": ".claude/skills/canvas-design/SKILL.md",
+    "type": "file",
+    "size": 12255
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts",
+    "type": "dir",
+    "size": 0
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/ArsenalSC-OFL.txt",
+    "type": "file",
+    "size": 4373
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/ArsenalSC-Regular.ttf",
+    "type": "file",
+    "size": 165848
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/BigShoulders-Bold.ttf",
+    "type": "file",
+    "size": 94528
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/BigShoulders-OFL.txt",
+    "type": "file",
+    "size": 4397
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/BigShoulders-Regular.ttf",
+    "type": "file",
+    "size": 94396
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/Boldonse-OFL.txt",
+    "type": "file",
+    "size": 4390
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/Boldonse-Regular.ttf",
+    "type": "file",
+    "size": 77168
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/BricolageGrotesque-Bold.ttf",
+    "type": "file",
+    "size": 90952
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/BricolageGrotesque-OFL.txt",
+    "type": "file",
+    "size": 4403
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/BricolageGrotesque-Regular.ttf",
+    "type": "file",
+    "size": 90920
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/CrimsonPro-Bold.ttf",
+    "type": "file",
+    "size": 107352
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/CrimsonPro-Italic.ttf",
+    "type": "file",
+    "size": 108828
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/CrimsonPro-OFL.txt",
+    "type": "file",
+    "size": 4394
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/CrimsonPro-Regular.ttf",
+    "type": "file",
+    "size": 106696
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/DMMono-OFL.txt",
+    "type": "file",
+    "size": 4392
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/DMMono-Regular.ttf",
+    "type": "file",
+    "size": 48852
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/EricaOne-OFL.txt",
+    "type": "file",
+    "size": 4410
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/EricaOne-Regular.ttf",
+    "type": "file",
+    "size": 24872
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/GeistMono-Bold.ttf",
+    "type": "file",
+    "size": 78304
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/GeistMono-OFL.txt",
+    "type": "file",
+    "size": 4388
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/GeistMono-Regular.ttf",
+    "type": "file",
+    "size": 78232
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/Gloock-OFL.txt",
+    "type": "file",
+    "size": 4381
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/Gloock-Regular.ttf",
+    "type": "file",
+    "size": 95156
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/IBMPlexMono-Bold.ttf",
+    "type": "file",
+    "size": 136008
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/IBMPlexMono-OFL.txt",
+    "type": "file",
+    "size": 4363
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/IBMPlexMono-Regular.ttf",
+    "type": "file",
+    "size": 133796
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/IBMPlexSerif-Bold.ttf",
+    "type": "file",
+    "size": 161000
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/IBMPlexSerif-BoldItalic.ttf",
+    "type": "file",
+    "size": 169840
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/IBMPlexSerif-Italic.ttf",
+    "type": "file",
+    "size": 170004
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/IBMPlexSerif-Regular.ttf",
+    "type": "file",
+    "size": 160380
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/InstrumentSans-Bold.ttf",
+    "type": "file",
+    "size": 68084
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/InstrumentSans-BoldItalic.ttf",
+    "type": "file",
+    "size": 70004
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/InstrumentSans-Italic.ttf",
+    "type": "file",
+    "size": 69900
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/InstrumentSans-OFL.txt",
+    "type": "file",
+    "size": 4403
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/InstrumentSans-Regular.ttf",
+    "type": "file",
+    "size": 68028
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/InstrumentSerif-Italic.ttf",
+    "type": "file",
+    "size": 70868
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/InstrumentSerif-Regular.ttf",
+    "type": "file",
+    "size": 69312
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/Italiana-OFL.txt",
+    "type": "file",
+    "size": 4394
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/Italiana-Regular.ttf",
+    "type": "file",
+    "size": 27184
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/JetBrainsMono-Bold.ttf",
+    "type": "file",
+    "size": 114828
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/JetBrainsMono-OFL.txt",
+    "type": "file",
+    "size": 4399
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/JetBrainsMono-Regular.ttf",
+    "type": "file",
+    "size": 114904
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/Jura-Light.ttf",
+    "type": "file",
+    "size": 154308
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/Jura-Medium.ttf",
+    "type": "file",
+    "size": 154488
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/Jura-OFL.txt",
+    "type": "file",
+    "size": 4380
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/LibreBaskerville-OFL.txt",
+    "type": "file",
+    "size": 4449
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/LibreBaskerville-Regular.ttf",
+    "type": "file",
+    "size": 147584
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/Lora-Bold.ttf",
+    "type": "file",
+    "size": 133828
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/Lora-BoldItalic.ttf",
+    "type": "file",
+    "size": 140332
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/Lora-Italic.ttf",
+    "type": "file",
+    "size": 139328
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/Lora-OFL.txt",
+    "type": "file",
+    "size": 4423
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/Lora-Regular.ttf",
+    "type": "file",
+    "size": 133888
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/NationalPark-Bold.ttf",
+    "type": "file",
+    "size": 79208
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/NationalPark-OFL.txt",
+    "type": "file",
+    "size": 4399
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/NationalPark-Regular.ttf",
+    "type": "file",
+    "size": 76424
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/NothingYouCouldDo-OFL.txt",
+    "type": "file",
+    "size": 4363
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/NothingYouCouldDo-Regular.ttf",
+    "type": "file",
+    "size": 32020
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/Outfit-Bold.ttf",
+    "type": "file",
+    "size": 55392
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/Outfit-OFL.txt",
+    "type": "file",
+    "size": 4389
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/Outfit-Regular.ttf",
+    "type": "file",
+    "size": 54912
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/PixelifySans-Medium.ttf",
+    "type": "file",
+    "size": 51072
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/PixelifySans-OFL.txt",
+    "type": "file",
+    "size": 4395
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/PoiretOne-OFL.txt",
+    "type": "file",
+    "size": 4366
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/PoiretOne-Regular.ttf",
+    "type": "file",
+    "size": 45244
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/RedHatMono-Bold.ttf",
+    "type": "file",
+    "size": 34420
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/RedHatMono-OFL.txt",
+    "type": "file",
+    "size": 4394
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/RedHatMono-Regular.ttf",
+    "type": "file",
+    "size": 34488
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/Silkscreen-OFL.txt",
+    "type": "file",
+    "size": 4394
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/Silkscreen-Regular.ttf",
+    "type": "file",
+    "size": 31960
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/SmoochSans-Medium.ttf",
+    "type": "file",
+    "size": 59704
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/SmoochSans-OFL.txt",
+    "type": "file",
+    "size": 4396
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/Tektur-Medium.ttf",
+    "type": "file",
+    "size": 76248
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/Tektur-OFL.txt",
+    "type": "file",
+    "size": 4385
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/Tektur-Regular.ttf",
+    "type": "file",
+    "size": 75604
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/WorkSans-Bold.ttf",
+    "type": "file",
+    "size": 191304
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/WorkSans-BoldItalic.ttf",
+    "type": "file",
+    "size": 175772
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/WorkSans-Italic.ttf",
+    "type": "file",
+    "size": 174280
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/WorkSans-OFL.txt",
+    "type": "file",
+    "size": 4397
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/WorkSans-Regular.ttf",
+    "type": "file",
+    "size": 188916
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/YoungSerif-OFL.txt",
+    "type": "file",
+    "size": 4398
+   },
+   {
+    "path": ".claude/skills/canvas-design/canvas-fonts/YoungSerif-Regular.ttf",
+    "type": "file",
+    "size": 105136
+   }
+  ],
+  "chars": 12253
+ },
+ "fbf32db3-1b34-4267-b80b-b862fb9a2c27": {
+  "status": "entrypoint_absent",
+  "detail": "no SKILL.md under README.md",
+  "repo": "anthropics/anthropic-cookbook"
+ },
+ "fc999dda-f32b-4612-952b-f77240925b53": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=repo_root)",
+  "repo": "iam25th1/claude-handoff"
+ },
+ "f9da2d14-3e6b-4bac-9922-c8c2ac850022": {
+  "status": "ok",
+  "repo": "pavel-kravchenko/bioinformatics",
+  "entry_path": "Skills/python-core-bio/SKILL.md",
+  "entry_hash": "ec1bee564bec1d11e31df777224cdcf4399fe9e09effd855df9f4d4e611763c1",
+  "skill_dir": "Skills/python-core-bio",
+  "tree": [
+   {
+    "path": "Skills/python-core-bio/SKILL.md",
+    "type": "file",
+    "size": 10516
+   }
+  ],
+  "chars": 10502
+ },
+ "fe7ef4a5-2a0b-42ee-b5a5-f692ebf1ed5a": {
+  "status": "entrypoint_absent",
+  "detail": "corpus row has no entrypoint path (mode=unresolvable)",
+  "repo": null
+ },
+ "fc502bae-6759-4944-b716-8e6627551616": {
+  "status": "ok",
+  "repo": "26zl/cybersec-toolkit",
+  "entry_path": ".claude/skills/ctf-rev/SKILL.md",
+  "entry_hash": "bcb303573b9bbea218be3f9b6fe7c7415d0e378138b5b0f4ab856d0e61b437db",
+  "skill_dir": ".claude/skills/ctf-rev",
+  "tree": [
+   {
+    "path": ".claude/skills/ctf-rev/SKILL.md",
+    "type": "file",
+    "size": 3552
+   }
+  ],
+  "chars": 3524
+ },
+ "fec7cecb-08a8-425e-b9e7-1d7a752c1787": {
+  "status": "fetch_failed",
+  "detail": "could not fetch bakabo777/bak_abo:BKS_SKILL/skills/bakabo-popup-ai/SKILL.md",
+  "repo": "bakabo777/bak_abo",
+  "entry_path": "BKS_SKILL/skills/bakabo-popup-ai/SKILL.md"
+ },
+ "fd4278ef-700f-4055-b99c-fcfc694e7c4e": {
+  "status": "ok",
+  "repo": "github/awesome-copilot",
+  "entry_path": "skills/python-pypi-package-builder/SKILL.md",
+  "entry_hash": "a936499b350cc292fead873345f54893c2e91c46ce0bae8620bd2f1734376f3e",
+  "skill_dir": "skills/python-pypi-package-builder",
+  "tree": [
+   {
+    "path": "skills/python-pypi-package-builder/SKILL.md",
+    "type": "file",
+    "size": 19188
+   },
+   {
+    "path": "skills/python-pypi-package-builder/references",
+    "type": "dir",
+    "size": 0
+   },
+   {
+    "path": "skills/python-pypi-package-builder/scripts",
+    "type": "dir",
+    "size": 0
+   },
+   {
+    "path": "skills/python-pypi-package-builder/references/architecture-patterns.md",
+    "type": "file",
+    "size": 16148
+   },
+   {
+    "path": "skills/python-pypi-package-builder/references/ci-publishing.md",
+    "type": "file",
+    "size": 8050
+   },
+   {
+    "path": "skills/python-pypi-package-builder/references/community-docs.md",
+    "type": "file",
+    "size": 13263
+   },
+   {
+    "path": "skills/python-pypi-package-builder/references/library-patterns.md",
+    "type": "file",
+    "size": 18167
+   },
+   {
+    "path": "skills/python-pypi-package-builder/references/pyproject-toml.md",
+    "type": "file",
+    "size": 13326
+   },
+   {
+    "path": "skills/python-pypi-package-builder/references/release-governance.md",
+    "type": "file",
+    "size": 10680
+   },
+   {
+    "path": "skills/python-pypi-package-builder/references/testing-quality.md",
+    "type": "file",
+    "size": 6565
+   },
+   {
+    "path": "skills/python-pypi-package-builder/references/tooling-ruff.md",
+    "type": "file",
+    "size": 9371
+   },
+   {
+    "path": "skills/python-pypi-package-builder/references/versioning-strategy.md",
+    "type": "file",
+    "size": 11193
+   },
+   {
+    "path": "skills/python-pypi-package-builder/scripts/scaffold.py",
+    "type": "file",
+    "size": 22563
+   }
+  ],
+  "chars": 18438
+ }
+}

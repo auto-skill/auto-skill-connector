@@ -1,0 +1,366 @@
+{
+ "scanned": 1500,
+ "heuristic_flagged": 172,
+ "judged_n": 50,
+ "judged_agentic": 35,
+ "confusion": {
+  "tp": 7,
+  "fp": 0,
+  "fn": 28,
+  "tn": 15
+ },
+ "precision": 1.0,
+ "recall": 0.2,
+ "rows": [
+  {
+   "pkg": "67162e57e684fd4ec7b7d15cdcbde6ab0ff4a5985aaa1af9be59b9afc7c00668",
+   "name": "reits-emerging-value",
+   "signals": 0,
+   "kind": "REFERENCE",
+   "why": "Provides valuation criteria and comparative data reference"
+  },
+  {
+   "pkg": "25c9d556992e6fe0ee68d571e5edb5fcd2e1c5a27267fbd86e76ba4ff1f0c218",
+   "name": "agent-coordination",
+   "signals": 0,
+   "kind": "REFERENCE",
+   "why": "Describes agent types, hierarchies, and commands"
+  },
+  {
+   "pkg": "d0c0cd17bd1144d1cca4c2961f422e309534441e43e689617169c4f4924113d4",
+   "name": "pterodactyl-ops",
+   "signals": 1,
+   "kind": "AGENTIC",
+   "why": "Skill definition with trigger conditions and behavioral rule"
+  },
+  {
+   "pkg": "85fb753b26d7a467164cc077462512b673be48b7b4868fd672dfff4a8fb7210f",
+   "name": "standards",
+   "signals": 0,
+   "kind": "REFERENCE",
+   "why": "lookup guide mapping standards to use cases"
+  },
+  {
+   "pkg": "39f54407338786af76c517e2385d3c417e6790d6a2120b517a322809075275d3",
+   "name": "stellar-structure-and-evolution",
+   "signals": 0,
+   "kind": "REFERENCE",
+   "why": "Explains stellar physics, not instructional"
+  },
+  {
+   "pkg": "1b066fc8b0daafbdaaccc86b5859454ecda450635a3e7322c21bc2f188fc476f",
+   "name": "manage-channels",
+   "signals": 0,
+   "kind": "AGENTIC",
+   "why": "Instructs agent workflow with specific steps and commands"
+  },
+  {
+   "pkg": "d96e1a558e4e06e42be842668f7e6d298ed63677728729bde72498b72ae0936a",
+   "name": "pre-launch-checklist",
+   "signals": 2,
+   "kind": "AGENTIC",
+   "why": "Prescribes sequential workflow steps an agent executes"
+  },
+  {
+   "pkg": "ecdbb33d5149fe73614584e07aeaaa03618faf2441408dc7267ead9fdd34ab1a",
+   "name": "pentester-scan-ingest",
+   "signals": 0,
+   "kind": "AGENTIC",
+   "why": "Numbered workflow with commands for agent to execute in sess"
+  },
+  {
+   "pkg": "e0dff53a668e0ccbd328fc8ab7feadfd0ff06837998f9d4bbeaa934390d7ee4b",
+   "name": "audit-website",
+   "signals": 1,
+   "kind": "AGENTIC",
+   "why": "Provides numbered workflow steps for agent execution"
+  },
+  {
+   "pkg": "967346305bfd07fdb478219cbac853cbfcf41b8c7e976c0d300ac5c260c7c560",
+   "name": "product-requirement-guidelines",
+   "signals": 0,
+   "kind": "AGENTIC",
+   "why": "Prescribes workflow with when-to-apply triggers for plan-wri"
+  },
+  {
+   "pkg": "3ba9b7db2e20fcdbc3ee4c5309caeb585c1149f265a1a3749e91c7ceb0735d12",
+   "name": "sre",
+   "signals": 0,
+   "kind": "AGENTIC",
+   "why": "Instructs agent to adopt SRE role and execute numbered inves"
+  },
+  {
+   "pkg": "4f28a67168f3c75be2b1b789126131259e6a5609a683d6002fdc1be71f7124d7",
+   "name": "inbox-triage",
+   "signals": 1,
+   "kind": "AGENTIC",
+   "why": "Instructs agent to execute multi-step email triage workflow"
+  },
+  {
+   "pkg": "d7d8ac96e75e3ca878535a53106f63c7606e0a02dd29e64a36d19f758a6c5669",
+   "name": "ref-system-design-knowledge",
+   "signals": 0,
+   "kind": "REFERENCE",
+   "why": "Provides design knowledge sources; explicitly disables invoc"
+  },
+  {
+   "pkg": "773de6d8a7a8ef05ca0fc40b7794aed8577c6452ff04b19a05a7e49030ee9c3a",
+   "name": "acos-meta",
+   "signals": 0,
+   "kind": "AGENTIC",
+   "why": "Numbered steps for creating skills, commands, agents, debugg"
+  },
+  {
+   "pkg": "d588804f37f0fafea8c3fee27bf358e6f0d42e2da4c3048dabb4a84a1691e80a",
+   "name": "launch-strategy",
+   "signals": 1,
+   "kind": "AGENTIC",
+   "why": "Assigns role, prescribes five-phase workflow for AI executio"
+  },
+  {
+   "pkg": "bcf2f2c1386b96362312a4bc00a6fdab490b1eda095cd10e920f0a58a34d35d2",
+   "name": "obsidian-knowledge-capture",
+   "signals": 0,
+   "kind": "AGENTIC",
+   "why": "Instructs numbered workflow with skill invocation steps"
+  },
+  {
+   "pkg": "cf0f3dd4992703f1d895a6d887fafaf3a4c97a890c527129484860b1e25559d4",
+   "name": "graphify",
+   "signals": 2,
+   "kind": "AGENTIC",
+   "why": "Step-by-step workflow agents execute this session"
+  },
+  {
+   "pkg": "8323931e5354c0a234226928ac49b08ed24598f8776ef5bcc87d067575dab0ad",
+   "name": "install-acm",
+   "signals": 0,
+   "kind": "REFERENCE",
+   "why": "Documents tool options, examples, requirements"
+  },
+  {
+   "pkg": "9200b1390067af4f6cb79d3ac7f117b2cd64610e619f8bd5bfe6a25fbd9a0e5c",
+   "name": "ship",
+   "signals": 1,
+   "kind": "AGENTIC",
+   "why": "Instructs agent to execute numbered workflow steps"
+  },
+  {
+   "pkg": "45ec093085a5f3bcecf8187bf80d74cc21b372ecef101f1b909e17bd303a7019",
+   "name": "core-components",
+   "signals": 0,
+   "kind": "REFERENCE",
+   "why": "Explains design system components, tokens, and code patterns"
+  },
+  {
+   "pkg": "0bb99c790a3121f3ac5cd580918d070aad0067376a1d296587dc86cb57983b5e",
+   "name": "unity-localization",
+   "signals": 0,
+   "kind": "REFERENCE",
+   "why": "Explains localization practices, setup, and best practices"
+  },
+  {
+   "pkg": "4f945d54e70efee33f5f3940671996db90431701279e4385ddeac6e10511fd4e",
+   "name": "ui-scan",
+   "signals": 0,
+   "kind": "AGENTIC",
+   "why": "Numbered workflow phases with setup checklists and explicit "
+  },
+  {
+   "pkg": "878356920b8b195f1c6c32e1237f6cb2140381b7c182748a4fe9b3cdb46958bf",
+   "name": "make-pdf",
+   "signals": 1,
+   "kind": "AGENTIC",
+   "why": "Skill file instructing bash preamble, setup checks, and comm"
+  },
+  {
+   "pkg": "5aa317f049f99164b19eb4b4e1a198da84f7f5c225bba3f336a5e168fb05e9dc",
+   "name": "debug",
+   "signals": 0,
+   "kind": "REFERENCE",
+   "why": "Explains system architecture, logs, and troubleshooting; rea"
+  },
+  {
+   "pkg": "d7858116a58e53bf19b8d810ff472a10284955c96dab22a7298c6971184a8145",
+   "name": "kelly-feedback",
+   "signals": 2,
+   "kind": "AGENTIC",
+   "why": "Prescribes agent workflow, execution steps, approval process"
+  },
+  {
+   "pkg": "a444b96a547f1b783288a2c743b581b113e9c6e8b23da4521ed203b5f2878053",
+   "name": "fill-protocol",
+   "signals": 1,
+   "kind": "AGENTIC",
+   "why": "Instructs AI agent workflow for filling Word templates"
+  },
+  {
+   "pkg": "a0bc9d0b96ba6650737a2f49a6a1625acdc2797c1319e326ed4ebcc065b943c3",
+   "name": "skill-quality-reviewer",
+   "signals": 3,
+   "kind": "AGENTIC",
+   "why": "Instructs agent to evaluate skills through 8-step workflow"
+  },
+  {
+   "pkg": "bc1fbbb5a53130986a2de2cf4079989e99c180b86a93ce768e273173cdaeae9c",
+   "name": "bmad-eval-runner",
+   "signals": 1,
+   "kind": "AGENTIC",
+   "why": "Instructs an agent on steps to follow when invoked"
+  },
+  {
+   "pkg": "c999667bae2e8467ac773f33d6caecce094b794c698aa8821d936d5ed11752ae",
+   "name": "bmad-cis-agent-brainstorming-coach",
+   "signals": 1,
+   "kind": "AGENTIC",
+   "why": "Instructs agent to adopt persona and follow numbered workflo"
+  },
+  {
+   "pkg": "dfad3966e2453f502b66f0dd1222ae68381b3d31d1c8db5c936ca0126eb27e1a",
+   "name": "system-design-interview",
+   "signals": 1,
+   "kind": "AGENTIC",
+   "why": "Prescribes multi-step workflow with phases and checkpoints"
+  },
+  {
+   "pkg": "bf17f95d25c0fd8630b1594872839d57f7c4240bbb3419ed25473830f20a1536",
+   "name": "partnerships-architect",
+   "signals": 1,
+   "kind": "AGENTIC",
+   "why": "Prescribes numbered workflow steps and commands to execute"
+  },
+  {
+   "pkg": "4c08996c05858591af69c2752f1a56c89e13772d682cd6f857f0da620dfd0df3",
+   "name": "githubcopilot-swift-mcp-server-generator",
+   "signals": 0,
+   "kind": "AGENTIC",
+   "why": "Prescribes workflow for generating MCP servers"
+  },
+  {
+   "pkg": "e08a950c54eca2c22d5f82a62840c62eac537dfe92a87b65538610f4181551b0",
+   "name": "bepinex",
+   "signals": 0,
+   "kind": "REFERENCE",
+   "why": "Explains concepts, provides code examples and patterns"
+  },
+  {
+   "pkg": "003f8ea4b00238997cdf6ed04abd5f9016255932126b2fe77f4a6711f7608721",
+   "name": "kai-goal",
+   "signals": 1,
+   "kind": "AGENTIC",
+   "why": "Step-by-step workflow: write files, run commands, read data,"
+  },
+  {
+   "pkg": "1f55f6926f7e63e7e4711e726712fdd141b127ac91af94551ba0463a4a7138ea",
+   "name": "cs-update",
+   "signals": 0,
+   "kind": "AGENTIC",
+   "why": "Procedural steps tell an agent what commands to run and when"
+  },
+  {
+   "pkg": "da6fa940724983b8c87aec67808bc6b351907a3c04acd4cfaa7b2f00da777926",
+   "name": "hamzaish-orchestrator",
+   "signals": 1,
+   "kind": "AGENTIC",
+   "why": "Prescriptive protocol with numbered steps, activation trigge"
+  },
+  {
+   "pkg": "57d25ba02756d365d7e62f97b9928712553be38fcbd2a7abc90759a9b2df08fc",
+   "name": "requirements-chk-matrix",
+   "signals": 0,
+   "kind": "AGENTIC",
+   "why": "step-by-step workflow for executing a spec-authoring task"
+  },
+  {
+   "pkg": "a9f9a01ae9c94ee27377aabd2b57f3e49ce03f3bc130ecf79b774bb32608f330",
+   "name": "tmux-sprint",
+   "signals": 1,
+   "kind": "AGENTIC",
+   "why": "Prescriptive skill workflow for dispatching tmux personas"
+  },
+  {
+   "pkg": "42f4b36cac5520019e07b66183c3bbf0cad4979add8cc88d7a57d7c106614cad",
+   "name": "ai-article",
+   "signals": 0,
+   "kind": "AGENTIC",
+   "why": "Instructs sequential workflow with conditional steps for art"
+  },
+  {
+   "pkg": "322eef4efa905be0c1a387ad7e1774a973cb9c3cb76229aff3c961b1942f6215",
+   "name": "subagent-driven-development",
+   "signals": 1,
+   "kind": "AGENTIC",
+   "why": "Instructs workflow controller to dispatch subagents and run "
+  },
+  {
+   "pkg": "7830d8e575b2a026bd0040b9d76d06e4fe6670a93d20dbdfbf2fb224c18ec94a",
+   "name": "implementing-network-deception-with-honeypots",
+   "signals": 0,
+   "kind": "REFERENCE",
+   "why": "Explains honeypot tools, concepts, and workflow for consulta"
+  },
+  {
+   "pkg": "d13e4e99595da18e980de27d0d1427c41e2d702b7741cb1e5c1585cb5e5a5fa3",
+   "name": "verify",
+   "signals": 2,
+   "kind": "AGENTIC",
+   "why": "Workflow script directing agent to execute verification step"
+  },
+  {
+   "pkg": "c1b001d44e966ac83f3336213803d9a026903b00b99b9a49fddc770e3134da67",
+   "name": "java-coding-standards",
+   "signals": 0,
+   "kind": "REFERENCE",
+   "why": "Coding standards and conventions guide"
+  },
+  {
+   "pkg": "6b7b1c736c275dd1378915572df6a868407036881dc98e6c19070bb4614bbe86",
+   "name": "moai-foundation-quality",
+   "signals": 0,
+   "kind": "REFERENCE",
+   "why": "Explains quality framework capabilities and configuration"
+  },
+  {
+   "pkg": "bd733064648186d77e21b85dc94714a71fb7ecabae8d22ffd4f9877fb86ee0fc",
+   "name": "ci-failure-fixer",
+   "signals": 0,
+   "kind": "REFERENCE",
+   "why": "Documents a tool's operation patterns, not instructing an ag"
+  },
+  {
+   "pkg": "6730fdf0fdca6449c6aa56447c30718e805caeb9c03f34eb52a3989d4baf53b8",
+   "name": "simplify-docs",
+   "signals": 0,
+   "kind": "AGENTIC",
+   "why": "Prescribes numbered workflow steps and approval gates for ag"
+  },
+  {
+   "pkg": "676a729f4e2d4bf88ad66ae3cfe2e57c0f440baea38dac6657e1605e0643cfdd",
+   "name": "research-refine",
+   "signals": 4,
+   "kind": "AGENTIC",
+   "why": "Prescribes multi-phase workflow for agent to execute"
+  },
+  {
+   "pkg": "c468f905a437a99f80262c2167e7400aa954fe3bb6f83498348debd21322ff2b",
+   "name": "frame-flowchart-sticky",
+   "signals": 0,
+   "kind": "REFERENCE",
+   "why": "Design specification documenting template visual requirement"
+  },
+  {
+   "pkg": "be7fcf3dc6252b5cb8ba38ef93de8e8e611aad15de7621024831460b3caa0e8a",
+   "name": "risk-manager",
+   "signals": 2,
+   "kind": "AGENTIC",
+   "why": "Skill definition instructing agent role adoption and workflo"
+  },
+  {
+   "pkg": "568aaddb946b407160930384642bf0041d1a4c28a4e05be7c0708f120ef50680",
+   "name": "create-stories",
+   "signals": 1,
+   "kind": "AGENTIC",
+   "why": "Procedural workflow instructing agent to decompose epics"
+  }
+ ]
+}

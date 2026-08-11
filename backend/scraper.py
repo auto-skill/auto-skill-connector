@@ -1044,6 +1044,15 @@ SEED_TREE_CRAWL_REPOS = [
     "VoltAgent/awesome-claude-code-subagents",
     "wshobson/agents",
 ]
+# These repositories are high-signal collection canaries. Their recursive tree
+# scans run independently of GitHub's global code-search index. Operators may
+# extend this bounded default with AUTOSKILL_TARGETED_TREE_REPOS=owner/repo,... .
+TARGETED_TREE_CRAWL_REPOS = (
+    "oxcaml/oxcaml",
+    "github/awesome-copilot",
+)
+TARGETED_TREE_REPOS_ENV = "AUTOSKILL_TARGETED_TREE_REPOS"
+GITHUB_OWNER_REPO_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_.-]*/[a-z0-9][a-z0-9_.-]*$", re.I)
 
 SKILLISH_RE = re.compile(r"skill|plugin|subagent|agent|\.claude|claude-code|mcp", re.I)
 SKILLISH_TOPICS = {"claude-skill", "claude-skills", "agent-skill", "agent-skills"}
@@ -1051,6 +1060,21 @@ SKILL_MD_PATH_RE = re.compile(r"(?:^|/)SKILL\.md$", re.I)
 TREE_CRAWL_PER_REPO_CAP = 500  # bound pathological repos
 BACKLOG_DRAIN_PER_RUN = 150    # ~26k backlog fully swept in ~2 days at 4 runs/hr
 RAW_FETCH_SEMAPHORE = asyncio.Semaphore(20)
+
+
+def targeted_tree_crawl_repos() -> tuple[str, ...]:
+    """Return validated, deduplicated high-signal repositories to crawl."""
+    configured = os.getenv(TARGETED_TREE_REPOS_ENV, "")
+    candidates = [*TARGETED_TREE_CRAWL_REPOS, *configured.split(",")]
+    repos: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        normalized = candidate.strip().casefold()
+        if not GITHUB_OWNER_REPO_NAME_RE.fullmatch(normalized) or normalized in seen:
+            continue
+        seen.add(normalized)
+        repos.append(normalized)
+    return tuple(repos)
 
 
 def _github_owner_repo(url: str):
@@ -1075,6 +1099,8 @@ def collect_repo_candidates(skills: list, state: "CrawlState") -> list:
 
     for seed in SEED_TREE_CRAWL_REPOS:
         add(tier_a, seed.lower())
+    for owner_repo in targeted_tree_crawl_repos():
+        add(tier_a, owner_repo)
 
     for s in skills:
         if s.get("source") not in ("github", "github_skill_file"):

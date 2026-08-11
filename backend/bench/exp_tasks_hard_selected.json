@@ -1,0 +1,21 @@
+{
+ "note": "selected by baseline failure only",
+ "tasks": [
+  {
+   "id": "h-k8s-pdb",
+   "prompt": "What Kubernetes object prevents voluntary disruptions from taking down too many pods at once, and what are its two mutually exclusive fields?",
+   "all_of": [
+    [
+     "PodDisruptionBudget",
+     "poddisruptionbudget"
+    ],
+    [
+     "minAvailable"
+    ],
+    [
+     "maxUnavailable"
+    ]
+   ]
+  }
+ ]
+}

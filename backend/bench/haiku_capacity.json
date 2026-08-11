@@ -1,0 +1,18 @@
+{
+ "skills": 384,
+ "verdicts": 384,
+ "seconds": 486,
+ "billed_input": 1434172,
+ "output": 146177,
+ "api_cost": 4.2560694,
+ "before": {
+  "five_hour": 16.0,
+  "seven_day": 92.0
+ },
+ "after": {
+  "five_hour": 21.0,
+  "seven_day": 92.0
+ },
+ "d5": 5.0,
+ "d7": 0.0
+}

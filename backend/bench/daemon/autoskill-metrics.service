@@ -1,0 +1,10 @@
+[Unit]
+Description=Auto-Skill ingestion metrics snapshot (one sample)
+[Service]
+Type=oneshot
+WorkingDirectory=/srv/mobile-codex/sessions/autoskill_7e0dd3fa/workspace/auto-skill-connector/backend/bench
+# Metrics are observational. Keep them below the API-bound ingestion workers.
+Nice=19
+CPUWeight=1
+IOSchedulingClass=idle
+ExecStart=/usr/bin/python3 run2_metrics.py

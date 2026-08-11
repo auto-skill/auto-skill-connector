@@ -1,0 +1,744 @@
+{
+ "n": 119,
+ "generality": {
+  "ORG": 15,
+  "PRIVATE": 63,
+  "ECOSYSTEM": 27,
+  "UNIVERSAL": 14
+ },
+ "joint": {
+  "VALUABLE|ORG": 11,
+  "MARGINAL|PRIVATE": 10,
+  "REDUNDANT|PRIVATE": 7,
+  "VALUABLE|ECOSYSTEM": 13,
+  "VALUABLE|PRIVATE": 38,
+  "REDUNDANT|ECOSYSTEM": 2,
+  "ESSENTIAL|PRIVATE": 8,
+  "ESSENTIAL|UNIVERSAL": 2,
+  "ESSENTIAL|ECOSYSTEM": 2,
+  "MARGINAL|ECOSYSTEM": 10,
+  "VALUABLE|UNIVERSAL": 8,
+  "REDUNDANT|UNIVERSAL": 4,
+  "MARGINAL|ORG": 2,
+  "ESSENTIAL|ORG": 1,
+  "REDUNDANT|ORG": 1
+ },
+ "informative_and_reusable": 25,
+ "informative_repo_locked": 58,
+ "rows": [
+  {
+   "pkg": "a18c4cff0e97d9215de3d59e9cd190ff391e0cdcc6e42bcb4c1c43d4ebcbd984",
+   "name": "code-refactor",
+   "level": "ORG",
+   "subject": "Systematic code refactoring workflow based on Fowler"
+  },
+  {
+   "pkg": "0a8f2706e3e292b75d89f6eb5c2deabec0f1e363f7a677c131cf1a829d828c2c",
+   "name": "optimization",
+   "level": "PRIVATE",
+   "subject": "PersonalOS internal optimization skill"
+  },
+  {
+   "pkg": "f72ef25d169f6601898567669c616c4133599543519a8eb7a02fc277e043b99b",
+   "name": "senior-python-dev",
+   "level": "PRIVATE",
+   "subject": "Internal Claude Code skill persona with template references"
+  },
+  {
+   "pkg": "7861b13d0d4d8f6100bd33c11c1919f54e32b46c424f687f046735057c1a899b",
+   "name": "book--patterns-of-enterprise-application-architecture--full",
+   "level": "ECOSYSTEM",
+   "subject": "PoEAA enterprise application architecture patterns"
+  },
+  {
+   "pkg": "3daf9162b7b42bb7e8aeb2006506f4df9801495cd438cab83108d36bdddb45f3",
+   "name": "skill-verification-gate",
+   "level": "PRIVATE",
+   "subject": "Claude internal multi-provider verification process"
+  },
+  {
+   "pkg": "b78f32439152787a35cb663ea71c8f5e80db075ffecc5053f8ffad6fc3f1fe35",
+   "name": "competitive-analysis-april-dunford-framework",
+   "level": "ECOSYSTEM",
+   "subject": "April Dunford competitive analysis framework"
+  },
+  {
+   "pkg": "0e0bbb539dc4510a7308f7f1e7380f9e213e7572f7b2d661de43105810966d5d",
+   "name": "port-indicator",
+   "level": "PRIVATE",
+   "subject": "Port indicators into PythonDataService with equivalence testing"
+  },
+  {
+   "pkg": "d9313c3508ff66475505c3b19f6dfd8041ab8cad49abc14995ae8df9ae636ce4",
+   "name": "bmad-cis-agent-design-thinking-coach",
+   "level": "PRIVATE",
+   "subject": "Design thinking coach agent configuration"
+  },
+  {
+   "pkg": "277dd6479a369f6ca42e8dd1bb72d53555f3dfb1c8ed7c7e07f37ea1269dc97e",
+   "name": "agile-product-owner",
+   "level": "UNIVERSAL",
+   "subject": "Agile backlog management and user story writing"
+  },
+  {
+   "pkg": "6e3e89101d459f034c6cf10a88f4c50c8dc421c85029857795a4e60df5b2a03f",
+   "name": "change",
+   "level": "PRIVATE",
+   "subject": "Internal change workflow skill for code modifications"
+  },
+  {
+   "pkg": "d195ef1daa8fddcdfb8551c2299ebc6aac9ba208e27c650e6c394f659884e1d4",
+   "name": "content-distribution",
+   "level": "ORG",
+   "subject": "Content distribution strategy and atomization framework"
+  },
+  {
+   "pkg": "fcaa4d3f905e9c6a57b7987b0bd57a954ea5b4e6ec53890218c1dedd049f071d",
+   "name": "strona-premium",
+   "level": "PRIVATE",
+   "subject": "Premium business website design process"
+  },
+  {
+   "pkg": "cc7f4fa70eeaa50673306c98b57da0e433e7e417a60f2c01b3fa846b5e096c93",
+   "name": "speckit-checklist",
+   "level": "PRIVATE",
+   "subject": "spec-kit internal checklist command definition"
+  },
+  {
+   "pkg": "82e58310663988ae9587d9508be1a1f941632ae1d828fb2f9f66c8bae5d5c3a5",
+   "name": "genre-conventions",
+   "level": "ECOSYSTEM",
+   "subject": "Fiction genre promises and narrative structure"
+  },
+  {
+   "pkg": "a47fa8af58714ccc25fe57d37dd333f3e62e234580efa17011e9be7a558db8d6",
+   "name": "code-review-orchestration",
+   "level": "PRIVATE",
+   "subject": "Internal code review orchestration system configuration"
+  },
+  {
+   "pkg": "dd1487805c3a99aecabf369a4da628937b30211c1f464dbe2759c3a38be970b7",
+   "name": "azure-queue-storage",
+   "level": "ECOSYSTEM",
+   "subject": "Azure Queue Storage best practices and API reference"
+  },
+  {
+   "pkg": "a899bbbc9bc6c52eb6721c5099d34fe60c47ac5a776fbad3165ad3465ace4304",
+   "name": "gen-data",
+   "level": "PRIVATE",
+   "subject": "Synthetic financial demo data generator"
+  },
+  {
+   "pkg": "0b683e9d12e60bd7af7afd389f59e5fa3dcee5034345d46d8c6459f3afb3f1fc",
+   "name": "moai-tool-ast-grep",
+   "level": "ECOSYSTEM",
+   "subject": "AST-grep open-source code search and refactoring"
+  },
+  {
+   "pkg": "f63dc2e830828e9ef3fdb17fb3760b551974312264f657cb58c10a480d828c7a",
+   "name": "deployer",
+   "level": "PRIVATE",
+   "subject": "Uniswap CCA auction deployment via Foundry"
+  },
+  {
+   "pkg": "18d1b505a5650483b5a313ff811735f9804049c56180b7520e20afddf5f1f95d",
+   "name": "gideon-autonomous-prospector",
+   "level": "PRIVATE",
+   "subject": "Proprietary AI content repurposing prospect system"
+  },
+  {
+   "pkg": "86845f7e96bb24d546dd594939a67fa8453799b01fb7adf26f144fbbf19ae3ab",
+   "name": "help",
+   "level": "PRIVATE",
+   "subject": "PM-Kit internal help command reference"
+  },
+  {
+   "pkg": "f778594d68dc0ea44e8b4e8c604311e6c625a716fd973cd04b321324a556544b",
+   "name": "decision-log",
+   "level": "ORG",
+   "subject": "Decision logging and project tracking methodology"
+  },
+  {
+   "pkg": "94d3cbd4cf8733e19b4ae4b722d943bcd7228d4a5bc9c00d132f2d61ce3d0713",
+   "name": "feature-planning",
+   "level": "PRIVATE",
+   "subject": "Feature planning via internal skill system"
+  },
+  {
+   "pkg": "c2dd0525aad0e844166e3d1298fe4b4108654575977b6da6fc9a33e954517bb9",
+   "name": "gsd:reference:verification-patterns",
+   "level": "PRIVATE",
+   "subject": "GSD internal verification patterns"
+  },
+  {
+   "pkg": "1c9d4c987e90995695d6e5df4432da1ab900f72aaa4b96a4dc4237de4946f2af",
+   "name": "investigate",
+   "level": "PRIVATE",
+   "subject": "gstack internal debugging skill configuration"
+  },
+  {
+   "pkg": "2bd464d6234805920cc9443be6cebf40081053f4f32562df9376659ac4fdb8e7",
+   "name": "briefwahl-und-elektronische-stimme",
+   "level": "PRIVATE",
+   "subject": "German corporate law postal voting procedures"
+  },
+  {
+   "pkg": "577054d7553281fc1cd92e450f3ed9612907ea69b385b41719d4eaf0dfb4c546",
+   "name": "taste-design",
+   "level": "PRIVATE",
+   "subject": "Google Stitch design system prompt generation"
+  },
+  {
+   "pkg": "c07abaed4c05b477a9e48e4e78c28b13042f709e60d96a120a5d43df3bd6186b",
+   "name": "research-synthesis",
+   "level": "PRIVATE",
+   "subject": "Internal Claude Code research synthesis skill"
+  },
+  {
+   "pkg": "55d7615711a4efdd741f3bd953d19b64e0a2282ef8d2c7c4ed6a24fe6b61b5eb",
+   "name": "inputsystem-action-add",
+   "level": "ECOSYSTEM",
+   "subject": "Unity InputSystem Action tool reference"
+  },
+  {
+   "pkg": "bad0ea0e3d35db749d9c7e86ee18a7e1bdc31c8f0900c7277554ff9b3a575229",
+   "name": "session-start",
+   "level": "PRIVATE",
+   "subject": "Claude Code session creation skill"
+  },
+  {
+   "pkg": "8566894e32aebee3aeba2e5dff9068d20c3ea9f2dc1f537b04b07846ca4e781d",
+   "name": "review-comments",
+   "level": "ORG",
+   "subject": "PR review comment triage and response workflow"
+  },
+  {
+   "pkg": "58e413645ee9c573e0ab586c5c611c505e54db52132a98de43dea5a58d03a142",
+   "name": "orchestrator",
+   "level": "PRIVATE",
+   "subject": "Internal orchestrator skill and workflow syntax"
+  },
+  {
+   "pkg": "1eaa9b2b3afcfaaffdcdaa60b3b2ab96d8ac5d253a39a442dd93e806f4769f9a",
+   "name": "security-best-practices",
+   "level": "UNIVERSAL",
+   "subject": "OWASP Top 10 and secure coding practices"
+  },
+  {
+   "pkg": "63b361a0e13d1896488ca3d288c92c666fa03ea9c31cc6c47a01570ff157c1b8",
+   "name": "trackbed-adr",
+   "level": "PRIVATE",
+   "subject": "ADR management within Trackbed internal workflow system"
+  },
+  {
+   "pkg": "1b5d731a7b68dac7db5539763ad550a4b988d6bfe0e7fd7cf7b159e9b09f6fd7",
+   "name": "code-patterns",
+   "level": "ECOSYSTEM",
+   "subject": "DDD patterns in NestJS microservices"
+  },
+  {
+   "pkg": "a1438ec938b8677c1dcc75045b92e617fa583d307d7bc2f562dd652f65e6f404",
+   "name": "tuicr",
+   "level": "PRIVATE",
+   "subject": "tuicr code review tool workflow"
+  },
+  {
+   "pkg": "842695d64ad3347c58c5b67494757f8530838152eef043db8fe0158fc3623f54",
+   "name": "brainstorming",
+   "level": "PRIVATE",
+   "subject": "Internal skill system for product brainstorming"
+  },
+  {
+   "pkg": "099ce5734bd0316da12397f52aff3f2c9aa1a141462407b3d81df3a07ae95f90",
+   "name": "design-review",
+   "level": "PRIVATE",
+   "subject": "gstack design-review skill configuration"
+  },
+  {
+   "pkg": "b6635536dede5d2b915bfde9001a99515270dce66555b6c0d404a34541f9f439",
+   "name": "konzernklausel",
+   "level": "PRIVATE",
+   "subject": "German AGB corporate clause legal review process"
+  },
+  {
+   "pkg": "92b97697cab9faf750174dfd2591ecaf65b486180a9ce493280f738b92acdc5a",
+   "name": "spec-discovery",
+   "level": "PRIVATE",
+   "subject": "Pre-spec discovery investigation workflow"
+  },
+  {
+   "pkg": "e27a3e9bc671d1913c19887ad35648c248efcc60fa87d9e34ee2935627aaa028",
+   "name": "doc-coauthoring-zh",
+   "level": "ECOSYSTEM",
+   "subject": "Claude document coauthoring workflow"
+  },
+  {
+   "pkg": "b1318d35e0a28a04236ae0dae0828553c7c730c9606ebd2472e5fcf245e706e4",
+   "name": "kotlin-testing",
+   "level": "ECOSYSTEM",
+   "subject": "Kotlin testing patterns with Kotest and MockK"
+  },
+  {
+   "pkg": "d37931f376f61f481967426569a181dedfef49d6943695b0b8ff91e1eb1eec89",
+   "name": "gstack-ship",
+   "level": "PRIVATE",
+   "subject": "gstack internal workflow skill implementation"
+  },
+  {
+   "pkg": "5030f39898bb52dc073b2e1328f3a1440f001a920d7883394be146b4d9b9c733",
+   "name": "gstack-openclaw-office-hours",
+   "level": "ORG",
+   "subject": "YC-style startup product diagnostic methodology"
+  },
+  {
+   "pkg": "fde23e7bcb07b1fbc70c39acda63c26a24a88ee315397ee46b37f0dda379d33d",
+   "name": "dpla-monitor-ingest-remap",
+   "level": "PRIVATE",
+   "subject": "monitoring DPLA ingest/remap progress"
+  },
+  {
+   "pkg": "e1c877c85775cb500db944c7fafc3ee7543581408b8b8960c948cbb3ae494001",
+   "name": "sales-tactics",
+   "level": "UNIVERSAL",
+   "subject": "Sales tactics, prospecting, and pipeline generation"
+  },
+  {
+   "pkg": "c3a1c11fcf0f72410a141611d0856bfa76d0fc4d4c0fd1215657fa7b1135df42",
+   "name": "08-nodes-reference",
+   "level": "PRIVATE",
+   "subject": "Kailash SDK node reference documentation"
+  },
+  {
+   "pkg": "69ab628ce388161997f00d58f708d7fc1fcfabbae4092a7d91e3395e35dd84a7",
+   "name": "game-design",
+   "level": "UNIVERSAL",
+   "subject": "Game design principles and GDD structure"
+  },
+  {
+   "pkg": "41402ce798357e8a376180bd13834efcc943642c374922ccbe65308326d7b5ec",
+   "name": "political-human-skill",
+   "level": "PRIVATE",
+   "subject": "AI political persona generation framework"
+  },
+  {
+   "pkg": "06ed1b1e138081590a941d2cc5ffbe67a5ede60191983470a67a474ceb310306",
+   "name": "gt",
+   "level": "PRIVATE",
+   "subject": "Google Trends SEO keyword selection workflow"
+  },
+  {
+   "pkg": "c999667bae2e8467ac773f33d6caecce094b794c698aa8821d936d5ed11752ae",
+   "name": "bmad-cis-agent-brainstorming-coach",
+   "level": "PRIVATE",
+   "subject": "internal brainstorming specialist skill system"
+  },
+  {
+   "pkg": "26feae7d8693493949370945cc7c7413cba792444e08bd5aa33e658a22a93df0",
+   "name": "superpowers:writing-plans",
+   "level": "PRIVATE",
+   "subject": "Implementation planning using internal superpowers framework"
+  },
+  {
+   "pkg": "428a89e70c2c390134a5e2d3ff49f76d82297a88f800e504ba15128cfd86ad78",
+   "name": "architecture-blueprint-generator",
+   "level": "ORG",
+   "subject": "Architecture documentation generation template"
+  },
+  {
+   "pkg": "a66f9c5de80ff82a72a3b3d0b1231d7f759e45413296353f29b2ac0bbf3b26ca",
+   "name": "gtd-workflow",
+   "level": "ECOSYSTEM",
+   "subject": "Getting Things Done (GTD) workflow patterns"
+  },
+  {
+   "pkg": "284889e5e11dd554a27384ed30c42aed04afde757f9aef86378340357d772068",
+   "name": "research",
+   "level": "PRIVATE",
+   "subject": "Using the research skill in Claude Code"
+  },
+  {
+   "pkg": "1a0dda7adff9ecf9f65aa9e7b561071bd614dd6e48cc8cb7f17a22f3d8738320",
+   "name": "seo-fundamentals",
+   "level": "ECOSYSTEM",
+   "subject": "Google SEO guidelines and best practices"
+  },
+  {
+   "pkg": "13b8687a3032ff4904886d075dae00658d7f2152dd06dd54808748e56bb7d75b",
+   "name": "qa",
+   "level": "PRIVATE",
+   "subject": "gstack QA skill definition and setup"
+  },
+  {
+   "pkg": "e1dcbf20fa52e82752274403530e5f4e92a9337716e34885dd80b2e77e7fabd1",
+   "name": "financial-model-narrative",
+   "level": "ORG",
+   "subject": "Financial narrative writing process and structure"
+  },
+  {
+   "pkg": "8cdd32a4bef1809d386c06ad1ed907fa280fff12a90ca74f67c402d418c63a8c",
+   "name": "burp-suite-testing",
+   "level": "ECOSYSTEM",
+   "subject": "Burp Suite web application security testing"
+  },
+  {
+   "pkg": "9aff25c16a2c24300b8973a9badf8265057fbaea0ea63fe2ab13d570133a987c",
+   "name": "security-auditor",
+   "level": "PRIVATE",
+   "subject": "Internal security-auditor skill framework definition"
+  },
+  {
+   "pkg": "e34d37805f3a13c54113553cf6af3fea3ae2019d001b0cb85af68e84db790e93",
+   "name": "bmad-code-review",
+   "level": "PRIVATE",
+   "subject": "bmad adversarial code review workflow"
+  },
+  {
+   "pkg": "6aa4694b69a1c8d42de54bb8a972e6d7142de03795f73c5d5404574ea52c5921",
+   "name": "fundraise-team-hiring",
+   "level": "ORG",
+   "subject": "Startup team narrative and fundraise hiring strategy"
+  },
+  {
+   "pkg": "71d7636494aea2608182ff772641efa24abe6fd4facf0931f3b5555ad74413a0",
+   "name": "emil-design-eng",
+   "level": "ORG",
+   "subject": "Emil Kowalski's animation design philosophy"
+  },
+  {
+   "pkg": "f793b955d22f2861f6502d8200bc13c3e89098321b8a4af93b4ee8ee2e43fd1e",
+   "name": "tdd-workflows-tdd-green",
+   "level": "UNIVERSAL",
+   "subject": "TDD green phase implementation patterns"
+  },
+  {
+   "pkg": "2e3680733a4c7e5e5f09e7236849548fe78d48d42f798e5ac103a86fb62b4b33",
+   "name": "party-mode",
+   "level": "PRIVATE",
+   "subject": "BMAD internal agent party mode orchestration"
+  },
+  {
+   "pkg": "7f8ddc5603fb2e0c159089b1ae5da9f51798de0ec9f3c0371a4e10d132509b21",
+   "name": "launch-strategy",
+   "level": "PRIVATE",
+   "subject": "Claude Code skill for repo-specific product launch planning"
+  },
+  {
+   "pkg": "dd53e0c890f29bb56ae198412ce1fd4532adb27d6e9887693ca0ecd2ccd74c37",
+   "name": "capa-officer",
+   "level": "ECOSYSTEM",
+   "subject": "CAPA and root cause analysis for regulated QMS"
+  },
+  {
+   "pkg": "ad7fd8380a9e4ac8784e9c910a398620331a7a4ef6b08db95d0c38f88fccc177",
+   "name": "referral-program",
+   "level": "ECOSYSTEM",
+   "subject": "Referral program design mechanics"
+  },
+  {
+   "pkg": "a394ef2dd4b17395619b15de4e186d8afeae1eaafad7457cebc120d4d2f09841",
+   "name": "setup-browser-cookies",
+   "level": "PRIVATE",
+   "subject": "Import cookies for headless browser testing"
+  },
+  {
+   "pkg": "389f552848d94a5327bca284fc4051b76503159a785e3c515f691f113fde8799",
+   "name": "excavate",
+   "level": "ORG",
+   "subject": "Assumption archaeology protocol for validating premises"
+  },
+  {
+   "pkg": "37be76c933ad4249ee51f8829623ec0c6ee4fd66b16816fa924b6181b3a96b37",
+   "name": "qa-only",
+   "level": "PRIVATE",
+   "subject": "Internal gstack QA testing skill system"
+  },
+  {
+   "pkg": "0ff11f342ec1eb595d89c75967fa474496ec0b53bbb99c51497755c04448a9b9",
+   "name": "aws-serverless",
+   "level": "ECOSYSTEM",
+   "subject": "AWS Lambda serverless patterns and best practices"
+  },
+  {
+   "pkg": "9c1891a745a2e46d84cbfeab5d25c2c1d032ea7afc31690b57c52a4e274f6409",
+   "name": "ltx2",
+   "level": "PRIVATE",
+   "subject": "LTX-2 video generation internal tooling"
+  },
+  {
+   "pkg": "6814c6724e5efbf93e73e974b2df299fd8ae46d531fe022a8ccc05d5df1607cf",
+   "name": "error-handling-patterns",
+   "level": "PRIVATE",
+   "subject": "Internal skill guide for error handling"
+  },
+  {
+   "pkg": "1ecfaaf18953a26faf92de703c2102ed9264ce56479fe1ab8dd87120d755b6a9",
+   "name": "sprint-plan",
+   "level": "PRIVATE",
+   "subject": "Internal sprint planning system and workflow"
+  },
+  {
+   "pkg": "1d434831297e88ea8645507f4441b66f801cfc1467d4ba9c02d30ef76ad8a139",
+   "name": "wp-wpcli-and-ops",
+   "level": "ECOSYSTEM",
+   "subject": "WordPress operations via WP-CLI"
+  },
+  {
+   "pkg": "1023470836cfcd8f5456926eb44d7526411964a6b6489c629558e4c6b85fd2a6",
+   "name": "web-design-guidelines",
+   "level": "PRIVATE",
+   "subject": "Claude Code skill implementation for UI design audits"
+  },
+  {
+   "pkg": "3e8f9351f5a0bd284a1b18371706715b009596d54bc74e323c6df36f7ef68665",
+   "name": "senior-architect",
+   "level": "PRIVATE",
+   "subject": "Internal architect toolkit with bespoke scripts"
+  },
+  {
+   "pkg": "1003ebb486efc87d449722b211a7eb17fc00b8a4baba03961e1d895e6df8aa4e",
+   "name": "ui-ux-pro-max",
+   "level": "UNIVERSAL",
+   "subject": "UI/UX design principles and accessibility guidelines"
+  },
+  {
+   "pkg": "8ed655b6ffa29a829de56cc83adc39436fef94cd32528961cfbac9871a6f8dcd",
+   "name": "azure-ai-projects-py",
+   "level": "ECOSYSTEM",
+   "subject": "Azure AI Projects Python SDK reference"
+  },
+  {
+   "pkg": "8172f3ec9f7af715c44c1f34c315ab6f0a2728032f8205603a0e9531ef7d7fe0",
+   "name": "advanced-evaluation",
+   "level": "UNIVERSAL",
+   "subject": "LLM evaluation techniques and bias mitigation"
+  },
+  {
+   "pkg": "6d185f3c1f1b57d92bdfaec719f9d079dba1dbca1ccbc696c7ef907138728b6b",
+   "name": "claude-code-guide",
+   "level": "ECOSYSTEM",
+   "subject": "Claude Code configuration and usage guide"
+  },
+  {
+   "pkg": "485d57461537023ed117e6866a3bf47410f3399653958923b6c21d0f010da810",
+   "name": "openspec-ff-change",
+   "level": "PRIVATE",
+   "subject": "OpenSpec artifact creation workflow"
+  },
+  {
+   "pkg": "b50e21ff782f3cd896dabc69847bbb878b686a8065d5974f30672ec6e1a51ddc",
+   "name": "dev-story",
+   "level": "PRIVATE",
+   "subject": "Internal story implementation skill workflow"
+  },
+  {
+   "pkg": "fecdd8efc08390e2bfc885e7361662c0960bc3a70f717da2abe1c749da4fb19f",
+   "name": "eval",
+   "level": "ORG",
+   "subject": "AI agent evaluation workflow using Strands SDK"
+  },
+  {
+   "pkg": "4841579851cd9f89d7b59b9b408d04647022c64bde824473e725e27478b9f58b",
+   "name": "skill-biology-cell",
+   "level": "UNIVERSAL",
+   "subject": "Cell biology education for secondary/university level"
+  },
+  {
+   "pkg": "591ec3b76121463dd702b9c43bbfbbb64378b28a2b855c5ea56f61f97cbfd8cd",
+   "name": "coding-agents-social-science-research",
+   "level": "ECOSYSTEM",
+   "subject": "Coding agents in social science research methodology"
+  },
+  {
+   "pkg": "e2113c3112b38553506f2f450c4bcc8eb4d0545e0a4d32d1a1765e32fff2f188",
+   "name": "reflect",
+   "level": "PRIVATE",
+   "subject": "Claude Code reflect skill for retrospective self-audits"
+  },
+  {
+   "pkg": "d87707872b64d3b05f1d295b74c52b4407d50a19aa6efd19d972e5a59c4779da",
+   "name": "tech-stack-add-typescript-best-practices",
+   "level": "ORG",
+   "subject": "TypeScript style conventions and library preferences"
+  },
+  {
+   "pkg": "d95682471fb310da8bb3a3f5d6e77294e4f16bd6ecd28590fb11a050aa5dffb0",
+   "name": "copywriting",
+   "level": "UNIVERSAL",
+   "subject": "Conversion copywriting principles and formulas"
+  },
+  {
+   "pkg": "d601672bab18628305e5d51aaf7520aea21501284b9947247386996d499a07e3",
+   "name": "plan",
+   "level": "PRIVATE",
+   "subject": "Internal planning skill using organization-specific agents"
+  },
+  {
+   "pkg": "294164ef5a8278b1d24026c96a0524508b71f0a9cc77f72d0c076188dd187b71",
+   "name": "githubcopilot-arize-prompt-optimization",
+   "level": "ECOSYSTEM",
+   "subject": "Arize prompt optimization using ax CLI"
+  },
+  {
+   "pkg": "51a6378c78fa22d35753844cb4cac2164ee840c09b3f6478a9086ad89fe71f53",
+   "name": "longbridge-technical",
+   "level": "ECOSYSTEM",
+   "subject": "Technical analysis frameworks for Longbridge platform"
+  },
+  {
+   "pkg": "5f1de34f016d655c8ef6d09dbed7851c357f0e17919ac909b85ea60505a0e951",
+   "name": "greet-anton-abyzov",
+   "level": "PRIVATE",
+   "subject": "Personalized greeting protocol for specific user"
+  },
+  {
+   "pkg": "66471776699357f390205c9c078a30eb3bb83e9db391fe487d30dcf3ea2e78fe",
+   "name": "seedance-prompt",
+   "level": "ECOSYSTEM",
+   "subject": "Seedance 2.0 video prompt engineering"
+  },
+  {
+   "pkg": "c4f4c851a854abb4edb19e4499112e7ef1ae04b9dd8a275ed65b6b73c8a8f328",
+   "name": "website-task-friction-review",
+   "level": "PRIVATE",
+   "subject": "Website UX review procedure tied to internal mustflow system"
+  },
+  {
+   "pkg": "066eec9d2e467c923a95e795aa42b6e730dca7c9a10e6e52dd1524b32cf04822",
+   "name": "code-refactoring-tech-debt",
+   "level": "UNIVERSAL",
+   "subject": "Technical debt analysis and remediation methodology"
+  },
+  {
+   "pkg": "0b870f2378c1cb292fd0ca1d7263facc5a4c55f090eafb1e9b2ab2774fa09ca9",
+   "name": "incident-slo-runbook",
+   "level": "UNIVERSAL",
+   "subject": "SLOs, SLIs, incident response framework"
+  },
+  {
+   "pkg": "33fd313fc634149aa012cc19e8580005f880f9b0ac2c26e7b54fd9a546cdf31b",
+   "name": "whisper",
+   "level": "ECOSYSTEM",
+   "subject": "OpenAI Whisper speech recognition usage guide"
+  },
+  {
+   "pkg": "4808cec9d7d1a56555014f29e119c7480b0fc99eae890e5251254a57b5f3f8d1",
+   "name": "newworld-audit-rigor",
+   "level": "PRIVATE",
+   "subject": "Internal security audit discipline & newworld codebase"
+  },
+  {
+   "pkg": "610fcb958ca251a20caca14668c3b4c8f589a6f235c36f57f7a1b8d1177a64e0",
+   "name": "Internal Investigation",
+   "level": "PRIVATE",
+   "subject": "Attorney-directed internal investigation skill framework"
+  },
+  {
+   "pkg": "6505484933e639d7fdd0f546e3fa696974fe8974946488ae46a15054f955ef7e",
+   "name": "idea-refine",
+   "level": "ORG",
+   "subject": "Early-stage idea brainstorming workflow"
+  },
+  {
+   "pkg": "c6b5c3424da57ec780da44cc2b46d44f61ab3c8dc3c268d42ec431cc135d48fe",
+   "name": "palugada-git",
+   "level": "PRIVATE",
+   "subject": "Internal palugada tool git workflow conventions"
+  },
+  {
+   "pkg": "b7a693ba17be9e11739b04d0a5f1d5146237a7041acca29a9bcbfecc4bc3cab3",
+   "name": "netlify-blobs",
+   "level": "ECOSYSTEM",
+   "subject": "Netlify Blobs object storage API guide"
+  },
+  {
+   "pkg": "1f55f6926f7e63e7e4711e726712fdd141b127ac91af94551ba0463a4a7138ea",
+   "name": "cs-update",
+   "level": "ECOSYSTEM",
+   "subject": "Codescope tool self-update and version checking"
+  },
+  {
+   "pkg": "ba96c2075a9da574a4cd33325fe50936b27a7e81cb7681928168dbb486c102c0",
+   "name": "python-class-design",
+   "level": "UNIVERSAL",
+   "subject": "Python class design patterns and guidelines"
+  },
+  {
+   "pkg": "714a1f0038242647083815ab0fd505d9880fa5ed7e68ab2120ae8af4d5694c2c",
+   "name": "memory-lifecycle",
+   "level": "PRIVATE",
+   "subject": "Memory service lifecycle maintenance and archival"
+  },
+  {
+   "pkg": "38ee5788d96cbe50e36904a89af67774bedea825b6298ba12091dd61183080f4",
+   "name": "session-handoff",
+   "level": "PRIVATE",
+   "subject": "Claude Code session handoff and progress pattern"
+  },
+  {
+   "pkg": "dddaef5f2f2b47a591c8d3244f4e4603c81bf61c5b5c3128955b88babe4d34f2",
+   "name": "meta-command-ideate-commands",
+   "level": "PRIVATE",
+   "subject": "Internal Codex framework for generating project-specific slash command"
+  },
+  {
+   "pkg": "110319c7c425748a5f9c16cf222ef22bd1aa1fa2843700aadce095668482fa18",
+   "name": "free-tool-strategy",
+   "level": "ORG",
+   "subject": "Free tool strategy for marketing/lead generation"
+  },
+  {
+   "pkg": "24963675513fccf44be6473357a273432db165ed043cd250b9367f0a843c4b5f",
+   "name": "openmark-newsletter",
+   "level": "PRIVATE",
+   "subject": "Internal newsletter composition from bookmarks"
+  },
+  {
+   "pkg": "03667bb4dc1de3b751cfe539cf8cb87d75e1dc8f5ee87472736ef708d7285241",
+   "name": "pr",
+   "level": "PRIVATE",
+   "subject": "Claude Code PR skill implementation spec"
+  },
+  {
+   "pkg": "983229fe73b2cbd51ff21d45de5add159eece8e02263a44f2909733661b11439",
+   "name": "skill-creator",
+   "level": "PRIVATE",
+   "subject": "Creating Claude Code skills iteratively"
+  },
+  {
+   "pkg": "f09dd5d293145da51fa85b21e8ee13466d2d968ec88432733c3c657dbd99c6bc",
+   "name": "content-marketing",
+   "level": "ORG",
+   "subject": "Company marketing content templates and voice guidelines"
+  },
+  {
+   "pkg": "f7c94794e31d311f2a2059d2d42fcdc0d51257b1c4b51063a6e736575ff599ef",
+   "name": "api-and-interface-design",
+   "level": "UNIVERSAL",
+   "subject": "API design, versioning, error semantics"
+  },
+  {
+   "pkg": "ddfd51fd5fc8c8947491c97f1cded25f61ba85e06961aa38644939eca51973a9",
+   "name": "wanghuiwen-perspective",
+   "level": "PRIVATE",
+   "subject": "Wang Huiwen venture judgment OS for internal panel"
+  },
+  {
+   "pkg": "ee7ff882076b0e12619427c6358cf7c878e40da99954b9dedeb639af36dcd5f7",
+   "name": "variable-neighborhood-search",
+   "level": "ECOSYSTEM",
+   "subject": "Variable neighborhood search metaheuristic design"
+  },
+  {
+   "pkg": "7741b4018d1f3cc782111e4d6c5d129ec09da1ca7083e79cbaf942f0676e6a95",
+   "name": "ionic-vue",
+   "level": "ECOSYSTEM",
+   "subject": "Ionic Vue development patterns and components"
+  },
+  {
+   "pkg": "d63451ff6dac6936b301c1bc32478763c70d1f0471ee63eaaa08bf382a84c951",
+   "name": "performance-profiling",
+   "level": "UNIVERSAL",
+   "subject": "Performance profiling and optimization methodology"
+  }
+ ]
+}

@@ -6,15 +6,18 @@ from unittest.mock import patch
 
 import scraper
 from scraper import (
+    CrawlState,
     RunBudget,
     _format_mcp_tools,
     _is_probably_binary,
     _skill_bundle_sibling_paths,
+    collect_repo_candidates,
     curate_skill_bundle,
     fetch_github_raw_content,
     fetch_smithery_tool_list,
     scan_skill,
     scrape_skills_sh,
+    targeted_tree_crawl_repos,
 )
 
 
@@ -66,6 +69,22 @@ chart ranges, and ensure the finished workbook opens without formula errors.
 
 
 class ScraperSafetyTests(unittest.TestCase):
+    def test_targeted_tree_crawl_repos_bypass_global_search_discovery(self) -> None:
+        with patch.dict(
+            "os.environ",
+            {"AUTOSKILL_TARGETED_TREE_REPOS": "Example/Private-Repo,not a repo"},
+            clear=False,
+        ):
+            repos = targeted_tree_crawl_repos()
+            candidates = collect_repo_candidates([], CrawlState({}))
+
+        candidate_repos = {repo for repo, _ in candidates}
+        self.assertIn("oxcaml/oxcaml", repos)
+        self.assertIn("github/awesome-copilot", repos)
+        self.assertIn("example/private-repo", repos)
+        self.assertNotIn("not a repo", repos)
+        self.assertTrue(set(repos).issubset(candidate_repos))
+
     def test_unauthenticated_budget_is_a_small_incremental_crawl(self) -> None:
         budget = RunBudget(authenticated=False)
 

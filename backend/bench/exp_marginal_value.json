@@ -1,0 +1,1097 @@
+{
+ "n_scored": 119,
+ "counts": {
+  "ESSENTIAL": 13,
+  "VALUABLE": 70,
+  "MARGINAL": 22,
+  "REDUNDANT": 14
+ },
+ "corpus_weighted_value_rate": 0.7471,
+ "strata_sizes": {
+  "mid(0.75-0.9)": 6667,
+  "high(>=0.9)": 11343,
+  "low(<0.75)": 2213
+ },
+ "rows": [
+  {
+   "pkg": "9c1891a745a2e46d84cbfeab5d25c2c1d032ea7afc31690b57c52a4e274f6409",
+   "name": "ltx2",
+   "stratum": "high(>=0.9)",
+   "bucket": "ESSENTIAL",
+   "added": "Internal tool `python3 tools/ltx2.py` with exact parameter interface and deployment on Modal infrastructure",
+   "body_len": 7166,
+   "answer_len": 4383
+  },
+  {
+   "pkg": "dd53e0c890f29bb56ae198412ce1fd4532adb27d6e9887693ca0ecd2ccd74c37",
+   "name": "capa-officer",
+   "stratum": "high(>=0.9)",
+   "bucket": "VALUABLE",
+   "added": "Concrete RCA method selection decision tree, CAPA necessity criteria table, team composition by severity, 5-Wh",
+   "body_len": 15973,
+   "answer_len": 1489
+  },
+  {
+   "pkg": "92b97697cab9faf750174dfd2591ecaf65b486180a9ce493280f738b92acdc5a",
+   "name": "spec-discovery",
+   "stratum": "high(>=0.9)",
+   "bucket": "VALUABLE",
+   "added": "`/scout` command for code discovery, exact spec file pattern `docs/specs/**/README.*.md`, specific sections \u00a71",
+   "body_len": 37803,
+   "answer_len": 10806
+  },
+  {
+   "pkg": "610fcb958ca251a20caca14668c3b4c8f589a6f235c36f57f7a1b8d1177a64e0",
+   "name": "Internal Investigation",
+   "stratum": "high(>=0.9)",
+   "bucket": "VALUABLE",
+   "added": "Concrete workflow with privilege-formation and interview-rights gates, required inputs checklist, legal safety",
+   "body_len": 16567,
+   "answer_len": 1634
+  },
+  {
+   "pkg": "1b5d731a7b68dac7db5539763ad550a4b988d6bfe0e7fd7cf7b159e9b09f6fd7",
+   "name": "code-patterns",
+   "stratum": "high(>=0.9)",
+   "bucket": "VALUABLE",
+   "added": "reconstitute() factory pattern, version increment for optimistic locking, OpenAPI decorators, configuration+Jo",
+   "body_len": 8863,
+   "answer_len": 11953
+  },
+  {
+   "pkg": "fde23e7bcb07b1fbc70c39acda63c26a24a88ee315397ee46b37f0dda379d33d",
+   "name": "dpla-monitor-ingest-remap",
+   "stratum": "high(>=0.9)",
+   "bucket": "VALUABLE",
+   "added": "Exact script path ./scripts/status/ingest-status.sh, _SUCCESS marker naming, _temporary incomplete write indic",
+   "body_len": 1724,
+   "answer_len": 5530
+  },
+  {
+   "pkg": "41402ce798357e8a376180bd13834efcc943642c374922ccbe65308326d7b5ec",
+   "name": "political-human-skill",
+   "stratum": "high(>=0.9)",
+   "bucket": "VALUABLE",
+   "added": "Mandatory source-grounded historical extraction workflow with report/temperament extraction before persona cre",
+   "body_len": 21942,
+   "answer_len": 17712
+  },
+  {
+   "pkg": "55d7615711a4efdd741f3bd953d19b64e0a2282ef8d2c7c4ed6a24fe6b61b5eb",
+   "name": "inputsystem-action-add",
+   "stratum": "high(>=0.9)",
+   "bucket": "VALUABLE",
+   "added": "Programmatic CLI tool syntax (`unity-mcp-cli run-tool inputsystem-action-add`) with exact parameter names and ",
+   "body_len": 5117,
+   "answer_len": 6936
+  },
+  {
+   "pkg": "a899bbbc9bc6c52eb6721c5099d34fe60c47ac5a776fbad3165ad3465ace4304",
+   "name": "gen-data",
+   "stratum": "high(>=0.9)",
+   "bucket": "VALUABLE",
+   "added": "Seven specific plantable behavioral patterns (Sunday ordering, payday splurging, subscription creep, coffee ri",
+   "body_len": 3731,
+   "answer_len": 12088
+  },
+  {
+   "pkg": "06ed1b1e138081590a941d2cc5ffbe67a5ede60191983470a67a474ceb310306",
+   "name": "gt",
+   "stratum": "high(>=0.9)",
+   "bucket": "VALUABLE",
+   "added": "Pre-built 'gt' skill with KDROI formula, KD 11-factor model, structured W1/W2/W3 workflows; installation cmd, ",
+   "body_len": 7210,
+   "answer_len": 6429
+  },
+  {
+   "pkg": "ad7fd8380a9e4ac8784e9c910a398620331a7a4ef6b08db95d0c38f88fccc177",
+   "name": "referral-program",
+   "stratum": "high(>=0.9)",
+   "bucket": "VALUABLE",
+   "added": "Specific benchmark metrics (40% awareness, 5-15% active referrers, 20-40% share rate, 15-25% conversion) and p",
+   "body_len": 13760,
+   "answer_len": 13383
+  },
+  {
+   "pkg": "294164ef5a8278b1d24026c96a0524508b71f0a9cc77f72d0c076188dd187b71",
+   "name": "githubcopilot-arize-prompt-optimization",
+   "stratum": "high(>=0.9)",
+   "bucket": "VALUABLE",
+   "added": "Specifies where prompts live in trace JSON (attributes.llm.input_messages, prompt_template, etc.), how to extr",
+   "body_len": 19208,
+   "answer_len": 5949
+  },
+  {
+   "pkg": "7741b4018d1f3cc782111e4d6c5d129ec09da1ca7083e79cbaf942f0676e6a95",
+   "name": "ionic-vue",
+   "stratum": "high(>=0.9)",
+   "bucket": "VALUABLE",
+   "added": "Import createRouter from @ionic/vue-router (not vue-router) for page transitions",
+   "body_len": 11200,
+   "answer_len": 9738
+  },
+  {
+   "pkg": "51a6378c78fa22d35753844cb4cac2164ee840c09b3f6478a9086ad89fe71f53",
+   "name": "longbridge-technical",
+   "stratum": "high(>=0.9)",
+   "bucket": "MARGINAL",
+   "added": "CLI command `longbridge kline <SYMBOL>.<MARKET>` and pip dependency checklist (czsc, smartmoneyconcepts)",
+   "body_len": 5989,
+   "answer_len": 9303
+  },
+  {
+   "pkg": "f63dc2e830828e9ef3fdb17fb3760b551974312264f657cb58c10a480d828c7a",
+   "name": "deployer",
+   "stratum": "high(>=0.9)",
+   "bucket": "VALUABLE",
+   "added": "Factory v1.1.0 address, input validation rules, exact cast abi-encode commands with specific parameters",
+   "body_len": 16239,
+   "answer_len": 1421
+  },
+  {
+   "pkg": "1f55f6926f7e63e7e4711e726712fdd141b127ac91af94551ba0463a4a7138ea",
+   "name": "cs-update",
+   "stratum": "high(>=0.9)",
+   "bucket": "VALUABLE",
+   "added": "Official installation method uses shell installers (install.sh/install.ps1), not pip; includes codescope-mcp f",
+   "body_len": 1261,
+   "answer_len": 5551
+  },
+  {
+   "pkg": "b50e21ff782f3cd896dabc69847bbb878b686a8065d5974f30672ec6e1a51ddc",
+   "name": "dev-story",
+   "stratum": "high(>=0.9)",
+   "bucket": "ESSENTIAL",
+   "added": "File validation gates (TR registry, ADR existence) must pass before spawning agents; missing files set story s",
+   "body_len": 14979,
+   "answer_len": 9309
+  },
+  {
+   "pkg": "b6635536dede5d2b915bfde9001a99515270dce66555b6c0d404a34541f9f439",
+   "name": "konzernklausel",
+   "stratum": "high(>=0.9)",
+   "bucket": "VALUABLE",
+   "added": "7-step procedural AGB inspection process with BGB \u00a7305-310 analysis framework and structured risk-assessment d",
+   "body_len": 3109,
+   "answer_len": 1252
+  },
+  {
+   "pkg": "1d434831297e88ea8645507f4441b66f801cfc1467d4ba9c02d30ef76ad8a139",
+   "name": "wp-wpcli-and-ops",
+   "stratum": "high(>=0.9)",
+   "bucket": "MARGINAL",
+   "added": "wp-cli.yml configuration for persistent defaults (PHP memory limits, path/url) not covered in answer",
+   "body_len": 3952,
+   "answer_len": 8120
+  },
+  {
+   "pkg": "b7a693ba17be9e11739b04d0a5f1d5146237a7041acca29a9bcbfecc4bc3cab3",
+   "name": "netlify-blobs",
+   "stratum": "high(>=0.9)",
+   "bucket": "VALUABLE",
+   "added": "Deploy-scoped stores (getDeployStore), consistency parameter, typed get() methods, object size limit is 5GB no",
+   "body_len": 2754,
+   "answer_len": 8079
+  },
+  {
+   "pkg": "4808cec9d7d1a56555014f29e119c7480b0fc99eae890e5251254a57b5f3f8d1",
+   "name": "newworld-audit-rigor",
+   "stratum": "high(>=0.9)",
+   "bucket": "VALUABLE",
+   "added": "Newworld-specific attack surfaces (OpenAI relay, RUM metrics exfil, execapi) and attacker=victim carve-out fil",
+   "body_len": 3677,
+   "answer_len": 11795
+  },
+  {
+   "pkg": "d37931f376f61f481967426569a181dedfef49d6943695b0b8ff91e1eb1eec89",
+   "name": "gstack-ship",
+   "stratum": "high(>=0.9)",
+   "bucket": "VALUABLE",
+   "added": "Use /ship skill from gstack framework for automated shipping; manual git commands are not the intended workflo",
+   "body_len": 80588,
+   "answer_len": 1980
+  },
+  {
+   "pkg": "7f8ddc5603fb2e0c159089b1ae5da9f51798de0ec9f3c0371a4e10d132509b21",
+   "name": "launch-strategy",
+   "stratum": "high(>=0.9)",
+   "bucket": "REDUNDANT",
+   "added": "nothing",
+   "body_len": 5789,
+   "answer_len": 10263
+  },
+  {
+   "pkg": "a394ef2dd4b17395619b15de4e186d8afeae1eaafad7457cebc120d4d2f09841",
+   "name": "setup-browser-cookies",
+   "stratum": "high(>=0.9)",
+   "bucket": "MARGINAL",
+   "added": "References interactive picker UI for cookie domains, but unexplained and document truncated before actual work",
+   "body_len": 26928,
+   "answer_len": 9229
+  },
+  {
+   "pkg": "ee7ff882076b0e12619427c6358cf7c878e40da99954b9dedeb639af36dcd5f7",
+   "name": "variable-neighborhood-search",
+   "stratum": "high(>=0.9)",
+   "bucket": "VALUABLE",
+   "added": "Initial Assessment Framework: representation, move inventory, delta evaluation, constraint structure, baseline",
+   "body_len": 43208,
+   "answer_len": 16875
+  },
+  {
+   "pkg": "b1318d35e0a28a04236ae0dae0828553c7c730c9606ebd2472e5fcf245e706e4",
+   "name": "kotlin-testing",
+   "stratum": "high(>=0.9)",
+   "bucket": "MARGINAL",
+   "added": "Custom matcher example with MatcherResult; TDD RED/GREEN/REFACTOR walkthrough; BehaviorSpec Given/When/Then st",
+   "body_len": 20667,
+   "answer_len": 12582
+  },
+  {
+   "pkg": "5ad5b1ab6b0bb472f966f7db8a0c5d215cef9abe552047436d3c0c75ee5c3fd6",
+   "name": "pulse",
+   "stratum": "high(>=0.9)",
+   "bucket": "ERROR",
+   "added": "```json {\"bucket\":\"ESSENTIAL\",\"added\":\"Exact script paths ($",
+   "body_len": 5445,
+   "answer_len": 921
+  },
+  {
+   "pkg": "8ed655b6ffa29a829de56cc83adc39436fef94cd32528961cfbac9871a6f8dcd",
+   "name": "azure-ai-projects-py",
+   "stratum": "high(>=0.9)",
+   "bucket": "VALUABLE",
+   "added": "OpenAI-compatible client access via get_openai_client(); built-in tool classes (CodeInterpreterTool, FileSearc",
+   "body_len": 8270,
+   "answer_len": 10742
+  },
+  {
+   "pkg": "03667bb4dc1de3b751cfe539cf8cb87d75e1dc8f5ee87472736ef708d7285241",
+   "name": "pr",
+   "stratum": "high(>=0.9)",
+   "bucket": "VALUABLE",
+   "added": "Protected-branch guard list (staging, production, qa beyond base check); mandatory Assumptions section in PR b",
+   "body_len": 3730,
+   "answer_len": 5154
+  },
+  {
+   "pkg": "a1438ec938b8677c1dcc75045b92e617fa583d307d7bc2f562dd652f65e6f404",
+   "name": "tuicr",
+   "stratum": "high(>=0.9)",
+   "bucket": "ESSENTIAL",
+   "added": "Correct command structure: `tuicr review list/comments/add` not `tuicr list-sessions/attach/read-comments`; cr",
+   "body_len": 8886,
+   "answer_len": 3428
+  },
+  {
+   "pkg": "66471776699357f390205c9c078a30eb3bb83e9db391fe487d30dcf3ea2e78fe",
+   "name": "seedance-prompt",
+   "stratum": "high(>=0.9)",
+   "bucket": "ESSENTIAL",
+   "added": "Director Formula (Subject+Action+Scene+Camera+Lighting+Audio+Constraints), mode-specific workflows, and concre",
+   "body_len": 7887,
+   "answer_len": 1097
+  },
+  {
+   "pkg": "71d7636494aea2608182ff772641efa24abe6fd4facf0931f3b5555ad74413a0",
+   "name": "emil-design-eng",
+   "stratum": "high(>=0.9)",
+   "bucket": "VALUABLE",
+   "added": "Frequency-based animation decision table: 100+ daily uses means never animate",
+   "body_len": 27130,
+   "answer_len": 9190
+  },
+  {
+   "pkg": "dd1487805c3a99aecabf369a4da628937b30211c1f464dbe2759c3a38be970b7",
+   "name": "azure-queue-storage",
+   "stratum": "high(>=0.9)",
+   "bucket": "MARGINAL",
+   "added": "Client-side encryption guidance for Queue Storage data at rest",
+   "body_len": 5964,
+   "answer_len": 11029
+  },
+  {
+   "pkg": "d601672bab18628305e5d51aaf7520aea21501284b9947247386996d499a07e3",
+   "name": "plan",
+   "stratum": "high(>=0.9)",
+   "bucket": "VALUABLE",
+   "added": "Small-scope gate: skip research & architecture phases for \u22643 files, preventing unnecessary planning overhead",
+   "body_len": 4939,
+   "answer_len": 7122
+  },
+  {
+   "pkg": "ddfd51fd5fc8c8947491c97f1cded25f61ba85e06961aa38644939eca51973a9",
+   "name": "wanghuiwen-perspective",
+   "stratum": "high(>=0.9)",
+   "bucket": "VALUABLE",
+   "added": "Six structured mental models + five-question decision heuristic + provenance methodology the unaided answer re",
+   "body_len": 7397,
+   "answer_len": 1541
+  },
+  {
+   "pkg": "0b683e9d12e60bd7af7afd389f59e5fa3dcee5034345d46d8c6459f3afb3f1fc",
+   "name": "moai-tool-ast-grep",
+   "stratum": "high(>=0.9)",
+   "bucket": "MARGINAL",
+   "added": "Explore Agent integration and Context7 MCP documentation lookup; MoAI-specific internal tooling not universall",
+   "body_len": 10367,
+   "answer_len": 8969
+  },
+  {
+   "pkg": "485d57461537023ed117e6866a3bf47410f3399653958923b6c21d0f010da810",
+   "name": "openspec-ff-change",
+   "stratum": "high(>=0.9)",
+   "bucket": "VALUABLE",
+   "added": "Exact openspec CLI commands (new change, status --json, instructions), JSON output schemas, and guardrails abo",
+   "body_len": 4381,
+   "answer_len": 2762
+  },
+  {
+   "pkg": "8cdd32a4bef1809d386c06ad1ed907fa280fff12a90ca74f67c402d418c63a8c",
+   "name": "burp-suite-testing",
+   "stratum": "high(>=0.9)",
+   "bucket": "MARGINAL",
+   "added": "Intruder attack types (Sniper, Battering ram, Pitchfork, Cluster bomb) with use cases; scan mode options (Ligh",
+   "body_len": 11028,
+   "answer_len": 7158
+  },
+  {
+   "pkg": "0ff11f342ec1eb595d89c75967fa474496ec0b53bbb99c51497755c04448a9b9",
+   "name": "aws-serverless",
+   "stratum": "high(>=0.9)",
+   "bucket": "MARGINAL",
+   "added": "context.callbackWaitsForEmptyEventLoop=false for Node.js cold start optimization",
+   "body_len": 7997,
+   "answer_len": 17352
+  },
+  {
+   "pkg": "0e0bbb539dc4510a7308f7f1e7380f9e213e7572f7b2d661de43105810966d5d",
+   "name": "port-indicator",
+   "stratum": "high(>=0.9)",
+   "bucket": "VALUABLE",
+   "added": "Reconciliation diagnosis taxonomy (timestamp, warmup, fill, commission, precision, off-by-one, data-quality) f",
+   "body_len": 6990,
+   "answer_len": 14273
+  },
+  {
+   "pkg": "f793b955d22f2861f6502d8200bc13c3e89098321b8a4af93b4ee8ee2e43fd1e",
+   "name": "tdd-workflows-tdd-green",
+   "stratum": "low(<0.75)",
+   "bucket": "REDUNDANT",
+   "added": "nothing",
+   "body_len": 1951,
+   "answer_len": 3739
+  },
+  {
+   "pkg": "0a8f2706e3e292b75d89f6eb5c2deabec0f1e363f7a677c131cf1a829d828c2c",
+   "name": "optimization",
+   "stratum": "low(<0.75)",
+   "bucket": "MARGINAL",
+   "added": "Confidence-level gating rules (very_high\u2192auto, high\u2192ask-if-impactful, medium\u2192always-ask, low\u2192monitor)",
+   "body_len": 14341,
+   "answer_len": 11059
+  },
+  {
+   "pkg": "d87707872b64d3b05f1d295b74c52b4407d50a19aa6efd19d972e5a59c4779da",
+   "name": "tech-stack-add-typescript-best-practices",
+   "stratum": "low(<0.75)",
+   "bucket": "VALUABLE",
+   "added": "ms package for time config; interfaces-over-types guidance; enum recommendations; type guards vs assertions; l",
+   "body_len": 1462,
+   "answer_len": 9245
+  },
+  {
+   "pkg": "a66f9c5de80ff82a72a3b3d0b1231d7f759e45413296353f29b2ac0bbf3b26ca",
+   "name": "gtd-workflow",
+   "stratum": "low(<0.75)",
+   "bucket": "VALUABLE",
+   "added": "Horizons of Focus framework (5 levels from runway to life purpose) for multi-altitude priority decisions",
+   "body_len": 6024,
+   "answer_len": 6515
+  },
+  {
+   "pkg": "3e8f9351f5a0bd284a1b18371706715b009596d54bc74e323c6df36f7ef68665",
+   "name": "senior-architect",
+   "stratum": "low(<0.75)",
+   "bucket": "REDUNDANT",
+   "added": "nothing",
+   "body_len": 4417,
+   "answer_len": 4578
+  },
+  {
+   "pkg": "d63451ff6dac6936b301c1bc32478763c70d1f0471ee63eaaa08bf382a84c951",
+   "name": "performance-profiling",
+   "stratum": "low(<0.75)",
+   "bucket": "REDUNDANT",
+   "added": "nothing",
+   "body_len": 5728,
+   "answer_len": 8424
+  },
+  {
+   "pkg": "94d3cbd4cf8733e19b4ae4b722d943bcd7228d4a5bc9c00d132f2d61ce3d0713",
+   "name": "feature-planning",
+   "stratum": "low(<0.75)",
+   "bucket": "VALUABLE",
+   "added": "Structured 6-step procedural workflow: clarification framework, Given/When/Then acceptance criteria format, fo",
+   "body_len": 4033,
+   "answer_len": 2327
+  },
+  {
+   "pkg": "066eec9d2e467c923a95e795aa42b6e730dca7c9a10e6e52dd1524b32cf04822",
+   "name": "code-refactoring-tech-debt",
+   "stratum": "low(<0.75)",
+   "bucket": "VALUABLE",
+   "added": "Cost calculation formulas, specific metrics targets (complexity 10, coverage 80%, duplication 5%), debt budget",
+   "body_len": 10499,
+   "answer_len": 7636
+  },
+  {
+   "pkg": "983229fe73b2cbd51ff21d45de5add159eece8e02263a44f2909733661b11439",
+   "name": "skill-creator",
+   "stratum": "low(<0.75)",
+   "bucket": "VALUABLE",
+   "added": "Undertriggering problem and 'pushy' description strategy; interview/intent-capture phase before coding; progre",
+   "body_len": 33209,
+   "answer_len": 11409
+  },
+  {
+   "pkg": "26feae7d8693493949370945cc7c7413cba792444e08bd5aa33e658a22a93df0",
+   "name": "superpowers:writing-plans",
+   "stratum": "low(<0.75)",
+   "bucket": "VALUABLE",
+   "added": "Self-review checklist (spec coverage, type consistency across tasks, placeholder scan) catches plan errors the",
+   "body_len": 6086,
+   "answer_len": 6215
+  },
+  {
+   "pkg": "0b870f2378c1cb292fd0ca1d7263facc5a4c55f090eafb1e9b2ab2774fa09ca9",
+   "name": "incident-slo-runbook",
+   "stratum": "low(<0.75)",
+   "bucket": "REDUNDANT",
+   "added": "SLO exclusions with rationale (gap in answer, but minor guidance)",
+   "body_len": 1837,
+   "answer_len": 10125
+  },
+  {
+   "pkg": "d9313c3508ff66475505c3b19f6dfd8041ab8cad49abc14995ae8df9ae636ce4",
+   "name": "bmad-cis-agent-design-thinking-coach",
+   "stratum": "low(<0.75)",
+   "bucket": "ESSENTIAL",
+   "added": "Existing Maya skill framework with configuration file hierarchy (base\u2192team\u2192user merge), activation steps, and ",
+   "body_len": 4245,
+   "answer_len": 6959
+  },
+  {
+   "pkg": "1023470836cfcd8f5456926eb44d7526411964a6b6489c629558e4c6b85fd2a6",
+   "name": "web-design-guidelines",
+   "stratum": "low(<0.75)",
+   "bucket": "VALUABLE",
+   "added": "Specific GitHub URL to fetch pre-formatted guidelines with built-in rules and output format, bypassing need to",
+   "body_len": 1761,
+   "answer_len": 4420
+  },
+  {
+   "pkg": "58e413645ee9c573e0ab586c5c611c505e54db52132a98de43dea5a58d03a142",
+   "name": "orchestrator",
+   "stratum": "low(<0.75)",
+   "bucket": "VALUABLE",
+   "added": "Multi-region coordination with phased primary-first deployment and health verification before secondary rollou",
+   "body_len": 18560,
+   "answer_len": 25802
+  },
+  {
+   "pkg": "1a0dda7adff9ecf9f65aa9e7b561071bd614dd6e48cc8cb7f17a22f3d8738320",
+   "name": "seo-fundamentals",
+   "stratum": "low(<0.75)",
+   "bucket": "MARGINAL",
+   "added": "Canonical tags for duplicate content, list of schema types to reference",
+   "body_len": 2783,
+   "answer_len": 8387
+  },
+  {
+   "pkg": "e27a3e9bc671d1913c19887ad35648c248efcc60fa87d9e34ee2935627aaa028",
+   "name": "doc-coauthoring-zh",
+   "stratum": "low(<0.75)",
+   "bucket": "MARGINAL",
+   "added": "Brainstorming 5-20 options per section; subagent-based reader testing (Claude Code only)",
+   "body_len": 5778,
+   "answer_len": 6826
+  },
+  {
+   "pkg": "5f1de34f016d655c8ef6d09dbed7851c357f0e17919ac909b85ea60505a0e951",
+   "name": "greet-anton-abyzov",
+   "stratum": "low(<0.75)",
+   "bucket": "VALUABLE",
+   "added": "Exact protocol specification: string, placement (before every response AND every tool call), format rules, and",
+   "body_len": 3939,
+   "answer_len": 3731
+  },
+  {
+   "pkg": "69ab628ce388161997f00d58f708d7fc1fcfabbae4092a7d91e3395e35dd84a7",
+   "name": "game-design",
+   "stratum": "low(<0.75)",
+   "bucket": "REDUNDANT",
+   "added": "Nothing; document repeats same topics (core loops, progression, balance, player psychology, anti-patterns) at ",
+   "body_len": 2759,
+   "answer_len": 9605
+  },
+  {
+   "pkg": "38ee5788d96cbe50e36904a89af67774bedea825b6298ba12091dd61183080f4",
+   "name": "session-handoff",
+   "stratum": "low(<0.75)",
+   "bucket": "MARGINAL",
+   "added": "Progress.md archiving strategy and structured model delegation roles, but core workflow already covered",
+   "body_len": 4350,
+   "answer_len": 6867
+  },
+  {
+   "pkg": "e1c877c85775cb500db944c7fafc3ee7543581408b8b8960c948cbb3ae494001",
+   "name": "sales-tactics",
+   "stratum": "low(<0.75)",
+   "bucket": "VALUABLE",
+   "added": "45+ specific, organized sales tactics with implementation frameworks (SPIN, Feel-Felt-Found) the answer comple",
+   "body_len": 17310,
+   "answer_len": 1059
+  },
+  {
+   "pkg": "3daf9162b7b42bb7e8aeb2006506f4df9801495cd438cab83108d36bdddb45f3",
+   "name": "skill-verification-gate",
+   "stratum": "low(<0.75)",
+   "bucket": "VALUABLE",
+   "added": "Multi-provider hallucination risks and synthesis file verification commands for orchestrated workflows",
+   "body_len": 4434,
+   "answer_len": 4604
+  },
+  {
+   "pkg": "bad0ea0e3d35db749d9c7e86ee18a7e1bdc31c8f0900c7277554ff9b3a575229",
+   "name": "session-start",
+   "stratum": "low(<0.75)",
+   "bucket": "MARGINAL",
+   "added": "Platforms (hermes, codex) and triggers field in metadata; simpler date format without time component",
+   "body_len": 380,
+   "answer_len": 4869
+  },
+  {
+   "pkg": "f72ef25d169f6601898567669c616c4133599543519a8eb7a02fc277e043b99b",
+   "name": "senior-python-dev",
+   "stratum": "low(<0.75)",
+   "bucket": "REDUNDANT",
+   "added": "nothing",
+   "body_len": 10459,
+   "answer_len": 15420
+  },
+  {
+   "pkg": "5030f39898bb52dc073b2e1328f3a1440f001a920d7883394be146b4d9b9c733",
+   "name": "gstack-openclaw-office-hours",
+   "stratum": "low(<0.75)",
+   "bucket": "VALUABLE",
+   "added": "Anti-sycophancy rules (exact phrases to avoid), pattern-matching pushback techniques with examples, smart ques",
+   "body_len": 17267,
+   "answer_len": 4979
+  },
+  {
+   "pkg": "6505484933e639d7fdd0f546e3fa696974fe8974946488ae46a15054f955ef7e",
+   "name": "idea-refine",
+   "stratum": "low(<0.75)",
+   "bucket": "REDUNDANT",
+   "added": "nothing\u2014answer covers the workflow, stress-testing, decision matrix, validation planning, and gotchas more con",
+   "body_len": 1764,
+   "answer_len": 6206
+  },
+  {
+   "pkg": "e2113c3112b38553506f2f450c4bcc8eb4d0545e0a4d32d1a1765e32fff2f188",
+   "name": "reflect",
+   "stratum": "low(<0.75)",
+   "bucket": "VALUABLE",
+   "added": "Run `bash .claude/hooks/session-stats.sh` first; measure session activity (loops, tool calls, interrupts) befo",
+   "body_len": 4131,
+   "answer_len": 5558
+  },
+  {
+   "pkg": "c2dd0525aad0e844166e3d1298fe4b4108654575977b6da6fc9a33e954517bb9",
+   "name": "gsd:reference:verification-patterns",
+   "stratum": "low(<0.75)",
+   "bucket": "REDUNDANT",
+   "added": "nothing",
+   "body_len": 662,
+   "answer_len": 4168
+  },
+  {
+   "pkg": "d95682471fb310da8bb3a3f5d6e77294e4f16bd6ecd28590fb11a050aa5dffb0",
+   "name": "copywriting",
+   "stratum": "low(<0.75)",
+   "bucket": "VALUABLE",
+   "added": "Feature copy formula, tagline framework, and detailed landing-page section breakdown not in answer",
+   "body_len": 27700,
+   "answer_len": 7220
+  },
+  {
+   "pkg": "1c9d4c987e90995695d6e5df4432da1ab900f72aaa4b96a4dc4237de4946f2af",
+   "name": "investigate",
+   "stratum": "low(<0.75)",
+   "bucket": "REDUNDANT",
+   "added": "nothing",
+   "body_len": 37559,
+   "answer_len": 4425
+  },
+  {
+   "pkg": "842695d64ad3347c58c5b67494757f8530838152eef043db8fe0158fc3623f54",
+   "name": "brainstorming",
+   "stratum": "low(<0.75)",
+   "bucket": "VALUABLE",
+   "added": "Explicit constraints-interrogation step, divergence techniques (vary/invert/analogize), forced wildcards, park",
+   "body_len": 4627,
+   "answer_len": 2349
+  },
+  {
+   "pkg": "389f552848d94a5327bca284fc4051b76503159a785e3c515f691f113fde8799",
+   "name": "excavate",
+   "stratum": "low(<0.75)",
+   "bucket": "VALUABLE",
+   "added": "Structured deep-layer questions (Q1\u2013Q5) that systematically probe problem framing and unconscious pattern-matc",
+   "body_len": 6490,
+   "answer_len": 6044
+  },
+  {
+   "pkg": "a18c4cff0e97d9215de3d59e9cd190ff391e0cdcc6e42bcb4c1c43d4ebcbd984",
+   "name": "code-refactor",
+   "stratum": "low(<0.75)",
+   "bucket": "VALUABLE",
+   "added": "Systematic code smell identification: 10 specific smells with indicators and smell-to-refactoring mappings",
+   "body_len": 11677,
+   "answer_len": 5591
+  },
+  {
+   "pkg": "6d185f3c1f1b57d92bdfaec719f9d079dba1dbca1ccbc696c7ef907138728b6b",
+   "name": "claude-code-guide",
+   "stratum": "low(<0.75)",
+   "bucket": "REDUNDANT",
+   "added": "nothing",
+   "body_len": 2319,
+   "answer_len": 8802
+  },
+  {
+   "pkg": "6814c6724e5efbf93e73e974b2df299fd8ae46d531fe022a8ccc05d5df1607cf",
+   "name": "error-handling-patterns",
+   "stratum": "low(<0.75)",
+   "bucket": "REDUNDANT",
+   "added": "nothing",
+   "body_len": 1318,
+   "answer_len": 10003
+  },
+  {
+   "pkg": "1eaa9b2b3afcfaaffdcdaa60b3b2ab96d8ac5d253a39a442dd93e806f4769f9a",
+   "name": "security-best-practices",
+   "stratum": "low(<0.75)",
+   "bucket": "VALUABLE",
+   "added": "Adds threat modeling methodology (A04), dependency scanning (A06), CI/CD security (A08) that answer completely",
+   "body_len": 11802,
+   "answer_len": 10661
+  },
+  {
+   "pkg": "f09dd5d293145da51fa85b21e8ee13466d2d968ec88432733c3c657dbd99c6bc",
+   "name": "content-marketing",
+   "stratum": "low(<0.75)",
+   "bucket": "VALUABLE",
+   "added": "Exact word counts per content type (200-400 for announcements, 800-1500 for blogs, etc.), scope table distingu",
+   "body_len": 1946,
+   "answer_len": 1546
+  },
+  {
+   "pkg": "4841579851cd9f89d7b59b9b408d04647022c64bde824473e725e27478b9f58b",
+   "name": "skill-biology-cell",
+   "stratum": "low(<0.75)",
+   "bucket": "ESSENTIAL",
+   "added": "Provides the actual Spanish instructional guidance content requested; answer asks clarifying questions instead",
+   "body_len": 5672,
+   "answer_len": 1281
+  },
+  {
+   "pkg": "428a89e70c2c390134a5e2d3ff49f76d82297a88f800e504ba15128cfd86ad78",
+   "name": "architecture-blueprint-generator",
+   "stratum": "low(<0.75)",
+   "bucket": "MARGINAL",
+   "added": "Architectural Decision Records (ADRs) as explicit deliverable; document is otherwise restatement of coverage a",
+   "body_len": 13358,
+   "answer_len": 9732
+  },
+  {
+   "pkg": "277dd6479a369f6ca42e8dd1bb72d53555f3dfb1c8ed7c7e07f37ea1269dc97e",
+   "name": "agile-product-owner",
+   "stratum": "low(<0.75)",
+   "bucket": "ESSENTIAL",
+   "added": "All actual toolkit content: INVEST templates, Given-When-Then patterns, capacity formulas, availability factor",
+   "body_len": 11456,
+   "answer_len": 153
+  },
+  {
+   "pkg": "284889e5e11dd554a27384ed30c42aed04afde757f9aef86378340357d772068",
+   "name": "research",
+   "stratum": "low(<0.75)",
+   "bucket": "REDUNDANT",
+   "added": "nothing",
+   "body_len": 795,
+   "answer_len": 4606
+  },
+  {
+   "pkg": "2e3680733a4c7e5e5f09e7236849548fe78d48d42f798e5ac103a86fb62b4b33",
+   "name": "party-mode",
+   "stratum": "mid(0.75-0.9)",
+   "bucket": "VALUABLE",
+   "added": "Configuration resolver script, Agent tool subagent spawning requirement, --model and --solo flags, unblended r",
+   "body_len": 8671,
+   "answer_len": 7004
+  },
+  {
+   "pkg": "099ce5734bd0316da12397f52aff3f2c9aa1a141462407b3d81df3a07ae95f90",
+   "name": "design-review",
+   "stratum": "mid(0.75-0.9)",
+   "bucket": "MARGINAL",
+   "added": "Reference to /plan-design-review variant for pre-implementation design planning, plus atomic commit emphasis",
+   "body_len": 44115,
+   "answer_len": 11209
+  },
+  {
+   "pkg": "1003ebb486efc87d449722b211a7eb17fc00b8a4baba03961e1d895e6df8aa4e",
+   "name": "ui-ux-pro-max",
+   "stratum": "mid(0.75-0.9)",
+   "bucket": "VALUABLE",
+   "added": "Safe-area-awareness (notch/Dynamic Island), virtualize lists for 50+ items, WebP/AVIF image formats, aspect-ra",
+   "body_len": 44720,
+   "answer_len": 6784
+  },
+  {
+   "pkg": "9aff25c16a2c24300b8973a9badf8265057fbaea0ea63fe2ab13d570133a987c",
+   "name": "security-auditor",
+   "stratum": "mid(0.75-0.9)",
+   "bucket": "MARGINAL",
+   "added": "Data protection checklist items (encryption at rest, HTTPS, PII compliance) not explicitly covered in answer",
+   "body_len": 1358,
+   "answer_len": 10122
+  },
+  {
+   "pkg": "dddaef5f2f2b47a591c8d3244f4e4603c81bf61c5b5c3128955b88babe4d34f2",
+   "name": "meta-command-ideate-commands",
+   "stratum": "mid(0.75-0.9)",
+   "bucket": "MARGINAL",
+   "added": "Technology-specific command templates (Rust/Cargo, Go, Java, etc.) with concrete examples per stack.",
+   "body_len": 8611,
+   "answer_len": 8521
+  },
+  {
+   "pkg": "82e58310663988ae9587d9508be1a1f941632ae1d828fb2f9f66c8bae5d5c3a5",
+   "name": "genre-conventions",
+   "stratum": "mid(0.75-0.9)",
+   "bucket": "ESSENTIAL",
+   "added": "The 11 elemental genres, 7 diagnostic states (G1-G7), and requirements checklist for identifying and fixing ge",
+   "body_len": 17755,
+   "answer_len": 1247
+  },
+  {
+   "pkg": "13b8687a3032ff4904886d075dae00658d7f2152dd06dd54808748e56bb7d75b",
+   "name": "qa",
+   "stratum": "mid(0.75-0.9)",
+   "bucket": "MARGINAL",
+   "added": "Scope-based tiers (Quick/Standard/Exhaustive) based on severity; rest is operational metadata (preamble, AskUs",
+   "body_len": 43982,
+   "answer_len": 7209
+  },
+  {
+   "pkg": "33fd313fc634149aa012cc19e8580005f880f9b0ac2c26e7b54fd9a546cdf31b",
+   "name": "whisper",
+   "stratum": "mid(0.75-0.9)",
+   "bucket": "VALUABLE",
+   "added": "Adds initial_prompt parameter for domain-specific accuracy and word_timestamps parameter for word-level precis",
+   "body_len": 7457,
+   "answer_len": 7800
+  },
+  {
+   "pkg": "37be76c933ad4249ee51f8829623ec0c6ee4fd66b16816fa924b6181b3a96b37",
+   "name": "qa-only",
+   "stratum": "mid(0.75-0.9)",
+   "bucket": "MARGINAL",
+   "added": "Cross-reference to /qa skill for full test-fix-verify loop; rest is skill infrastructure (telemetry, repo mode",
+   "body_len": 29800,
+   "answer_len": 10242
+  },
+  {
+   "pkg": "7861b13d0d4d8f6100bd33c11c1919f54e32b46c424f687f046735057c1a899b",
+   "name": "book--patterns-of-enterprise-application-architecture--full",
+   "stratum": "mid(0.75-0.9)",
+   "bucket": "VALUABLE",
+   "added": "Remote Facade and DTO patterns for integration boundaries; explicit 4-layer framework; Transaction Script patt",
+   "body_len": 15868,
+   "answer_len": 13676
+  },
+  {
+   "pkg": "a47fa8af58714ccc25fe57d37dd333f3e62e234580efa17011e9be7a558db8d6",
+   "name": "code-review-orchestration",
+   "stratum": "mid(0.75-0.9)",
+   "bucket": "VALUABLE",
+   "added": "Weighted scoring by dimension (Security 25%, Performance/Testing/Quality 15% each, Documentation 10%) with exa",
+   "body_len": 1647,
+   "answer_len": 5793
+  },
+  {
+   "pkg": "ba96c2075a9da574a4cd33325fe50936b27a7e81cb7681928168dbb486c102c0",
+   "name": "python-class-design",
+   "stratum": "mid(0.75-0.9)",
+   "bucket": "VALUABLE",
+   "added": "Default against @property.setter; prefer semantic methods for state changes instead.",
+   "body_len": 6575,
+   "answer_len": 14416
+  },
+  {
+   "pkg": "c6b5c3424da57ec780da44cc2b46d44f61ab3c8dc3c268d42ec431cc135d48fe",
+   "name": "palugada-git",
+   "stratum": "mid(0.75-0.9)",
+   "bucket": "VALUABLE",
+   "added": "Organization-specific tools: palugada git whoami, palugada pr recent <file>",
+   "body_len": 951,
+   "answer_len": 9509
+  },
+  {
+   "pkg": "fecdd8efc08390e2bfc885e7361662c0960bc3a70f717da2abe1c749da4fb19f",
+   "name": "eval",
+   "stratum": "mid(0.75-0.9)",
+   "bucket": "ESSENTIAL",
+   "added": "Strands Evals 4-phase workflow (Plan/Data/Eval/Report) with exact sibling folder structure, file paths, tech s",
+   "body_len": 58524,
+   "answer_len": 794
+  },
+  {
+   "pkg": "24963675513fccf44be6473357a273432db165ed043cd250b9367f0a843c4b5f",
+   "name": "openmark-newsletter",
+   "stratum": "mid(0.75-0.9)",
+   "bucket": "ESSENTIAL",
+   "added": "7-step workflow with specific search tool calls and anchor-scoring algorithm",
+   "body_len": 6226,
+   "answer_len": 757
+  },
+  {
+   "pkg": "714a1f0038242647083815ab0fd505d9880fa5ed7e68ab2120ae8af4d5694c2c",
+   "name": "memory-lifecycle",
+   "stratum": "mid(0.75-0.9)",
+   "bucket": "VALUABLE",
+   "added": "Exact API endpoint `/internal/memory/governance/run` with required headers (x-tenant-id, x-scope, x-trace-id) ",
+   "body_len": 1093,
+   "answer_len": 12633
+  },
+  {
+   "pkg": "f778594d68dc0ea44e8b4e8c604311e6c625a716fd973cd04b321324a556544b",
+   "name": "decision-log",
+   "stratum": "mid(0.75-0.9)",
+   "bucket": "VALUABLE",
+   "added": "Deferred status, layer-sync arbitration model, Impact as propagation contract, numeric-constant justification ",
+   "body_len": 5394,
+   "answer_len": 7480
+  },
+  {
+   "pkg": "591ec3b76121463dd702b9c43bbfbbb64378b28a2b855c5ea56f61f97cbfd8cd",
+   "name": "coding-agents-social-science-research",
+   "stratum": "mid(0.75-0.9)",
+   "bucket": "MARGINAL",
+   "added": "Flags survey weights and design effects as domain pitfalls, but provides no concrete fixes the answer's spec-f",
+   "body_len": 4441,
+   "answer_len": 14079
+  },
+  {
+   "pkg": "e34d37805f3a13c54113553cf6af3fea3ae2019d001b0cb85af68e84db790e93",
+   "name": "bmad-code-review",
+   "stratum": "mid(0.75-0.9)",
+   "bucket": "VALUABLE",
+   "added": "Configuration hierarchy system (_bmad/) with step-file architecture for customizing activation, loading persis",
+   "body_len": 4361,
+   "answer_len": 7652
+  },
+  {
+   "pkg": "cc7f4fa70eeaa50673306c98b57da0e433e7e417a60f2c01b3fa846b5e096c93",
+   "name": "speckit-checklist",
+   "stratum": "mid(0.75-0.9)",
+   "bucket": "VALUABLE",
+   "added": "Dynamic clarifying-questions algorithm to scope checklist focus; workflow for systematic requirement-context l",
+   "body_len": 20331,
+   "answer_len": 5764
+  },
+  {
+   "pkg": "6e3e89101d459f034c6cf10a88f4c50c8dc421c85029857795a4e60df5b2a03f",
+   "name": "change",
+   "stratum": "mid(0.75-0.9)",
+   "bucket": "VALUABLE",
+   "added": "Step 0 lane routing: classify request to /refactor, /vibe, or /build before /change; mandatory story file (spe",
+   "body_len": 21596,
+   "answer_len": 7370
+  },
+  {
+   "pkg": "fcaa4d3f905e9c6a57b7987b0bd57a954ea5b4e6ec53890218c1dedd049f071d",
+   "name": "strona-premium",
+   "stratum": "mid(0.75-0.9)",
+   "bucket": "VALUABLE",
+   "added": "Generator architecture (Python build.py + pages*.py) instead of manual HTML; duotone icon technique (16% fill ",
+   "body_len": 13152,
+   "answer_len": 16127
+  },
+  {
+   "pkg": "18d1b505a5650483b5a313ff811735f9804049c56180b7520e20afddf5f1f95d",
+   "name": "gideon-autonomous-prospector",
+   "stratum": "mid(0.75-0.9)",
+   "bucket": "ESSENTIAL",
+   "added": "Actual implementation uses JSON files (prospects.json, outreach_log.json), not SQL database; Python scripts no",
+   "body_len": 9994,
+   "answer_len": 14871
+  },
+  {
+   "pkg": "c3a1c11fcf0f72410a141611d0856bfa76d0fc4d4c0fd1215657fa7b1135df42",
+   "name": "08-nodes-reference",
+   "stratum": "mid(0.75-0.9)",
+   "bucket": "VALUABLE",
+   "added": "110+ categorized node names, use-case-to-node mappings, canonical 4-parameter pattern, critical rules (e.g., n",
+   "body_len": 5161,
+   "answer_len": 1959
+  },
+  {
+   "pkg": "2bd464d6234805920cc9443be6cebf40081053f4f32562df9376659ac4fdb8e7",
+   "name": "briefwahl-und-elektronische-stimme",
+   "stratum": "mid(0.75-0.9)",
+   "bucket": "MARGINAL",
+   "added": "Adds procedural detail (legal references, conflict cases, questions) but doesn't change expert's recommendatio",
+   "body_len": 3567,
+   "answer_len": 1441
+  },
+  {
+   "pkg": "577054d7553281fc1cd92e450f3ed9612907ea69b385b41719d4eaf0dfb4c546",
+   "name": "taste-design",
+   "stratum": "mid(0.75-0.9)",
+   "bucket": "VALUABLE",
+   "added": "Font bans (no Inter), spring-physics specs (100/20), inline-image typography technique, anti-data-fabrication ",
+   "body_len": 12471,
+   "answer_len": 4755
+  },
+  {
+   "pkg": "6aa4694b69a1c8d42de54bb8a972e6d7142de03795f73c5d5404574ea52c5921",
+   "name": "fundraise-team-hiring",
+   "stratum": "mid(0.75-0.9)",
+   "bucket": "VALUABLE",
+   "added": "Worked example showing pool defense: 10% post-money backed by plan beats investor 15% ask",
+   "body_len": 5185,
+   "answer_len": 5720
+  },
+  {
+   "pkg": "86845f7e96bb24d546dd594939a67fa8453799b01fb7adf26f144fbbf19ae3ab",
+   "name": "help",
+   "stratum": "mid(0.75-0.9)",
+   "bucket": "VALUABLE",
+   "added": "Exact topic-mapping table, file paths (@handbook/HELP_GUIDE.md, .claude/skills/*/), output format templates, c",
+   "body_len": 3324,
+   "answer_len": 2082
+  },
+  {
+   "pkg": "8566894e32aebee3aeba2e5dff9068d20c3ea9f2dc1f537b04b07846ca4e781d",
+   "name": "review-comments",
+   "stratum": "mid(0.75-0.9)",
+   "bucket": "VALUABLE",
+   "added": "Explicit procedure to check codebase for analogous patterns before deciding fix vs reply, preventing inconsist",
+   "body_len": 3351,
+   "answer_len": 4213
+  },
+  {
+   "pkg": "8172f3ec9f7af715c44c1f34c315ab6f0a2728032f8205603a0e9531ef7d7fe0",
+   "name": "advanced-evaluation",
+   "stratum": "mid(0.75-0.9)",
+   "bucket": "VALUABLE",
+   "added": "Comprehensive bias taxonomy (length, verbosity, authority, self-enhancement) with mitigation strategies; metri",
+   "body_len": 16616,
+   "answer_len": 14925
+  },
+  {
+   "pkg": "c999667bae2e8467ac773f33d6caecce094b794c698aa8821d936d5ed11752ae",
+   "name": "bmad-cis-agent-brainstorming-coach",
+   "stratum": "mid(0.75-0.9)",
+   "bucket": "ESSENTIAL",
+   "added": "Complete 8-step activation procedure with exact file paths and customization merge rules",
+   "body_len": 4308,
+   "answer_len": 1262
+  },
+  {
+   "pkg": "110319c7c425748a5f9c16cf222ef22bd1aa1fa2843700aadce095668482fa18",
+   "name": "free-tool-strategy",
+   "stratum": "mid(0.75-0.9)",
+   "bucket": "VALUABLE",
+   "added": "6-factor scoring framework (search volume, competition, build effort, lead capture, SEO value, viral potential",
+   "body_len": 12204,
+   "answer_len": 1703
+  },
+  {
+   "pkg": "1ecfaaf18953a26faf92de703c2102ed9264ce56479fe1ab8dd87120d755b6a9",
+   "name": "sprint-plan",
+   "stratum": "mid(0.75-0.9)",
+   "bucket": "ESSENTIAL",
+   "added": "Complete workflow specification with phases, gates, templates, and organization-specific file structure",
+   "body_len": 9446,
+   "answer_len": 1446
+  },
+  {
+   "pkg": "f7c94794e31d311f2a2059d2d42fcdc0d51257b1c4b51063a6e736575ff599ef",
+   "name": "api-and-interface-design",
+   "stratum": "mid(0.75-0.9)",
+   "bucket": "VALUABLE",
+   "added": "Hyrum's Law: all observable API behaviors become de facto contracts; branded ID types prevent type confusion; ",
+   "body_len": 9751,
+   "answer_len": 12760
+  },
+  {
+   "pkg": "63b361a0e13d1896488ca3d288c92c666fa03ea9c31cc6c47a01570ff157c1b8",
+   "name": "trackbed-adr",
+   "stratum": "mid(0.75-0.9)",
+   "bucket": "VALUABLE",
+   "added": "Manifest-based ADR path resolution (check .trackbed/manifest.yml first), mode-aware workflow (stop after step ",
+   "body_len": 6324,
+   "answer_len": 4767
+  },
+  {
+   "pkg": "d195ef1daa8fddcdfb8551c2299ebc6aac9ba208e27c650e6c394f659884e1d4",
+   "name": "content-distribution",
+   "stratum": "mid(0.75-0.9)",
+   "bucket": "VALUABLE",
+   "added": "Content syndication via Outbrain/Taboola ($0.10-1.00 CPC) and newsletter sponsorships ($500-5K) as concrete pa",
+   "body_len": 6411,
+   "answer_len": 7214
+  },
+  {
+   "pkg": "e1dcbf20fa52e82752274403530e5f4e92a9337716e34885dd80b2e77e7fabd1",
+   "name": "financial-model-narrative",
+   "stratum": "mid(0.75-0.9)",
+   "bucket": "MARGINAL",
+   "added": "Explicit variance template with 'permanent vs temporary' classification; specific 10% threshold for flagging v",
+   "body_len": 3202,
+   "answer_len": 7351
+  },
+  {
+   "pkg": "c07abaed4c05b477a9e48e4e78c28b13042f709e60d96a120a5d43df3bd6186b",
+   "name": "research-synthesis",
+   "stratum": "mid(0.75-0.9)",
+   "bucket": "VALUABLE",
+   "added": "Mandatory Step 0: internal memory lookup + context pressure check to abort if high pressure; specific JavaScri",
+   "body_len": 26582,
+   "answer_len": 5614
+  },
+  {
+   "pkg": "c4f4c851a854abb4edb19e4499112e7ef1ae04b9dd8a275ed65b6b73c8a8f328",
+   "name": "website-task-friction-review",
+   "stratum": "mid(0.75-0.9)",
+   "bucket": "VALUABLE",
+   "added": "Explicit dark patterns checklist: confirmshaming, cancellation mazes, prechecked add-ons, subscription traps, ",
+   "body_len": 11952,
+   "answer_len": 11479
+  },
+  {
+   "pkg": "b78f32439152787a35cb663ea71c8f5e80db075ffecc5053f8ffad6fc3f1fe35",
+   "name": "competitive-analysis-april-dunford-framework",
+   "stratum": "mid(0.75-0.9)",
+   "bucket": "REDUNDANT",
+   "added": "nothing",
+   "body_len": 993,
+   "answer_len": 8354
+  }
+ ]
+}

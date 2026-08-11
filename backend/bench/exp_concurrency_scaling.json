@@ -1,0 +1,41 @@
+{
+ "4": {
+  "n_calls": 4,
+  "wall_s": 73.7,
+  "median_latency": 68.0,
+  "p95_latency": 73.6,
+  "calls_per_min": 3.26,
+  "skills_per_hr": 1562,
+  "errors": 0,
+  "throttled": 2,
+  "parsed": 4,
+  "load_before": 9.8,
+  "load_after": 11.7
+ },
+ "8": {
+  "n_calls": 8,
+  "wall_s": 108.9,
+  "median_latency": 101.3,
+  "p95_latency": 106.4,
+  "calls_per_min": 4.41,
+  "skills_per_hr": 2116,
+  "errors": 0,
+  "throttled": 6,
+  "parsed": 8,
+  "load_before": 11.7,
+  "load_after": 14.9
+ },
+ "12": {
+  "n_calls": 12,
+  "wall_s": 101.9,
+  "median_latency": 92.3,
+  "p95_latency": 99.1,
+  "calls_per_min": 7.06,
+  "skills_per_hr": 3390,
+  "errors": 0,
+  "throttled": 7,
+  "parsed": 12,
+  "load_before": 14.9,
+  "load_after": 20.6
+ }
+}

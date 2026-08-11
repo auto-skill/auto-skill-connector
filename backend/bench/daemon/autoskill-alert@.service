@@ -1,0 +1,6 @@
+[Unit]
+Description=Ping Discord when %i fails or exceeds its restart limit
+
+[Service]
+Type=oneshot
+ExecStart=/srv/mobile-codex/autoskill-daemon/bin/alert.sh %i

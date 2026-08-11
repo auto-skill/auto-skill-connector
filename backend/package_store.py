@@ -139,6 +139,21 @@ def _dependency_closure(entrypoint: str, files: dict[str, PackageFileInput]) -> 
                 queue.append(ref)
             else:
                 unresolved.add(ref)
+
+    # Everything we deliberately captured from the skill's OWN directory is part
+    # of the skill, whether or not the entrypoint happens to cite it in a form
+    # this parser can resolve. Textual reachability alone excluded 54% of stored
+    # bytes -- 2,271 packages held multiple files but declared a closure of one,
+    # and the twenty most-forked packages delivered 29% of their content, so a
+    # retriever honouring the closure shipped a table of contents and dropped
+    # Vercel's rule set, Supabase's Postgres rules and Anthropic's PDF scripts.
+    # Capture is already bounded (skill dir + per-file and total byte caps), so
+    # this widens delivery without widening what we ever fetch.
+    skill_dir = str(PurePosixPath(entrypoint).parent)
+    prefix = "" if skill_dir in ("", ".") else skill_dir + "/"
+    for path in files:
+        if path not in seen and (not prefix or path.startswith(prefix)):
+            seen.add(path)
     return sorted(seen), sorted(unresolved)
 
 
@@ -270,13 +285,30 @@ def build_package_manifest(
 class ImmutablePackageStore:
     """Filesystem CAS for package bytes and manifests."""
 
-    def __init__(self, root: Path):
+    def __init__(self, root: Path, fsync: bool = True):
+        """`fsync=False` defers durability to the caller. Default is unchanged.
+
+        Measured on this host's ext4 volume: an fsync-per-file atomic write costs
+        **252 ms**, versus 0.20 ms without — fsync is ~100% of the cost, and a
+        batch writing ~2,280 objects spends ~575 s in it. (An earlier measurement
+        of 0.2 ms was taken in /tmp, which is tmpfs; the real volume is 856x
+        slower. Measure on the medium you actually write to.)
+
+        Dropping the per-file fsync does NOT weaken atomicity: `os.replace` is
+        atomic against process crash regardless. It only defers durability
+        against machine power loss, and for a content-addressed store that is a
+        recoverable condition -- the filename IS the sha256, so a truncated
+        object is detectable by rehashing, and every object is re-fetchable from
+        its recorded source_url + commit_sha.
+
+        Production callers (`scraper.py`) keep the default and are unaffected.
+        """
         self.root = Path(root)
         self.objects_dir = self.root / "objects"
         self.manifests_dir = self.root / "manifests"
+        self.fsync = fsync
 
-    @staticmethod
-    def _atomic_write(path: Path, content: bytes) -> None:
+    def _atomic_write(self, path: Path, content: bytes) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         if path.exists():
             if hashlib.sha256(path.read_bytes()).digest() != hashlib.sha256(content).digest():
@@ -287,7 +319,8 @@ class ImmutablePackageStore:
             with os.fdopen(descriptor, "wb") as handle:
                 handle.write(content)
                 handle.flush()
-                os.fsync(handle.fileno())
+                if self.fsync:
+                    os.fsync(handle.fileno())
             os.replace(temp_name, path)
         except Exception:
             try:

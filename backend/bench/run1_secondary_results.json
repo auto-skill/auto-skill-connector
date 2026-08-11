@@ -1,0 +1,110 @@
+{
+ "run_id": "run1-20260802",
+ "model_snapshot": "claude-haiku-4-5-20251001",
+ "note": "subagent token accounting is reported as a single total per call; no in/out split is exposed, so tokens_in carries the total and tokens_out is 0",
+ "results": [
+  {
+   "norm_hash": "a52e646c72a54444c8b8b94d89e39599791e8ae1a92078ca91a644a0319a01d6",
+   "output": {
+    "is_real_skill": false,
+    "confidence": 0.98,
+    "vendor_convention": "unknown",
+    "closure_paths": [],
+    "summary": "Unfilled template scaffold for creating agent skills. Contains only bracketed placeholders and section headers with no actual procedures, instructions, or capabilities defined.",
+    "triggers": [],
+    "risk_flags": [],
+    "reject_reason": "empty stub or unfilled template",
+    "model_self_report": "claude-haiku-4-5-20251001"
+   },
+   "tokens_in": 15077,
+   "tokens_out": 0
+  },
+  {
+   "norm_hash": "cd0a819f3e6ff51208bf18c54307412e17da80d059581b35304d7279904e1241",
+   "output": {
+    "is_real_skill": true,
+    "confidence": 0.72,
+    "vendor_convention": "claude",
+    "closure_paths": [],
+    "summary": "Answer Engine Optimization specialist agent. Orchestrates E-E-A-T audits, generates optimization variants (conservative/balanced/aggressive), maintains citation tracking, distinguishes AEO from SEO, industry-aware with YMYL thresholds.",
+    "triggers": [
+     "Optimize content for AI model citations",
+     "Run an AEO audit",
+     "Compare AEO vs SEO strategy",
+     "Set up citation tracking",
+     "Audit content for LLM citation readiness",
+     "Industry-specific content optimization",
+     "Cross-LLM citation strategy",
+     "Refuse fabricated authority signals"
+    ],
+    "risk_flags": [
+     "file_tree_missing_dependencies",
+     "file_size_discrepancy"
+    ],
+    "reject_reason": null,
+    "model_self_report": "claude-haiku-4-5-20251001"
+   },
+   "tokens_in": 17571,
+   "tokens_out": 0
+  },
+  {
+   "norm_hash": "73a9ec139c98c50f53733eb9d1cb0b8ff0146f027da1117c2acf0582fb64d763",
+   "output": {
+    "is_real_skill": false,
+    "confidence": 0.75,
+    "vendor_convention": "unknown",
+    "closure_paths": [],
+    "summary": "Menu wrapper for a changelog skill that delegates to external implementation scripts and another SKILL.md. Referenced scripts and the actual skill definition are not included.",
+    "triggers": [],
+    "risk_flags": [
+     "external_dependencies_missing",
+     "circular_reference",
+     "incomplete_file_tree"
+    ],
+    "reject_reason": "Incomplete stub: references implementation scripts and another SKILL.md that are absent from the provided tree.",
+    "model_self_report": "claude-haiku-4-5-20251001"
+   },
+   "tokens_in": 15357,
+   "tokens_out": 0
+  },
+  {
+   "norm_hash": "7584741b07ff72e50fed018e5132c97c27544aea385a8d96a3b2288a7aa9793a",
+   "output": {
+    "is_real_skill": true,
+    "confidence": 0.72,
+    "vendor_convention": "unknown",
+    "closure_paths": [],
+    "summary": "Analyzes sprint health and velocity trends for agile teams with delivery, quality, and team metrics scoring via JSON input.",
+    "triggers": [
+     "/sprint-health analyze",
+     "/sprint-health velocity",
+     "sprint health scoring",
+     "team velocity analysis",
+     "agile sprint metrics",
+     "sprint performance analysis"
+    ],
+    "risk_flags": [],
+    "reject_reason": null,
+    "model_self_report": "claude-haiku-4-5-20251001"
+   },
+   "tokens_in": 17240,
+   "tokens_out": 0
+  },
+  {
+   "norm_hash": "e94a0fef3741cc9495b2a1e9d720f301b46b708e8350144ae4aa4215acf8f725",
+   "output": {
+    "is_real_skill": false,
+    "confidence": 0.95,
+    "vendor_convention": "claude",
+    "closure_paths": [],
+    "summary": "Test fixture demonstrating bad skill practices (naming violations, missing description, hard-coded paths). Educational anti-example, not actionable procedure.",
+    "triggers": [],
+    "risk_flags": [],
+    "reject_reason": "test_fixture",
+    "model_self_report": "claude-haiku-4-5-20251001"
+   },
+   "tokens_in": 14329,
+   "tokens_out": 0
+  }
+ ]
+}

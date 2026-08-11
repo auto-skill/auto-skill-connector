@@ -1,0 +1,194 @@
+[
+ {
+  "batch": "run2_combined_b22.json",
+  "skill_id": "sighting:202344734571c3469e61b9be49b903d9",
+  "norm_hash": "6604931e832dbd06ade70ef3ee382305f698135c1d55304b3d00a62056ce59a5",
+  "name": "jobs-interview",
+  "meta_cjk": 0.87,
+  "body_cjk": 0.0
+ },
+ {
+  "batch": "run2_combined_b22.json",
+  "skill_id": "sighting:211e5953cc6c9690cc5df50ffce8e12c",
+  "norm_hash": "179c8d7d1b584bbfe492faa5c128dbbf649ac59dd4db4e0eb2a7d271d8624034",
+  "name": "cli-design",
+  "meta_cjk": 0.69,
+  "body_cjk": 0.0
+ },
+ {
+  "batch": "run2_combined_b22.json",
+  "skill_id": "sighting:2171a13cea9b57bfd77ff1f26cb7abec",
+  "norm_hash": "b5b37cbb4f4040437e5a5d5a1547ab308e73e145bdc59f1c6fac7106742ee48b",
+  "name": "test-pr",
+  "meta_cjk": 0.7,
+  "body_cjk": 0.0
+ },
+ {
+  "batch": "run2_combined_b22.json",
+  "skill_id": "sighting:23b17ab478d3c2811f16e5459a55486c",
+  "norm_hash": "c1fee35014b3e38d81c10f623ae6980dcbcfbecb9b48334466a4870aeaf04c96",
+  "name": "feature-decision",
+  "meta_cjk": 0.91,
+  "body_cjk": 0.0
+ },
+ {
+  "batch": "run2_combined_b22.json",
+  "skill_id": "sighting:275b1bcc1f0e87296ed80bb8db284f2f",
+  "norm_hash": "26fb12f56f42440dae6fad120f4d3578fe27c0966b9c100623f9b695f0bfbacd",
+  "name": "remarkable-pdf",
+  "meta_cjk": 0.46,
+  "body_cjk": 0.0
+ },
+ {
+  "batch": "run2_combined_b23.json",
+  "skill_id": "sighting:ecc007a93bdd0819f25c3d6a690177e8",
+  "norm_hash": "293c6c6c51671ac2f24d8267b4f5ca712cb5a0b8d0266c68a38895e805a69a52",
+  "name": "refero-design",
+  "meta_cjk": 0.22,
+  "body_cjk": 0.0
+ },
+ {
+  "batch": "run2_combined_b23.json",
+  "skill_id": "sighting:ed4d097a552efad9c3d487af699181c1",
+  "norm_hash": "a0c7405ae664c3310d778a0b059fb7d47c87c298c647444c5cc4007c087368f5",
+  "name": "impeccable",
+  "meta_cjk": 0.23,
+  "body_cjk": 0.0
+ },
+ {
+  "batch": "run2_combined_b23.json",
+  "skill_id": "sighting:ed4e657b02e17c78214fc2109f83bcf2",
+  "norm_hash": "7642244e8bf3cb45cc80417282c14e56e7cd9b1d25494c9cbee6616ed2f3da91",
+  "name": "reviewing-code-core",
+  "meta_cjk": 0.22,
+  "body_cjk": 0.0
+ },
+ {
+  "batch": "run2_combined_b23.json",
+  "skill_id": "sighting:ed71594b5aa451959ff015e4be9c405f",
+  "norm_hash": "75f3c3e0d2e90d4973ca4fcf34c252c3e2f10fa1c08f5085cc970a57bad0d282",
+  "name": "motion-scene-builder",
+  "meta_cjk": 0.28,
+  "body_cjk": 0.0
+ },
+ {
+  "batch": "run2_combined_b23.json",
+  "skill_id": "sighting:f32e72f3ae763977caf144ffbb865d3d",
+  "norm_hash": "96b6ccae087650c7e1fadfe321f25f4a3be1717f0a98cb56ba4ed99ab962d1f2",
+  "name": "tailwind-patterns",
+  "meta_cjk": 0.19,
+  "body_cjk": 0.0
+ },
+ {
+  "batch": "run2_combined_b23.json",
+  "skill_id": "sighting:f33fc8565e95301c1d1d978d37e22aed",
+  "norm_hash": "ddc9400e172e6f00b8c6bb8dff3b850cff3dbc93ad79c9872df8729972e467ca",
+  "name": "design-consultation",
+  "meta_cjk": 0.24,
+  "body_cjk": 0.0
+ },
+ {
+  "batch": "run2_combined_b23.json",
+  "skill_id": "sighting:f3420f3fe8fd104edf9c668e5515dc0f",
+  "norm_hash": "38030874920d5d39ef09e1e2e3d110bc9ec88c44802074afbee61f2562a8295d",
+  "name": "israeli-pension-regulation",
+  "meta_cjk": 0.29,
+  "body_cjk": 0.0
+ },
+ {
+  "batch": "run2_combined_b26.json",
+  "skill_id": "c3212e83-9b59-4e7a-9c84-5e48a3517ed5",
+  "norm_hash": "68b180cf56e67b79a633b3ff0f5d8936b3910433118b42a9c09c31897c635eb2",
+  "name": "browserbase-cli",
+  "meta_cjk": 0.33,
+  "body_cjk": 0.0
+ },
+ {
+  "batch": "run2_combined_b26.json",
+  "skill_id": "c4060c3a-740e-4964-ad2b-4daa148e5c9e",
+  "norm_hash": "a609c2e753e5be10bfc1b257bc3ed9b73cacd5d4322753cedfb338d692136405",
+  "name": "aspnet-core-apis",
+  "meta_cjk": 0.35,
+  "body_cjk": 0.0
+ },
+ {
+  "batch": "run2_combined_b26.json",
+  "skill_id": "c5ec107f-60c0-4f94-af87-41ea6542d024",
+  "norm_hash": "7abe65b3afb2e329fa991ed2ce1520833c7ec4876326462b440d3930ec12366d",
+  "name": "semanticscholar-skill",
+  "meta_cjk": 0.62,
+  "body_cjk": 0.0
+ },
+ {
+  "batch": "run2_combined_b26.json",
+  "skill_id": "c76bd112-1640-44ca-8d5c-520149a14443",
+  "norm_hash": "56f5072dff245163be642ae8e7703c19f9d676ff4008d2af99c09ec6e39836b7",
+  "name": "ads-youtube",
+  "meta_cjk": 0.42,
+  "body_cjk": 0.0
+ },
+ {
+  "batch": "run2_combined_b26.json",
+  "skill_id": "c8051630-401a-467b-b275-40945cad0873",
+  "norm_hash": "a32749ed01c26ab1c504de7ad5e0734122f74342a7b94cc2b01644579c1c29cc",
+  "name": "todo-fixme-extractor",
+  "meta_cjk": 0.48,
+  "body_cjk": 0.0
+ },
+ {
+  "batch": "run2_combined_b26.json",
+  "skill_id": "fe431c81-4228-46c8-8f78-3911952baa59",
+  "norm_hash": "1e283017a175b3fc3f203344b5ec62663e2393fee003243184952d1de9bf37a7",
+  "name": "research-and-plan",
+  "meta_cjk": 0.86,
+  "body_cjk": 0.0
+ },
+ {
+  "batch": "run2_combined_b26.json",
+  "skill_id": "sighting:00223717181807ae0b8de59b6a137d3a",
+  "norm_hash": "8db6c468804325f2c37fabfd069b8742ebb6e81324ebe4950839833e4f91aa84",
+  "name": "introspect",
+  "meta_cjk": 0.75,
+  "body_cjk": 0.0
+ },
+ {
+  "batch": "run2_combined_b26.json",
+  "skill_id": "sighting:015c7e7feb19270f16f5ac8a9a791393",
+  "norm_hash": "052160185dd745fb6ce3646e9f406b02c678db5f2f30efaf40fa6379bee39fb1",
+  "name": "resilience",
+  "meta_cjk": 0.8,
+  "body_cjk": 0.0
+ },
+ {
+  "batch": "run2_combined_b26.json",
+  "skill_id": "sighting:017b3fc0ae9d98eae7aff2a8b7bc1ff2",
+  "norm_hash": "47b28669448267ebf6094c0a94aedca023306828286ce9a4175171b1258acf44",
+  "name": "packaging",
+  "meta_cjk": 0.34,
+  "body_cjk": 0.0
+ },
+ {
+  "batch": "run2_combined_b26.json",
+  "skill_id": "sighting:01e981d9ca100fddc0b45ddcad9a5220",
+  "norm_hash": "b27ad57b851c91ccac042e2f9574f475bcd91c498131d45e7f55621e0fd28e40",
+  "name": "implementing-nerc-cip-compliance-controls",
+  "meta_cjk": 0.49,
+  "body_cjk": 0.0
+ },
+ {
+  "batch": "run2_combined_b26.json",
+  "skill_id": "sighting:028f8fa2dadadce3920e4ab21203150b",
+  "norm_hash": "0d3372949fa2ba96e9d79ecd3f81735da7e0b8bd706d01b81134571e226a665d",
+  "name": "hook-development",
+  "meta_cjk": 0.41,
+  "body_cjk": 0.0
+ },
+ {
+  "batch": "run2_combined_b7.json",
+  "skill_id": "sighting:fdcafe341b1c1a5815580230892f7a33",
+  "norm_hash": "d8da111d84546d5619a875cc9b29f69fe22f1bad641bf7625fdb12915f402003",
+  "name": "keyword-research",
+  "meta_cjk": 0.2,
+  "body_cjk": 0.03
+ }
+]

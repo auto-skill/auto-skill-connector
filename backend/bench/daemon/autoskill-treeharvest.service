@@ -1,0 +1,13 @@
+[Unit]
+StartLimitIntervalSec=3600
+Description=Auto-Skill per-repo blob-sha harvest (dedupe backbone)
+OnFailure=autoskill-alert@%n.service
+[Service]
+Environment=AUTOSKILL_HARVEST_PACE=3.0
+Type=exec
+ExecStart=/srv/mobile-codex/autoskill-daemon/bin/treeharvest-loop.sh
+Restart=on-failure
+RestartSec=120
+StartLimitBurst=6
+[Install]
+WantedBy=default.target

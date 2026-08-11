@@ -1,0 +1,65 @@
+[Unit]
+Description=Auto-Skill enrichment (drive-to-completion mode: continuous)
+StartLimitIntervalSec=3600
+StartLimitBurst=3
+OnFailure=autoskill-alert@%n.service
+
+[Service]
+# Measured 2026-08-04 (exp_effort_sweep.py): none/low buy no latency
+# -- codex CLI startup dominates -- and cost real quality (junk rejection
+# 24/30 at medium vs 20/30 low, 10/30 none). Pinned explicitly.
+Environment=AUTOSKILL_LUNA_EFFORT=medium
+Environment=AUTOSKILL_FETCH_DEADLINE=900
+Environment=AUTOSKILL_FETCH_CONCURRENCY=3
+Type=simple
+# DRIVE-TO-COMPLETION: window widened to 24h and the daily ceiling raised on
+# Sami's explicit instruction ("just start and drive it to completion now").
+# Revert to the nightly posture by setting WINDOW_END=8 and LUNA_CEILING=5000.
+Environment=AUTOSKILL_WINDOW_START=0
+Environment=AUTOSKILL_WINDOW_END=24
+Environment=AUTOSKILL_LUNA_CEILING=100000
+Environment=AUTOSKILL_CONCURRENCY=5
+# The secondary stage runs AFTER primary, so the codex processes are gone and
+# the box is idle while it works -- it was left at the default 4 and took 314s
+# (16% of the cycle) for ~41 one-per-skill calls. 8 was already proven safe:
+# the fleet sustained 6-8 concurrent haiku judges through the whole Luna
+# failover with zero throttling.
+Environment=AUTOSKILL_HAIKU_CONCURRENCY=4
+# GitHub enforces a SECONDARY rate limit on concurrent requests; 8 tripped it
+# and 403s were being recorded as missing files. 3 is measured-safe.
+# raw.githubusercontent measured 41-91 files/s clean at 20-96 way (zero errors);
+# production closure was achieving 2.1 files/s because the AUTHENTICATED fallback
+# shared this number and was tripping GitHub's secondary limiter (20/40/80s sleeps).
+# The fallback now has its own 3-way gate, so this can open up.
+Environment=AUTOSKILL_CLOSURE_CONCURRENCY=12
+Environment=AUTOSKILL_API_CONCURRENCY=3
+Environment=AUTOSKILL_CLOSURE_MAX_FILES=100
+# Batched Luna judging. Validated on 110 already-judged skills: 99.1% verdict
+# agreement, 0 cross-block closure leakage, 0 malformed. Falls back to
+# single-skill calls for any block the batch fails to return.
+# Measured 2026-08-04 (exp_effort_batched.py, n=60 per size): 8 -> 6.00 s/skill,
+# 16 -> 5.07, 24 -> 4.51. Canaries 23/23 and verdicts returned 60/60 at every
+# size; agreement with stored medium was flat-to-better (25/26/27 of 32). Took
+# 16 rather than 24: it captures most of the win, halves codex process count
+# (77 -> 39 calls/batch) which is what actually relieves the CPU contention,
+# and its 76s median call leaves 5.5x headroom under LUNA_TIMEOUT=420 whereas
+# 24 (102s) narrows that once latency inflates under load.
+# bs=32 measured (exp_effort_batched, n=60/size): canaries 23/23 and 60/60
+# verdicts returned at EVERY size; agreement vs stored medium 25/26/27/30/27 of
+# 32 for bs 8/16/24/32/48 -- 32 is the BEST agreement measured, not a trade.
+# 4.0 s/skill vs 5.07 at bs=16, and calls/batch 37.5 -> 18.8, which halves the
+# codex Node-boot CPU that is the binding constraint on the primary stage.
+# Not 48: it buys only 3.8 vs 4.0 s/skill while agreement drops back to 84.4%
+# and timeout headroom narrows (420s / 114s call, before ~50% load inflation).
+Environment=AUTOSKILL_LUNA_BATCH=32
+# Budget is in CALLS; skill budget = calls x batch size = 3200/run.
+Environment=AUTOSKILL_MAX_LUNA_CALLS=400
+ExecStart=/srv/mobile-codex/autoskill-daemon/bin/enrich-nightly.sh
+Restart=on-failure
+RestartSec=30
+StandardOutput=append:/srv/mobile-codex/autoskill-daemon/logs/enrich-unit.log
+StandardError=append:/srv/mobile-codex/autoskill-daemon/logs/enrich-unit.log
+Nice=5
+
+[Install]
+WantedBy=default.target

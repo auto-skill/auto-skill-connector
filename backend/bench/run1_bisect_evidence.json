@@ -1,0 +1,409 @@
+{
+  "run_id": "run1-20260802",
+  "frozen_corpus": "/srv/mobile-codex/sessions/autoskill_7e0dd3fa/workspace/auto-skill-connector/backend/corpus_v0_frozen/corpus_v0.sqlite",
+  "corpus_index_stats": {
+    "rows_scanned": 271957,
+    "rows_with_repo_and_path": 118160,
+    "distinct_pairs": 118160,
+    "distinct_repos": 9152
+  },
+  "question_a_oxcaml_rows": {
+    "tables_scanned": [
+      "skills",
+      "scrape_runs",
+      "private_skills",
+      "skill_versions",
+      "skill_pins",
+      "skill_watches",
+      "collections",
+      "collection_skills",
+      "schema_migrations",
+      "skill_packages",
+      "skill_package_files",
+      "skill_package_sources",
+      "skill_retrieval_records",
+      "skill_tools",
+      "skills_sh_mirror",
+      "skills_sh_sources",
+      "skills_sh_ingestion_attempts"
+    ],
+    "substring_hits": [
+      {
+        "table": "skills_sh_mirror",
+        "row": {
+          "id": "mizchi/skills/nix-setup",
+          "name": "nix-setup",
+          "description": "Set up reproducible dev environments via devbox (Nix-backed) or pure Nix flakes. Templates for MoonBit, Rust, TypeScript+pnpm, Python+uv, Haskell, OCaml, OxCaml preloaded with just / ast-grep / apm. Covers devbox.json, buildNpmPackage, dire",
+          "retrieval_text": "nix-setup Set up reproducible dev environments via devbox (Nix-backed) or pure Nix flakes. Templates for MoonBit, Rust, TypeScript+pnpm, Python+uv, Haskell, OCaml, OxCaml preloaded with just / ast-grep / apm. Covers devbox.json, buildNpmPac",
+          "row_json": "{\"id\":\"mizchi/skills/nix-setup\",\"name\":\"nix-setup\",\"description\":\"Set up reproducible dev environments via devbox (Nix-backed) or pure Nix flakes. Templates for MoonBit, Rust, TypeScript+pnpm, Python+uv, Haskell, OCaml, OxCaml preloaded wit",
+          "snapshot_hash": "None",
+          "updated_at": "1785617997.0083306",
+          "expires_at": "1785618297.0080097",
+          "stale_until": "9.223372036854776e+18",
+          "_is_target_repo": false
+        }
+      },
+      {
+        "table": "skills_sh_mirror",
+        "row": {
+          "id": "aresbit/matebot/oxcaml",
+          "name": "oxcaml",
+          "description": "",
+          "retrieval_text": "oxcaml",
+          "row_json": "{\"id\":\"aresbit/matebot/oxcaml\",\"name\":\"oxcaml\",\"description\":\"\",\"source\":\"aresbit/matebot\",\"registry\":\"skills_sh\",\"slug\":\"oxcaml\",\"url\":\"aresbit/matebot\",\"skills_sh_url\":\"https://skills.sh/aresbit/matebot/oxcaml\",\"install_url\":\"aresbit/mate",
+          "snapshot_hash": "None",
+          "updated_at": "1785617997.0086021",
+          "expires_at": "1785618297.0080097",
+          "stale_until": "9.223372036854776e+18",
+          "_is_target_repo": false
+        }
+      },
+      {
+        "table": "skills_sh_mirror",
+        "row": {
+          "id": "smithery.ai/oxcaml",
+          "name": "oxcaml",
+          "description": "",
+          "retrieval_text": "oxcaml",
+          "row_json": "{\"id\":\"smithery.ai/oxcaml\",\"name\":\"oxcaml\",\"description\":\"\",\"source\":\"smithery.ai\",\"registry\":\"skills_sh\",\"slug\":\"oxcaml\",\"url\":\"https://skills.sh/smithery.ai/oxcaml\",\"skills_sh_url\":\"https://skills.sh/smithery.ai/oxcaml\",\"install_url\":\"\",\"",
+          "snapshot_hash": "None",
+          "updated_at": "1785617997.0086308",
+          "expires_at": "1785618297.0080097",
+          "stale_until": "9.223372036854776e+18",
+          "_is_target_repo": false
+        }
+      }
+    ],
+    "target_repo_rows": []
+  },
+  "target_probe": {
+    "repo": "oxcaml/oxcaml",
+    "path": ".claude/skills/address-review/SKILL.md",
+    "contents_api": {
+      "status": 200,
+      "size": 4515,
+      "sha": "c5d08115ea68a78c3f0c22612c81f76c45cc6dad",
+      "exists": true
+    },
+    "repo_meta": {
+      "stars": 828,
+      "size_kb": 672596,
+      "fork": false,
+      "archived": false,
+      "private": false,
+      "pushed_at": "2026-08-02T00:23:52Z",
+      "default_branch": "main"
+    },
+    "code_search": [
+      {
+        "query": "repo:oxcaml/oxcaml path:.claude/skills filename:SKILL.md",
+        "status": 200,
+        "total_count": 1,
+        "paths": [
+          ".claude/skills/address-review/SKILL.md"
+        ],
+        "error": null
+      },
+      {
+        "query": "repo:oxcaml/oxcaml path:.claude/skills",
+        "status": 200,
+        "total_count": 3,
+        "paths": [
+          ".claude/skills/address-review/SKILL.md",
+          ".claude/skills/address-review/scripts/gh-comments.py",
+          ".claude/skills/address-review/scripts/pr-comment-threads.py"
+        ],
+        "error": null
+      },
+      {
+        "query": "repo:oxcaml/oxcaml filename:SKILL.md",
+        "status": 200,
+        "total_count": 1,
+        "paths": [
+          ".claude/skills/address-review/SKILL.md"
+        ],
+        "error": null
+      }
+    ]
+  },
+  "question_b_sweep_coverage": {
+    "queries": [
+      {
+        "query": "path:.claude/skills filename:SKILL.md",
+        "total_count": 75480,
+        "sampled": 400,
+        "in_corpus": 20,
+        "repo_in_corpus": 58,
+        "pages": [],
+        "misses_sample": [
+          {
+            "repo": "linuxfoundation/crowd.dev",
+            "path": ".claude/skills/dco/SKILL.md",
+            "repo_known_to_corpus": true
+          },
+          {
+            "repo": "woocommerce/woocommerce-ios",
+            "path": ".claude/skills/pr/SKILL.md",
+            "repo_known_to_corpus": true
+          },
+          {
+            "repo": "srid/emanote",
+            "path": ".claude/skills/be/SKILL.md",
+            "repo_known_to_corpus": true
+          },
+          {
+            "repo": "srid/emanote",
+            "path": ".claude/skills/pu/SKILL.md",
+            "repo_known_to_corpus": true
+          },
+          {
+            "repo": "Couchers-org/couchers",
+            "path": ".claude/skills/pr/SKILL.md",
+            "repo_known_to_corpus": false
+          },
+          {
+            "repo": "Automattic/wordpress-activitypub",
+            "path": ".claude/skills/pr/SKILL.md",
+            "repo_known_to_corpus": false
+          },
+          {
+            "repo": "Trevoke/org-gtd.el",
+            "path": ".claude/skills/qa/SKILL.md",
+            "repo_known_to_corpus": false
+          },
+          {
+            "repo": "flowglad/flowglad",
+            "path": ".claude/skills/pm/SKILL.md",
+            "repo_known_to_corpus": false
+          },
+          {
+            "repo": "astashov/liftosaur",
+            "path": ".claude/skills/kb/SKILL.md",
+            "repo_known_to_corpus": true
+          },
+          {
+            "repo": "llama-farm/llamafarm",
+            "path": ".claude/skills/wt/SKILL.md",
+            "repo_known_to_corpus": false
+          },
+          {
+            "repo": "homebridge-plugins/homebridge-eufy-security",
+            "path": ".claude/skills/qa/SKILL.md",
+            "repo_known_to_corpus": false
+          },
+          {
+            "repo": "harperreed/dotfiles",
+            "path": ".claude/skills/uv/SKILL.md",
+            "repo_known_to_corpus": true
+          },
+          {
+            "repo": "quantumaikr/quant.cpp",
+            "path": ".claude/skills/qa/skill.md",
+            "repo_known_to_corpus": false
+          },
+          {
+            "repo": "boundless-xyz/boundless",
+            "path": ".claude/skills/pr/SKILL.md",
+            "repo_known_to_corpus": false
+          },
+          {
+            "repo": "srid/haskell-flake",
+            "path": ".claude/skills/do/SKILL.md",
+            "repo_known_to_corpus": false
+          },
+          {
+            "repo": "TypedDevs/bashunit",
+            "path": ".claude/skills/pr/SKILL.md",
+            "repo_known_to_corpus": false
+          },
+          {
+            "repo": "pelikan-io/pelikan",
+            "path": ".claude/skills/pr/SKILL.md",
+            "repo_known_to_corpus": false
+          },
+          {
+            "repo": "DAAF-Contribution-Community/daaf",
+            "path": ".claude/skills/gt/SKILL.md",
+            "repo_known_to_corpus": true
+          },
+          {
+            "repo": "datagrok-ai/public",
+            "path": ".claude/skills/ui/SKILL.md",
+            "repo_known_to_corpus": false
+          },
+          {
+            "repo": "gacela-project/gacela",
+            "path": ".claude/skills/pr/SKILL.md",
+            "repo_known_to_corpus": false
+          },
+          {
+            "repo": "pipecat-ai/gradient-bang",
+            "path": ".claude/skills/npc/SKILL.md",
+            "repo_known_to_corpus": false
+          },
+          {
+            "repo": "wp-media/imagify-plugin",
+            "path": ".claude/skills/qa/SKILL.md",
+            "repo_known_to_corpus": true
+          },
+          {
+            "repo": "wp-media/imagify-plugin",
+            "path": ".claude/skills/e2e/SKILL.md",
+            "repo_known_to_corpus": true
+          },
+          {
+            "repo": "DexForce/EmbodiChain",
+            "path": ".claude/skills/pr/SKILL.md",
+            "repo_known_to_corpus": false
+          },
+          {
+            "repo": "adamayoung/TMDb",
+            "path": ".claude/skills/pr/SKILL.md",
+            "repo_known_to_corpus": true
+          }
+        ],
+        "coverage_pct": 5.0
+      },
+      {
+        "query": "path:.claude/skills",
+        "total_count": 108224,
+        "sampled": 400,
+        "in_corpus": 6,
+        "repo_in_corpus": 78,
+        "pages": [],
+        "misses_sample": [
+          {
+            "repo": "go-pay/gopay",
+            "path": ".claude/skills/README.md",
+            "repo_known_to_corpus": false
+          },
+          {
+            "repo": "robocorp/rpaframework",
+            "path": ".claude/skills/audit.md",
+            "repo_known_to_corpus": false
+          },
+          {
+            "repo": "QuixiAI/Hexis",
+            "path": ".claude/skills/age.md",
+            "repo_known_to_corpus": false
+          },
+          {
+            "repo": "zumerlab/orbit",
+            "path": ".claude/skills/orbit.md",
+            "repo_known_to_corpus": false
+          },
+          {
+            "repo": "generaltranslation/gt",
+            "path": ".claude/skills/build.md",
+            "repo_known_to_corpus": false
+          },
+          {
+            "repo": "csml-rpi/Foam-Agent",
+            "path": ".claude/skills/foam.md",
+            "repo_known_to_corpus": false
+          },
+          {
+            "repo": "waynesutton/markdown-site",
+            "path": ".claude/skills/dev.md",
+            "repo_known_to_corpus": false
+          },
+          {
+            "repo": "waynesutton/markdown-site",
+            "path": ".claude/skills/sync.md",
+            "repo_known_to_corpus": false
+          },
+          {
+            "repo": "waynesutton/markdown-site",
+            "path": ".claude/skills/help.md",
+            "repo_known_to_corpus": false
+          },
+          {
+            "repo": "newrelic/infrastructure-agent",
+            "path": ".claude/skills/pr.md",
+            "repo_known_to_corpus": false
+          },
+          {
+            "repo": "waynesutton/markdown-site",
+            "path": ".claude/skills/write.md",
+            "repo_known_to_corpus": false
+          },
+          {
+            "repo": "newrelic/infrastructure-agent",
+            "path": ".claude/skills/lint.md",
+            "repo_known_to_corpus": false
+          },
+          {
+            "repo": "newrelic/infrastructure-agent",
+            "path": ".claude/skills/build.md",
+            "repo_known_to_corpus": false
+          },
+          {
+            "repo": "robotocore/robotocore",
+            "path": ".claude/skills/lint.md",
+            "repo_known_to_corpus": false
+          },
+          {
+            "repo": "openshift/route-monitor-operator",
+            "path": ".claude/skills/README.md",
+            "repo_known_to_corpus": false
+          },
+          {
+            "repo": "Laer-Smart/2anki.net",
+            "path": ".claude/skills/tdd.md",
+            "repo_known_to_corpus": false
+          },
+          {
+            "repo": "skywind3000/GameLib",
+            "path": ".claude/skills/game.md",
+            "repo_known_to_corpus": false
+          },
+          {
+            "repo": "dialpad/dialtone",
+            "path": ".claude/skills/icon.md",
+            "repo_known_to_corpus": false
+          },
+          {
+            "repo": "dialpad/dialtone",
+            "path": ".claude/skills/token.md",
+            "repo_known_to_corpus": false
+          },
+          {
+            "repo": "alkem-io/server",
+            "path": ".claude/skills/gql.md",
+            "repo_known_to_corpus": false
+          },
+          {
+            "repo": "lisancao/lakehouse-at-home",
+            "path": ".claude/skills/SDP.md",
+            "repo_known_to_corpus": false
+          },
+          {
+            "repo": "Wirasm/worktree-manager-skill",
+            "path": ".claude/skills/SKILL.md",
+            "repo_known_to_corpus": false
+          },
+          {
+            "repo": "iamnbutler/luna",
+            "path": ".claude/skills/spool.md",
+            "repo_known_to_corpus": false
+          },
+          {
+            "repo": "Synthesys-Lab/assassyn",
+            "path": ".claude/skills/CLAUDE.md",
+            "repo_known_to_corpus": true
+          },
+          {
+            "repo": "Ariestar/sivtr",
+            "path": ".claude/skills/SKILL.md",
+            "repo_known_to_corpus": false
+          }
+        ],
+        "coverage_pct": 1.5
+      }
+    ],
+    "budget_requests": 12,
+    "requests_spent": 8
+  },
+  "crawl_state_available": false,
+  "crawl_state_expected_path": "backend/skills_library/crawl_state.json (production host only)"
+}

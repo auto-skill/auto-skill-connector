@@ -1,0 +1,656 @@
+{
+ "stats": {
+  "failover_window": {
+   "n": 45,
+   "value_rate": 80.0,
+   "counts": {
+    "REDUNDANT": 6,
+    "VALUABLE": 32,
+    "ESSENTIAL": 4,
+    "MARGINAL": 3
+   }
+  },
+  "luna_window": {
+   "n": 45,
+   "value_rate": 86.7,
+   "counts": {
+    "ESSENTIAL": 8,
+    "VALUABLE": 31,
+    "MARGINAL": 4,
+    "REDUNDANT": 2
+   }
+  }
+ },
+ "rows": [
+  {
+   "pkg": "c4a8a938281f54eac87c6cc5f3af43243a50ad7db53d3b1e45917628331fe77d",
+   "arm": "luna_window",
+   "name": "write-sglang-test",
+   "bucket": "ESSENTIAL",
+   "added": "SGLang-specific test placement (test/registered/), CI registration functions (re"
+  },
+  {
+   "pkg": "8ce9420d07a1220919d3afc75701ebbf2cb7b2f1b02386fd12ad42074fafe298",
+   "arm": "luna_window",
+   "name": "add-dbt-model",
+   "bucket": "VALUABLE",
+   "added": "Tool-specific load metadata mapping (dlt/Airbyte), preflight validation, on_sche"
+  },
+  {
+   "pkg": "74f3ee269b1781af93c6aec360637a1d56142bcf185d20a01698a871fc878c25",
+   "arm": "luna_window",
+   "name": "prompt-optimizer",
+   "bucket": "VALUABLE",
+   "added": "ECC component mappings, tech stack detection, model recommendations, scope-based"
+  },
+  {
+   "pkg": "5de96503ea20a1c0d686c45c1e8ad95d84ab4a93afc4c8cb0a6d77881084dada",
+   "arm": "failover_window",
+   "name": "bigquery",
+   "bucket": "REDUNDANT",
+   "added": "Nothing\u2014answer is more comprehensive and covers all document content"
+  },
+  {
+   "pkg": "b4915063a164920e14cb2918667e39ea7f1af304551bfc26ec5fca6f02698dfa",
+   "arm": "luna_window",
+   "name": "format-source",
+   "bucket": "VALUABLE",
+   "added": "Manual formatting rules with examples, exact generated-file markers, ant workflo"
+  },
+  {
+   "pkg": "dadce7af1150bf1ab0f417680a55d00a7b457ea0c0acb3e745088f3e658365ad",
+   "arm": "failover_window",
+   "name": "sickn33--antigravity-awesome-skills--skills__ilya-sutskever",
+   "bucket": "REDUNDANT",
+   "added": "Document is reference content for implementing the suggested options, not a corr"
+  },
+  {
+   "pkg": "c3c5c24db8a526c7401e420de771b11ca260480a715d957b175d5e49b1b1a6e2",
+   "arm": "failover_window",
+   "name": "pytorch-lightning",
+   "bucket": "REDUNDANT",
+   "added": "Shows Lightning API specifics, not core framework concepts"
+  },
+  {
+   "pkg": "44b802dacac44186f7345d8e2f000b71514aad628e38ce00a662941e0731af58",
+   "arm": "luna_window",
+   "name": "skill-builder",
+   "bucket": "ESSENTIAL",
+   "added": "Skills are directory-based with supporting files; SPEC.md required for all new s"
+  },
+  {
+   "pkg": "e1ad049e97d92ca1035eb1d647fe88808ad883c4b0792ef44f380172d62fcf71",
+   "arm": "luna_window",
+   "name": "improve-codebase-architecture",
+   "bucket": "VALUABLE",
+   "added": "Deletion test + Two-adapters candidate filters; parallel multi-agent interface d"
+  },
+  {
+   "pkg": "ee70fa6759d0aa933a24b92279d81ad4a67e90bca748cb514e9f184671e4ff6b",
+   "arm": "luna_window",
+   "name": "grad-servqual",
+   "bucket": "VALUABLE",
+   "added": "5-gap organizational diagnostic model, ceiling effects gotcha, SERVPERF debate, "
+  },
+  {
+   "pkg": "db9c649890c45a8d2b8d67ccf654ad36ff2ba98bd0112f0fecfe0ac891b18139",
+   "arm": "luna_window",
+   "name": "etetoolkit",
+   "bucket": "VALUABLE",
+   "added": "PhyloTree event detection APIs, species naming, ClusterTree, faces/layout functi"
+  },
+  {
+   "pkg": "f7155952663bffa5202fee144840485343fef0ff839adaae0c6335658801473d",
+   "arm": "failover_window",
+   "name": "superpowers-using-git-worktrees",
+   "bucket": "VALUABLE",
+   "added": "Native tool priority (Step 1a), submodule detection guard, directory ignore veri"
+  },
+  {
+   "pkg": "f71032c474e1acd1874e494d7aca3aa4a66206810bc8d22b1011ea75424bfbef",
+   "arm": "luna_window",
+   "name": "scientific-problem-selection",
+   "bucket": "MARGINAL",
+   "added": "Fischbach & Walsh citation; 9-skill taxonomy; parameter strategy emphasis"
+  },
+  {
+   "pkg": "bbf3dfe6f7a439900b841e4005563cb3944e8c6ea503fe33e84de405984e0522",
+   "arm": "failover_window",
+   "name": "dmux-workflows",
+   "bucket": "VALUABLE",
+   "added": "dmux tool explanation (install, n/m commands), ECC orchestrate-worktrees.js help"
+  },
+  {
+   "pkg": "d516176c35dc981fa2866b02693c167657dfb4effbceef1e4f76ac00b16050fd",
+   "arm": "failover_window",
+   "name": "javascript-testing-patterns",
+   "bucket": "REDUNDANT",
+   "added": "Document is skill-definition wrapper only, no substantive content."
+  },
+  {
+   "pkg": "4f298906e2ba68677ba8d684811fded4a4f62c41a19b7d15dd5541b37aca6f93",
+   "arm": "luna_window",
+   "name": "observability-logging-audit",
+   "bucket": "VALUABLE",
+   "added": "Stack-specific libraries, mobile platform instrumentation, comprehensive regiona"
+  },
+  {
+   "pkg": "a4238d1c264b66b8c93368c8c845823adba5a4570bbf3e7101cb1b2bd15d9807",
+   "arm": "failover_window",
+   "name": "web-quality-audit",
+   "bucket": "VALUABLE",
+   "added": "Optimization techniques: preconnect, preload, lazy-load, WebP/AVIF, srcset, font"
+  },
+  {
+   "pkg": "9b57ef3af2840751a61e3010ba863921acd34b1a850c5a5446bac5fd5402adda",
+   "arm": "failover_window",
+   "name": "bmad-index-docs",
+   "bucket": "VALUABLE",
+   "added": "Working Python scripts, link validation, Windows path/encoding gotchas, grouping"
+  },
+  {
+   "pkg": "e0b37b40afa18d6eb82137b3799a5b40e779a97e306d5f741f9ac7696bfcb9a0",
+   "arm": "luna_window",
+   "name": "diataxis-notebook-writer",
+   "bucket": "VALUABLE",
+   "added": "__gallery__ dict format, How-to title convention, hide_code=True syntax, admonit"
+  },
+  {
+   "pkg": "26730eff49f59a33fea0198df0d23bdc16a8e7ace2359df7d332f1db3bf19176",
+   "arm": "luna_window",
+   "name": "senior-data-scientist",
+   "bucket": "VALUABLE",
+   "added": "Production ML infrastructure, MLOps tooling, data systems architecture, deployme"
+  },
+  {
+   "pkg": "378f097f85f9b0100006ea06c7e94d86e560ef19cdf1469f52575f83f81cb18d",
+   "arm": "failover_window",
+   "name": "app-store-optimization",
+   "bucket": "VALUABLE",
+   "added": "Platform-specific character limits (Apple/Google Play), ASO capability taxonomy,"
+  },
+  {
+   "pkg": "686851c76dec6237fad3090f692878d26579d02df613c469e15fb662102d7bf9",
+   "arm": "failover_window",
+   "name": "thought-layer-build",
+   "bucket": "VALUABLE",
+   "added": "R-ID traceability (TRACEABILITY.md), Netlify/Neon stack specifics, 3-question ba"
+  },
+  {
+   "pkg": "6e5c802f0d15a9bf7a75a5e8d10b95c6a80ba28e6bab1b891352b5bd994e138b",
+   "arm": "luna_window",
+   "name": "vendor-management",
+   "bucket": "VALUABLE",
+   "added": "Industry-profile weights, exact KEEP/REVIEW/REPLACE thresholds (75/50/<50), four"
+  },
+  {
+   "pkg": "3b055a8a1d8d2a8c5f5793b1e3a11aa13b739ea6fac27bfe104698b3bb71c6e6",
+   "arm": "luna_window",
+   "name": "comment-init",
+   "bucket": "ESSENTIAL",
+   "added": "Comment.io Team Wiki ADRs, docs/DELIVERY.md topology config, skill family integr"
+  },
+  {
+   "pkg": "f9b0414d7481df43205b7eb4eaf7d50727a70898c02b3a65b4e0fe564379bc5c",
+   "arm": "failover_window",
+   "name": "implementation-guide",
+   "bucket": "VALUABLE",
+   "added": "Folder structure (Core/Features/Models/Services), Xcode setup steps, SwiftData c"
+  },
+  {
+   "pkg": "7f83dc91ca58fffce85b26165a3dbe9b9bb01b3f06645c627bf375e4fa802521",
+   "arm": "failover_window",
+   "name": "research",
+   "bucket": "VALUABLE",
+   "added": "Systematic input parsing (region, budget, context, goals); query-type classifica"
+  },
+  {
+   "pkg": "7a593ab295b9515f64675470ce8d76bc631dd3baed5dae657929abd127c1576a",
+   "arm": "luna_window",
+   "name": "onekey-qa-review",
+   "bucket": "VALUABLE",
+   "added": "Exact git commands, file naming/table formats, security scanning patterns, vocab"
+  },
+  {
+   "pkg": "475b919cbe4dfd0e114dfc8a1940dbd14b05e0bd0c16cab38de88c37b24ea71f",
+   "arm": "failover_window",
+   "name": "cometchat",
+   "bucket": "VALUABLE",
+   "added": "Android V5/V6 and Flutter V5/V6 version routing decisions; iOS framework; detail"
+  },
+  {
+   "pkg": "9a0ec910879ede8ee919398e5666ba968077c2456531b8a75c30697220f3678b",
+   "arm": "luna_window",
+   "name": "acuant",
+   "bucket": "VALUABLE",
+   "added": "Correct CLI syntax, connection state polling, Acuant error codes and async behav"
+  },
+  {
+   "pkg": "b3523711d1323c4f38bd9b7494fe2062ce77d19d1770ba09178a6b3f7c84872b",
+   "arm": "luna_window",
+   "name": "bob-evaluate-runner",
+   "bucket": "ESSENTIAL",
+   "added": "exact invocation syntax, 100+ MCP tools, target-axis precedence, format specs"
+  },
+  {
+   "pkg": "a3f4f785d8cc350c9d34c7584d3ec0b3d5e6e7d5f9c806445118a7bc7bbc5695",
+   "arm": "failover_window",
+   "name": "blueprint-update",
+   "bucket": "VALUABLE",
+   "added": "zsh -n validation, [BP-ALIGN] format reference, AGENTS.md trailer template locat"
+  },
+  {
+   "pkg": "8a269dfe29eb493eadf1fe1416ecc399aa03acdb2c21bef57e9a00072a9f9b0b",
+   "arm": "failover_window",
+   "name": "model-prefs",
+   "bucket": "ESSENTIAL",
+   "added": "System-specific file paths ($HORIZON_ETC), markdown grammar, runtime-qualified m"
+  },
+  {
+   "pkg": "bc0d07c492b404a1a6e006911a01b4a8aa229bd6cbd73cce94effc75b402a01e",
+   "arm": "failover_window",
+   "name": "marketing-mode",
+   "bucket": "VALUABLE",
+   "added": "140+ tactics, psychology frameworks, launch strategy, pricing strategy, enables "
+  },
+  {
+   "pkg": "cbf0784805cb2794055b8897fa9909797f3859eff99e326d0eb95e6a5913dd73",
+   "arm": "failover_window",
+   "name": "benchmarking-with-hyperfine",
+   "bucket": "VALUABLE",
+   "added": "Parametric sweep flags (-P,-L), --reference, --setup vs --prepare timing, versio"
+  },
+  {
+   "pkg": "64653b44b20afeb011fdaa40ef92066b8d5c96155094db60a7939e727921c285",
+   "arm": "failover_window",
+   "name": "pytorch-patterns",
+   "bucket": "VALUABLE",
+   "added": "Weight initialization patterns; persistent_workers and drop_last DataLoader opti"
+  },
+  {
+   "pkg": "c97a92a21b54f29bfcebee27c865be7e3a9555500b64f97d05d5b0b895628d02",
+   "arm": "luna_window",
+   "name": "apex-plan",
+   "bucket": "MARGINAL",
+   "added": "Token-cost estimation framework, specialist roster system, parallel/sequential d"
+  },
+  {
+   "pkg": "41f2f4697182c38b78563283abe409ab9cc3f6f902e34682ced7aa03f63a6bd3",
+   "arm": "failover_window",
+   "name": "document-processor",
+   "bucket": "VALUABLE",
+   "added": "Exact tools (pptx_ops.py, excel_ops.py, pdf_page_editor.py), commands with flags"
+  },
+  {
+   "pkg": "45d89819ae8832363c535ade6e1d0600844e99cbf0e6206a696baeaa3606a7ee",
+   "arm": "luna_window",
+   "name": "bonsai-errors-common",
+   "bucket": "ESSENTIAL",
+   "added": "Error decision tree, version migrations, v0.8+ breaking changes, exact API fixes"
+  },
+  {
+   "pkg": "f01c2abe9a83f2d2d2b2c025f3279c4eb6642c0fdc99374253bde86b4953553e",
+   "arm": "luna_window",
+   "name": "new-feature-panel",
+   "bucket": "VALUABLE",
+   "added": "Dark zinc/indigo palette, export-style rules by folder, Tauri SQL mocking, repos"
+  },
+  {
+   "pkg": "07fbee4fddccbe7a11d481fd882a3582e02b400ba9d8827803921489d9d6ff2d",
+   "arm": "luna_window",
+   "name": "skatteetaten-shared",
+   "bucket": "VALUABLE",
+   "added": "Command names, flags, auth flow, session timeout behavior, storage backends, rec"
+  },
+  {
+   "pkg": "a1902adbad1012b570fa1b98fda96b8c832b4176203ecb6290891badeabad49f",
+   "arm": "luna_window",
+   "name": "marketing-psychology",
+   "bucket": "VALUABLE",
+   "added": "14+ mental models, psychological frameworks, concrete marketing applications for"
+  },
+  {
+   "pkg": "45b641e557d110a087a4125141674ac76e16d8cb25f8ec589f42ae9909d13cd9",
+   "arm": "failover_window",
+   "name": "schedule-ads",
+   "bucket": "VALUABLE",
+   "added": "Sandbox architecture (write payloads, separate postprocess calls API), exact con"
+  },
+  {
+   "pkg": "98175415596d4ebf155ad9c835eeea6a9e0dea3dbb07fe79544c3ec9bb4e8bdb",
+   "arm": "luna_window",
+   "name": "bio-reporting-rmarkdown-reports",
+   "bucket": "VALUABLE",
+   "added": "Tabsets, kable/kableExtra styling, custom CSS, cache dependson, inline code exam"
+  },
+  {
+   "pkg": "4884e8d87cb3e11a19d4dc1c15ee5eb70c98204fc27e880ecd48f5c90fb9ffa3",
+   "arm": "luna_window",
+   "name": "softwareerstellung-werkvertrag",
+   "bucket": "VALUABLE",
+   "added": "BGB sections (631, 633, 634, 640), Abnahme consequences (F\u00e4lligkeit, burden-of-p"
+  },
+  {
+   "pkg": "848e133989653d77b524bcd7f24d4e7006010350eacd49ea9cceb0b4f209afaa",
+   "arm": "failover_window",
+   "name": "spec-iteration",
+   "bucket": "VALUABLE",
+   "added": "Dart-fix reduction arc status, PR#249-257 landed, remaining lint breakdown, next"
+  },
+  {
+   "pkg": "99e3da5caf1bf658d9c107cc46f60fd16d47ba21132c42b9b1503ac17a169247",
+   "arm": "luna_window",
+   "name": "managing-database-sharding",
+   "bucket": "VALUABLE",
+   "added": "Monitoring shard balance with 20% threshold, schema drift prevention, connection"
+  },
+  {
+   "pkg": "314a8561178870b9ac5eda2a5de282a259d6e05953042168c255bf7f8718043a",
+   "arm": "luna_window",
+   "name": "eve-security-layer",
+   "bucket": "MARGINAL",
+   "added": "Windows commands, expanded prompt injection patterns, fork bombs"
+  },
+  {
+   "pkg": "e73bc565b665c5e7d1aa29b8273170873bd366da4c9039728379e728a68ddb9d",
+   "arm": "failover_window",
+   "name": "plan",
+   "bucket": "MARGINAL",
+   "added": "File mapping phase; test-driven task structure; numeric thresholds (2-file, 10-t"
+  },
+  {
+   "pkg": "6686f4ff4bac57cf9e1db9e4a7f6b250f7a03c7b5994fc7a9a1517e4240d6979",
+   "arm": "failover_window",
+   "name": "bmad-agent-dev",
+   "bucket": "ESSENTIAL",
+   "added": "resolve_customization.py script, customize.toml hierarchy, _bmad/bmm/config.yaml"
+  },
+  {
+   "pkg": "28b1ac6f5368de6f79dbaba9e5a0b6d56f63ae3be86d1f427b7bdb793c9a7496",
+   "arm": "failover_window",
+   "name": "business-plan-critique-market-sizing",
+   "bucket": "VALUABLE",
+   "added": "Top-down/bottom-up reconciliation threshold (3\u00d7), fact-check integration workflo"
+  },
+  {
+   "pkg": "fe0398e71c5cdcc6cfba75563efede3d324f8a0d45ced834cf351f7a43524ffa",
+   "arm": "failover_window",
+   "name": "openspec-continue-change",
+   "bucket": "ESSENTIAL",
+   "added": "Specific OpenSpec CLI commands, JSON response structure, decision logic, artifac"
+  },
+  {
+   "pkg": "78d5aeb9ad28da51e93e01377138edf673e664e9647f154788d9c0acda9364b9",
+   "arm": "luna_window",
+   "name": "moyu",
+   "bucket": "VALUABLE",
+   "added": "Concrete patterns (json.load vs config+validator), 15-item urge table, L1/L2/L3 "
+  },
+  {
+   "pkg": "f71d21efe529a0ec55a0d00afd58e8cfaf6763e1498c957339ac7bd66382b26e",
+   "arm": "failover_window",
+   "name": "perl-patterns",
+   "bucket": "VALUABLE",
+   "added": "Native try/catch (5.40+), class syntax (5.38+), isa operator, slicing, autodie, "
+  },
+  {
+   "pkg": "d367f319b9eae455b05674b41b17e46464a4d3e81840b5304ec2500b56318d69",
+   "arm": "luna_window",
+   "name": "gwt-memory-search",
+   "bucket": "ESSENTIAL",
+   "added": "gwtd JSON operations, schema format, file paths, binary resolution, memory.add o"
+  },
+  {
+   "pkg": "7887fa9e6c299435ed7fd1b4f83be3390f047035b68d77cd330b2889a6f515a4",
+   "arm": "luna_window",
+   "name": "node-inspect-debugger",
+   "bucket": "VALUABLE",
+   "added": "SIGUSR1 attachment procedure, node inspect REPL commands, CDP library examples, "
+  },
+  {
+   "pkg": "748332c6e0d8f886d7b520e47886b691bd55f2525ce3319196b654050eb1c38f",
+   "arm": "failover_window",
+   "name": "grasp",
+   "bucket": "VALUABLE",
+   "added": "Initial assessment checklist, complexity analysis, decision guidance vs metaheur"
+  },
+  {
+   "pkg": "716d6064b7ad02672a71fcf940bf3adf5ba646d98182191d8f832df3e14d95bc",
+   "arm": "failover_window",
+   "name": "land-and-deploy",
+   "bucket": "REDUNDANT",
+   "added": "Document shows only initialization/telemetry; unaided answer covers all workflow"
+  },
+  {
+   "pkg": "ca3516f8beb665519521041e795cdb8c55790482ec84c27221d5675c490ab7e4",
+   "arm": "failover_window",
+   "name": "run-phase",
+   "bucket": "ESSENTIAL",
+   "added": "Complete skill routing, phase workflows, exact commands, file paths, and rules"
+  },
+  {
+   "pkg": "fc3e307792a0f18fa4d2fe2a4c2bb48420997845790e9699ff691a2eea6d83ee",
+   "arm": "failover_window",
+   "name": "video-parser",
+   "bucket": "VALUABLE",
+   "added": "Platform support matrix, Bilibili format codes (30080+30216), auth/subtitle capa"
+  },
+  {
+   "pkg": "58f236ffc6f84f7315eca8e7c0187e9665080c6b8bf1c36398aee7a6bdfce3da",
+   "arm": "failover_window",
+   "name": "humanize-ai-writing",
+   "bucket": "VALUABLE",
+   "added": "Artifacts rule, rule-of-three filler rule, editorial openers list, canned phrase"
+  },
+  {
+   "pkg": "29fef83383c99813f5d78e07bcfdc304b45d2c7f7e33e3143a306cd891845f58",
+   "arm": "luna_window",
+   "name": "moai-domain-brand-design",
+   "bucket": "VALUABLE",
+   "added": "Spacing scale (4px base), mobile UX validation (CTA above fold), AI slop detecti"
+  },
+  {
+   "pkg": "c23821c74ebabdd8e187698a947d3e9ce226bc06b328342fdc15cce7a5d4f9f9",
+   "arm": "luna_window",
+   "name": "extracting-credentials-from-memory-dump",
+   "bucket": "VALUABLE",
+   "added": "Volatility plugins (hashdump, lsadump, cachedump); regex patterns for API keys/t"
+  },
+  {
+   "pkg": "37b893e58b1883ac7a5d844ba5e64c798a942982931814d1992431a7c0c124c1",
+   "arm": "failover_window",
+   "name": "stacks-scheduler",
+   "bucket": "VALUABLE",
+   "added": "withoutOverlapping(), sendAt(), timeout(), runInBackground() methods, lock file "
+  },
+  {
+   "pkg": "7207baeeb2ee937fc968d1f5345c46506e5ba45a3e1f41a0e782faecec56d025",
+   "arm": "failover_window",
+   "name": "deployment",
+   "bucket": "REDUNDANT",
+   "added": "Document restates answer's concepts with no new specifics or examples."
+  },
+  {
+   "pkg": "aa221962d5f5eb7186c3acb38460a1ce1e8e38dfb351bb36e8164a11294cfcfc",
+   "arm": "failover_window",
+   "name": "lab-management",
+   "bucket": "VALUABLE",
+   "added": "waste management framework (40 CFR 260-270), protocol/SOP audit phase, biosafety"
+  },
+  {
+   "pkg": "f2aee64b0dae53c6d4b8e90e4203c2e0ec4a990feec33ecffd999d08464f89aa",
+   "arm": "failover_window",
+   "name": "scheduled-patrol",
+   "bucket": "VALUABLE",
+   "added": "CronCreate with stateless prompts, .patrol_state.json pattern, unchanged_streak "
+  },
+  {
+   "pkg": "5337663661baf02ce2fd1e07789f982b8572a462f683157105966534da419869",
+   "arm": "luna_window",
+   "name": "nodejs-codestyle",
+   "bucket": "VALUABLE",
+   "added": "Testing strategy (Jest/Mocha, AAA pattern, integration-first, coverage goals) co"
+  },
+  {
+   "pkg": "547e8d86e81af5ac8bf2db586c634b88ab40f57c0044cd2fdf0226882aa41351",
+   "arm": "luna_window",
+   "name": "growth-experiment-design",
+   "bucket": "VALUABLE",
+   "added": "Observational test fallback when RCT impossible; labeling framework for tracking"
+  },
+  {
+   "pkg": "e6d53dddb2a03995909471756dc97ad71052ddd1df63193474374694372b846e",
+   "arm": "failover_window",
+   "name": "to-prompt",
+   "bucket": "MARGINAL",
+   "added": "File naming format spec (YYYYMMDD-HHmm); procedural steps with done-when criteri"
+  },
+  {
+   "pkg": "46bcc5ffd9e305c2f73eec848efba16419cdd74f805a2607e474a71219e25dc8",
+   "arm": "failover_window",
+   "name": "shader-guide",
+   "bucket": "VALUABLE",
+   "added": "Systematic routing table mapping 30+ user goals to specific technique combinatio"
+  },
+  {
+   "pkg": "9fd94b93d22d0623a92f04b0900976abc831edef54907f86651456a39452f6c9",
+   "arm": "failover_window",
+   "name": "phx-full",
+   "bucket": "VALUABLE",
+   "added": "Task-level state tracking, blocker limits, append-only ledger format, resume val"
+  },
+  {
+   "pkg": "6014b1efd3c3b64dbd0417ff0c77850df07b719c1f1bdb9d264084e9904e35db",
+   "arm": "luna_window",
+   "name": "bash-defensive-patterns",
+   "bucket": "MARGINAL",
+   "added": "BASH_SOURCE script-dir pattern, atomic_write via temp+mv, safe file operations"
+  },
+  {
+   "pkg": "4e6ee685e872bd1977cc33509e9e6825dbc34f579af81eeddc38774865fb36b3",
+   "arm": "luna_window",
+   "name": "ansible-secrets",
+   "bucket": "VALUABLE",
+   "added": "Reusable task file location, parameter reference table, troubleshooting guide wi"
+  },
+  {
+   "pkg": "1a744406c8393b7008749539978a250d5e10e2b0d472d5067093b0977429017e",
+   "arm": "failover_window",
+   "name": "bmad-create-story",
+   "bucket": "VALUABLE",
+   "added": "Step-by-step workflow, file paths, configuration resolution, sprint integration,"
+  },
+  {
+   "pkg": "5664af1807a9e530f7038b1a71a5a2b4233dfb75f655fc01ee4d6ee97cb61045",
+   "arm": "luna_window",
+   "name": "systematic-debugging",
+   "bucket": "REDUNDANT",
+   "added": "Reproduction rate tracking, environment isolation question, pm2 logs syntax"
+  },
+  {
+   "pkg": "d1882cae5d693e4ba5964b4c24b78331024b56f570575323efa7705602f009d4",
+   "arm": "failover_window",
+   "name": "ref-query",
+   "bucket": "VALUABLE",
+   "added": "Per-type SLA values (14d/30d/90d/180d), bash frontmatter queries, output format "
+  },
+  {
+   "pkg": "1515d577022beb9e4485b19e8fec463fe4583f6d10c0b9c2fce058caf5a2ea24",
+   "arm": "luna_window",
+   "name": "poedb",
+   "bucket": "ESSENTIAL",
+   "added": "goscrape tool, download.sh script, specific flags (--url-file, --no-follow), mar"
+  },
+  {
+   "pkg": "5e9ab31398b177dc42ffb4a18188e28be2e76980962294b4ce22be88b301a9d9",
+   "arm": "failover_window",
+   "name": "community-intake",
+   "bucket": "VALUABLE",
+   "added": "Existing 'agent-team intake community' command with flags; avoids rebuilding fro"
+  },
+  {
+   "pkg": "c72bbf29121fa8816b53c2ad48026ede431b082e25c3afebbefde375c4d1ebfc",
+   "arm": "luna_window",
+   "name": "yaqu-fase-b",
+   "bucket": "VALUABLE",
+   "added": "System User token generation path, email verification prerequisite for permanent"
+  },
+  {
+   "pkg": "fdfb5daca98ad71e04bbeae00115cd836d5453f8f2169d3301fb420c5e0ff71f",
+   "arm": "luna_window",
+   "name": "writing-skills",
+   "bucket": "VALUABLE",
+   "added": "CSO guidelines, TDD mapping table, description-workflow gotcha, skill types, whe"
+  },
+  {
+   "pkg": "1484a2d34ae7896ff2ca446282eafc6ea39bb1dedd241a12b131f736e6fffd6a",
+   "arm": "luna_window",
+   "name": "power-design-slides",
+   "bucket": "VALUABLE",
+   "added": "72+ pre-built brands, quantified design rules (exact thresholds), Firecrawl extr"
+  },
+  {
+   "pkg": "92cf89d22d3e017c66fed4da0a57be1202483d02ec163dc581e004620744dc03",
+   "arm": "luna_window",
+   "name": "competitive-platform-analysis",
+   "bucket": "VALUABLE",
+   "added": "Client positioning brief prerequisite, strategic tension framework, scoping cons"
+  },
+  {
+   "pkg": "1927d0390cac0d3aefb2b4a8e57f4efbcb98ac3d952f2de49bcae623f6a13bd3",
+   "arm": "failover_window",
+   "name": "cs-analyze-failures",
+   "bucket": "VALUABLE",
+   "added": "CloudShare subscription/workspace names, MCP hours parameter gotcha, Splunk logs"
+  },
+  {
+   "pkg": "c18137923c622f408d742dd1de5df9aac20fcc876b4205c41bcdb899d45403f2",
+   "arm": "luna_window",
+   "name": "structured-output",
+   "bucket": "REDUNDANT",
+   "added": "Document offers simpler/generic patterns already covered more thoroughly in answ"
+  },
+  {
+   "pkg": "c5f74289c6963d9c2e093479197b6b8b6cd0a279b051c8f32d5bd76fee42fb5c",
+   "arm": "luna_window",
+   "name": "wiki-synthesize",
+   "bucket": "VALUABLE",
+   "added": "Config resolution, skip list, scoring rubric, frontmatter schema, log/hot/QMD up"
+  },
+  {
+   "pkg": "f37c1097fee13efb7fb27f771a5a2a49c033ed218851c4544875b8cb9a6ef7ce",
+   "arm": "failover_window",
+   "name": "parallel-launch",
+   "bucket": "VALUABLE",
+   "added": "Agent type selection (Explore vs Plan), accuracy+sourcing review, scope verifica"
+  },
+  {
+   "pkg": "666715a3d4e478ad1c83cfb0c388e9137540a4eab16f56efd1085ac65c9ee5f1",
+   "arm": "failover_window",
+   "name": "signal-end-to-end",
+   "bucket": "VALUABLE",
+   "added": "Exact make targets, internal playbooks, topology/matched-signal architecture, sp"
+  },
+  {
+   "pkg": "67cfc1d250f8e42542bfaa3ab5604910c8546b393fa2cbb063de0bee6ea10cbc",
+   "arm": "luna_window",
+   "name": "render-web-services",
+   "bucket": "VALUABLE",
+   "added": "Pre-deploy commands, reserved ports, checksPass deploy trigger, maxShutdownDelay"
+  },
+  {
+   "pkg": "74cf5a2030ea3e1fe16a3ed63ed70fac7726012a5921a53b3245400daaea2008",
+   "arm": "luna_window",
+   "name": "create-prd",
+   "bucket": "ESSENTIAL",
+   "added": "RPG structure (4 mandatory sections), discovery gate, unattended/premise rules, "
+  },
+  {
+   "pkg": "33a81584f340e84c93e7d0d4a27ae0180315adac7d8eabb96f8887808fe76d14",
+   "arm": "failover_window",
+   "name": "prompt-management",
+   "bucket": "MARGINAL",
+   "added": "Message-structure injection prevention via role/content API separation"
+  }
+ ]
+}

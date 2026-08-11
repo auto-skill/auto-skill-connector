@@ -1,0 +1,35 @@
+{
+ "dup_rate": {
+  "clusters": 955,
+  "clusters_with_duplicates": 36,
+  "cluster_size_histogram": {
+   "1": 919,
+   "2": 14,
+   "10": 22
+  }
+ },
+ "junk_rate": {
+  "labels": {
+   "included": 908,
+   "excluded_junk": 42,
+   "quarantine": 5
+  },
+  "junk_pct": 4.4
+ },
+ "closure_completeness": {
+  "with_closure": 310,
+  "files_present": 308,
+  "files_fetched": 1198,
+  "files_missing": 5,
+  "unanchorable": 0
+ },
+ "link_rot_by_source": {},
+ "specificity_histogram": {
+  "0.0-0.2": 7,
+  "0.2-0.4": 1,
+  "0.4-0.6": 32,
+  "0.6-0.8": 141,
+  "0.8-1.0": 744
+ },
+ "canary_recall_pct": 100.0
+}

@@ -1,0 +1,31 @@
+{
+  "_purpose": "Cross-judge calibration for the specificity score, measured on PAIRED data: skills scored by both judges from identical bytes. Retrieval should apply the offset before comparing specificity across the Luna-outage window, and should respect the noise floor when using specificity as a ranking key.",
+  "_measured_at": "2026-08-04T05:30Z",
+  "_method": "For every norm_hash with an is_real_skill=true primary verdict from BOTH gpt-5.6-luna@medium and claude-haiku-4-5-20251001/primary-failover, take haiku_specificity - luna_specificity. Paired on identical content, so the comparison is not confounded by which skills each judge happened to see -- the unpaired means suggested a -0.10 gap, which was wrong.",
+
+  "reference_snapshot": "gpt-5.6-luna@medium/codex-cli-0.144.6",
+
+  "specificity_offsets": {
+    "claude-haiku-4-5-20251001/primary-failover": {
+      "n_paired": 102,
+      "mean_delta": -0.0469,
+      "median_delta": -0.05,
+      "stdev": 0.1072,
+      "agree_within_0.05_pct": 36,
+      "additive_correction": 0.05,
+      "_note": "Add 0.05 to a failover-window specificity score to put it on the Luna scale."
+    }
+  },
+
+  "noise_floor": {
+    "specificity_between_judge_stdev": 0.1072,
+    "_implication": "Two judges reading the SAME bytes disagree with a standard deviation of ~0.107, and agree within 0.05 only 36% of the time. Specificity therefore cannot support fine-grained ranking -- a 0.88 vs 0.85 difference is noise, not signal. Use coarse bands instead. The bands measured in exp_marginal_value.py do carry real signal: skills below 0.75 add genuinely new information 55% of the time versus ~77% for everything above it, a 22-point gap that survives this noise.",
+    "recommended_use": "Three bands (<0.75, 0.75-0.9, >=0.9) as a coarse prior on informativeness. Not a sort key."
+  },
+
+  "_caveats": [
+    "102 pairs is enough to establish the offset's sign and rough size, not to pin it to two decimals.",
+    "The offset is measured only for the primary-failover snapshot. Any future judge change needs its own paired measurement before its scores are mixed with these.",
+    "Verdicts are NOT rewritten in place. The stored score always reflects what the judge actually said; correction is applied at read time so provenance survives and this constant can be revised."
+  ]
+}

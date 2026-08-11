@@ -1,0 +1,194 @@
+{
+ "schema_version": 1,
+ "description": "Frozen public GitHub SKILL.md canaries from retained Terminal-Bench oracle research, plus the Oxcaml discovery regression. They measure corpus discovery and active-catalog recall, not agent task success.",
+ "canaries": [
+  {
+   "id": "oxcaml-address-review",
+   "parent_repo": "oxcaml/oxcaml",
+   "path": ".claude/skills/address-review/SKILL.md",
+   "source_url": "https://github.com/oxcaml/oxcaml/tree/main/.claude/skills/address-review",
+   "expected_name": "address-review",
+   "expected_content_hash": null
+  },
+  {
+   "id": "vuexy-html-injection-testing",
+   "parent_repo": "fabioeducacross/designsystem-vuexy",
+   "path": ".agent/skills/html-injection-testing/SKILL.md",
+   "source_url": "https://github.com/fabioeducacross/designsystem-vuexy/tree/HEAD/.agent/skills/html-injection-testing",
+   "expected_name": "HTML Injection Testing",
+   "expected_content_hash": "7aaa008a71cbf5f5b535b871c7a9b9f5b3cabd5b28e656274e97979b2113ec41"
+  },
+  {
+   "id": "python-skills-packaging",
+   "parent_repo": "paldom/python-skills",
+   "path": "skills/python-packaging/SKILL.md",
+   "source_url": "https://github.com/paldom/python-skills/tree/HEAD/skills/python-packaging",
+   "expected_name": "python-packaging",
+   "expected_content_hash": "7942ea4581b52106010930b6ee24f8c7bf3ee32b052b5a7645d971c873f572fa"
+  },
+  {
+   "id": "intelligent-detection-tokenizers",
+   "parent_repo": "kiterlin/intelligent-detection-system",
+   "path": ".claude/skills/huggingface-tokenizers/SKILL.md",
+   "source_url": "https://github.com/kiterlin/intelligent-detection-system/tree/HEAD/.claude/skills/huggingface-tokenizers",
+   "expected_name": "huggingface-tokenizers",
+   "expected_content_hash": "dbaf662cf637ef23bfa4ec3f732a31c76a6f6428da0e2264fb3b1ab888b214e9"
+  },
+  {
+   "id": "bioinformatics-python-core-bio",
+   "parent_repo": "pavel-kravchenko/bioinformatics",
+   "path": "Skills/python-core-bio/SKILL.md",
+   "source_url": "https://github.com/pavel-kravchenko/bioinformatics/tree/HEAD/Skills/python-core-bio",
+   "expected_name": "python-core-bio",
+   "expected_content_hash": "3eba73f2a4b247b0bf881c3b3e35828aba9c3342ca228c635993e50ffef60dc0"
+  },
+  {
+   "id": "bioinformatics-primer-design",
+   "parent_repo": "pavel-kravchenko/bioinformatics",
+   "path": "Skills/bio-applied-primer-design/SKILL.md",
+   "source_url": "https://github.com/pavel-kravchenko/bioinformatics/tree/HEAD/Skills/bio-applied-primer-design",
+   "expected_name": "bio-applied-primer-design",
+   "expected_content_hash": "4e60a66213d15b486bfebb33182b366a5edc1795a9d1436b0b7e8c8912718711"
+  },
+  {
+   "id": "secure-vibe-error-handling",
+   "parent_repo": "shieldnet-360/secure-vibe",
+   "path": "dist/copilot-skills/.github/skills/error-handling-security/SKILL.md",
+   "source_url": "https://github.com/shieldnet-360/secure-vibe/tree/HEAD/dist/copilot-skills/.github/skills/error-handling-security",
+   "expected_name": "error-handling-security",
+   "expected_content_hash": "baf2aecd433c42948b0851d665e66ea994c0d32f5781fe8cc78766b3d24938e0"
+  },
+  {
+   "id": "claude-security-secret-hygiene",
+   "parent_repo": "goldenwing-360/claude-security-skills",
+   "path": "secret-hygiene/SKILL.md",
+   "source_url": "https://github.com/goldenwing-360/claude-security-skills/tree/HEAD/secret-hygiene",
+   "expected_name": "secret-hygiene",
+   "expected_content_hash": "1a44a820bca7a83026d6dbe1641807208f72526fa01271d22c3b1f2f950f7168"
+  },
+  {
+   "id": "agent-skills-interminai",
+   "parent_repo": "drolu/agent-skills",
+   "path": "skills/interminai/SKILL.md",
+   "source_url": "https://github.com/drolu/agent-skills/tree/HEAD/skills/interminai",
+   "expected_name": "interminai",
+   "expected_content_hash": "3160844a10818997cc371a415a2c219a0f8c1e029b7b43a90d073f029500a3c7"
+  },
+  {
+   "id": "cowrangler-huggingface-hub",
+   "parent_repo": "furkangonel/cowrangler",
+   "path": "bundled_skills/mlops/huggingface-hub/SKILL.md",
+   "source_url": "https://github.com/furkangonel/cowrangler/tree/HEAD/bundled_skills/mlops/huggingface-hub",
+   "expected_name": "huggingface-hub",
+   "expected_content_hash": "9c804c0edb336b2b100ae86fcf185d4d928f778bc3d35c8391358c0842f781ef"
+  },
+  {
+   "id": "claude-code-skills-matlab",
+   "parent_repo": "leolin990405/claude-code-skills",
+   "path": "research/claude-scientific-skills/scientific-skills/matlab/SKILL.md",
+   "source_url": "https://github.com/leolin990405/claude-code-skills/tree/HEAD/research/claude-scientific-skills/scientific-skills/matlab",
+   "expected_name": "matlab",
+   "expected_content_hash": "9830ab575e8cc11a40b18752ea678bcb2c1414617338d629bb410334fef498fa"
+  },
+  {
+   "id": "techops-merge-conflict",
+   "parent_repo": "zegocover/techops-tf_aws_metadata",
+   "path": ".claude/skills/zego-fix-merge-conflict/SKILL.md",
+   "source_url": "https://github.com/zegocover/techops-tf_aws_metadata/tree/HEAD/.claude/skills/zego-fix-merge-conflict",
+   "expected_name": "zego-fix-merge-conflict",
+   "expected_content_hash": "71b69e5df9d9028979965282791815fb78cde92387b3b6fe47f0133d9e4ff953"
+  },
+  {
+   "id": "cdesign-embedding-strategies",
+   "parent_repo": "steph-frtech/cdesign-expo",
+   "path": ".claude/marketplaces/wshobson/plugins/llm-application-dev/skills/embedding-strategies/SKILL.md",
+   "source_url": "https://github.com/steph-frtech/cdesign-expo/tree/HEAD/.claude/marketplaces/wshobson/plugins/llm-application-dev/skills/embedding-strategies",
+   "expected_name": "embedding-strategies",
+   "expected_content_hash": "86be025ad871657cfcfc4d8a9e60a78520cf841629c33dda06fd304228f3a8ab"
+  },
+  {
+   "id": "claude-code-base-nginx",
+   "parent_repo": "housegarofalo/claude-code-base",
+   "path": ".claude/skills/nginx-proxy/SKILL.md",
+   "source_url": "https://github.com/housegarofalo/claude-code-base/tree/HEAD/.claude/skills/nginx-proxy",
+   "expected_name": "nginx-proxy",
+   "expected_content_hash": "dae08c36c6976ab2778c4b362155519fd894562ece09d3972ae3f64394ca82d5"
+  },
+  {
+   "id": "auto-empirical-latex",
+   "parent_repo": "brycewang-stanford/auto-empirical-research-skills",
+   "path": "skills/14-luischanci-claude-code-research-starter/dot-claude/skills/compile-latex/SKILL.md",
+   "source_url": "https://github.com/brycewang-stanford/auto-empirical-research-skills/tree/HEAD/skills/14-luischanci-claude-code-research-starter/dot-claude/skills/compile-latex",
+   "expected_name": "compile-latex",
+   "expected_content_hash": "76b503dc8211375bdb549278aa16cd9e7ec20886e68f48f7f192d0caca16e44e"
+  },
+  {
+   "id": "cybersec-toolkit-ctf-rev",
+   "parent_repo": "26zl/cybersec-toolkit",
+   "path": ".claude/skills/ctf-rev/SKILL.md",
+   "source_url": "https://github.com/26zl/cybersec-toolkit/tree/HEAD/.claude/skills/ctf-rev",
+   "expected_name": "ctf-rev",
+   "expected_content_hash": "2a414b0567199417f35ba294214db11463d16b959026112cfde57f40244fb412"
+  },
+  {
+   "id": "eve-agent-risk-metrics",
+   "parent_repo": "jeffgreen311/eve-agent-v2-unleashed",
+   "path": ".claude/skills/risk-metrics-calculation/SKILL.md",
+   "source_url": "https://github.com/jeffgreen311/eve-agent-v2-unleashed/tree/HEAD/.claude/skills/risk-metrics-calculation",
+   "expected_name": "risk-metrics-calculation",
+   "expected_content_hash": "20acb2021884e6aba61f08ada0aa5ee5f7ab9d20ee5b941057368d79452fda33"
+  },
+  {
+   "id": "bioinformatics-biopython",
+   "parent_repo": "pavel-kravchenko/bioinformatics",
+   "path": "Skills/bio-core-biopython-essentials/SKILL.md",
+   "source_url": "https://github.com/pavel-kravchenko/bioinformatics/tree/HEAD/Skills/bio-core-biopython-essentials",
+   "expected_name": "bio-core-biopython-essentials",
+   "expected_content_hash": "d2c5a8de953a8f83a5230b7bd6c546facee62386df21b3b3bf409e96ad7184ba"
+  },
+  {
+   "id": "awesome-copilot-pypi",
+   "parent_repo": "github/awesome-copilot",
+   "path": "skills/python-pypi-package-builder/SKILL.md",
+   "source_url": "https://github.com/github/awesome-copilot/tree/HEAD/skills/python-pypi-package-builder",
+   "expected_name": "python-pypi-package-builder",
+   "expected_content_hash": "39c37821dc87bf05860a4214a9089b4e5d6c3ae94e8bbe2ee5e96c5e8636519c"
+  },
+  {
+   "id": "awesome-copilot-sql",
+   "parent_repo": "github/awesome-copilot",
+   "path": "skills/sql-optimization/SKILL.md",
+   "source_url": "https://github.com/github/awesome-copilot/tree/HEAD/skills/sql-optimization",
+   "expected_name": "sql-optimization",
+   "expected_content_hash": "4574ca0a60aee4579c88b1f76b9f84dfa6fa61893b53ce4dfeb7fd5ba07b99f5"
+  },
+  {
+   "id": "skills-regex-master",
+   "parent_repo": "skillmedev/skills",
+   "path": "skills/regex-master/SKILL.md",
+   "source_url": "https://github.com/skillmedev/skills/tree/HEAD/skills/regex-master",
+   "expected_name": "Regex Master",
+   "expected_content_hash": "911837a18032f680d1c3cdd630194a67131bf03cceb64053f4f00dcff0f479a8"
+  },
+  {
+   "id": "secret-hygiene-standalone",
+   "parent_repo": "dimaad5017-dotcom/secret-hygiene",
+   "path": "skills/secret-hygiene/SKILL.md",
+   "source_url": "https://github.com/dimaad5017-dotcom/secret-hygiene/tree/HEAD/skills/secret-hygiene",
+   "expected_name": "secret-hygiene",
+   "expected_content_hash": "1c1496d501b6c2e49b5d891dd5b1aa2a3cb654969f8b9bcd3773807cf1bcb01d"
+  }
+ ],
+ "retired": [
+  {
+   "id": "prompthound-file-processor",
+   "parent_repo": "knownasnaffy/prompthound",
+   "path": "dataset/case_00264/SKILL.md",
+   "source_url": "https://github.com/knownasnaffy/prompthound/tree/HEAD/dataset/case_00264",
+   "expected_name": "ca-file-processor",
+   "expected_content_hash": "33bd5c356e8fade73700f6c5c95a4e85af36b7c19919dd89df938e81bc430a60",
+   "retired_at": "2026-08-03",
+   "retired_reason": "Contaminated canary. Points at knownasnaffy/prompthound dataset/case_00264 -- a RED-TEAM EVAL FIXTURE that copies a real skill and adds an injected 'Permission Setup Review' block. A canary must be a known-GOOD skill; this one is known-hostile test material, and its upstream (purvik6062/ca-file-processor) returns 404. Retired rather than repointed. Found by the fixture-path gate."
+  }
+ ]
+}

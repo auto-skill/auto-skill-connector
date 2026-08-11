@@ -1,0 +1,2563 @@
+{
+ "n_sampled": 260,
+ "n_haiku": 260,
+ "n_graded": 255,
+ "haiku_keep_rate_on_luna_keeps": 0.9769,
+ "summary_preference": {
+  "luna": 94,
+  "haiku": 156,
+  "tie": 5
+ },
+ "items": [
+  {
+   "skill_id": "sighting:223270e969fb62184888cbadd9620105",
+   "winner": "luna",
+   "luna_summary": "Documentation-sweep workflow for auditing accuracy and coverage, updating docs, red-team reviewing changes, filing code bugs, and opening a pull request.",
+   "haiku_summary": "Documentation sweep workflow ensuring code-docs alignment through codebase review, stale claim fixes, coverage gap filling, and PR submission with red-team verification.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.84,
+   "haiku_spec": 0.85
+  },
+  {
+   "skill_id": "sighting:8aec668988cd903612aaab67db23982a",
+   "winner": "luna",
+   "luna_summary": "Compiles a game seed and required intake artifacts into a schema-valid game thesis, enforcing portfolio distinctness, manifest updates, design registers, risks, and validation boundaries.",
+   "haiku_summary": "Transform game seed manifests to schema-valid design theses with design register, loop candidates, depth mechanisms, engine candidates, and kill conditions.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.95,
+   "haiku_spec": 0.95
+  },
+  {
+   "skill_id": "sighting:779cd9ee6629240f7cb231f22c4126ca",
+   "winner": "luna",
+   "luna_summary": "Installs or integrates a Spec Harness through a documented command workflow, interview, agents, memory bank, verifier, ratcheting rules, and learning loop.",
+   "haiku_summary": "Install and configure Spec Harness in repositories, either greenfield or integrated mode, with memory bank setup and learning loop initialization.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.88,
+   "haiku_spec": 0.75
+  },
+  {
+   "skill_id": "sighting:e5241a6c2caa0b0ba69644a721456392",
+   "winner": "luna",
+   "luna_summary": "Systematic browser UI validation using Chrome DevTools MCP for screenshots, interactions, console and network debugging, visual fidelity, accessibility, responsive checks, and reports.",
+   "haiku_summary": "Browser-based UI testing with Chrome DevTools, visual design validation via AI vision models, console error investigation, network monitoring, and accessibility checks.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.95,
+   "haiku_spec": 0.9
+  },
+  {
+   "skill_id": "614880ab-3319-4f66-9099-93f7851b5761",
+   "winner": "luna",
+   "luna_summary": "Designs traceable software test cases from BRDs and business rules across normal, boundary, exception, compliance, performance, and security categories with explicit coverage gates.",
+   "haiku_summary": "Design test cases covering five categories: normal paths, boundary conditions, exception paths, compliance validation, and performance/security with coverage metrics and case structure templates.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.9,
+   "haiku_spec": 0.85
+  },
+  {
+   "skill_id": "sighting:08fd6fb8a6c91b2f6760ae0f2d2e1dac",
+   "winner": "luna",
+   "luna_summary": "Defines a guarded workflow for merging pull requests, cleaning stale worktrees, consolidating plans, checking uncommitted changes and CI, merging through GitHub CLI, and verifying status.",
+   "haiku_summary": "Merge open PRs with CI validation, worktree cleanup, plan file consolidation, and PR readiness checks, managing stale merged-but-unremoved worktrees.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.96,
+   "haiku_spec": 0.88
+  },
+  {
+   "skill_id": "e7190115-60b2-4f1f-a79d-54561b3e37d1",
+   "winner": "haiku",
+   "luna_summary": "Explains how to generate and organize Copilot or multi-agent instruction files with AgentRC, including flat or nested strategies, area globs, dry runs, confirmation, and verification.",
+   "haiku_summary": "Generate and maintain AI agent instructions for Copilot/Claude using AgentRC, supporting flat and nested layouts with per-area scopes and VS Code integration.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.88,
+   "haiku_spec": 0.85
+  },
+  {
+   "skill_id": "sighting:3bfc29caa5c47561408f315dd2591b25",
+   "winner": "luna",
+   "luna_summary": "A detailed Portuguese persona skill for simulating Bill Gates, with historical framing, analytical models, response structures, operational rules, and usage boundaries.",
+   "haiku_summary": "Bill Gates persona simulation with strategic thinking frameworks, mental models, decision-making patterns, technology perspectives, and business strategy reasoning.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.72,
+   "haiku_spec": 0.75
+  },
+  {
+   "skill_id": "sighting:92908904429468f742b45ff5a148f658",
+   "winner": "luna",
+   "luna_summary": "Defines an opt-in lightweight workflow for narrow low-risk repository changes, with scope limits, focused verification, skipped-gate reporting, commit rules, and escalation criteria.",
+   "haiku_summary": "Lightweight development workflow for narrow, low-risk changes with focused verification, explicit gate skipping report, and scoped file modifications.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.75,
+   "haiku_spec": 0.8
+  },
+  {
+   "skill_id": "61d031e7-f61c-4781-8070-c8feecb02e0f",
+   "winner": "haiku",
+   "luna_summary": "Defines a guarded sprint implementation workflow with feedback review, code changes, tests, acceptance-criteria evidence, reporting, and verification gates.",
+   "haiku_summary": "Execute sprint tasks with production-quality code and comprehensive testing, acceptance criteria verification, iterative feedback integration, and structured reporting.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.9,
+   "haiku_spec": 0.8
+  },
+  {
+   "skill_id": "sighting:c106e5b214ebde9175c221e8c64fee75",
+   "winner": "luna",
+   "luna_summary": "Tailwind CSS styling reference for common layout, typography, color, responsive, and interactive utility classes in a Next.js Todo frontend.",
+   "haiku_summary": "Tailwind CSS utility-first styling reference with common class patterns for layout, typography, colors, and interactive states for frontend components.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.55,
+   "haiku_spec": 0.95
+  },
+  {
+   "skill_id": "sighting:81cc6837b6cf6ec238eba4b1130660a1",
+   "winner": "haiku",
+   "luna_summary": "Specifies a seven-criteria code review process with security escalation, finding remediation, GitHub issue artifact posting, and PR gating requirements.",
+   "haiku_summary": "Systematic code review across seven criteria (blindspots, clarity, maintainability, security, performance, documentation, standards) with mandatory GitHub issue reporting.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.73,
+   "haiku_spec": 0.75
+  },
+  {
+   "skill_id": "d206c196-715f-41e7-bb06-cf326bbae9f9",
+   "winner": "luna",
+   "luna_summary": "Presents a Chinese-language Xiaohongshu content-operations framework centered on content-led growth, IP positioning, account matrices, cross-platform reuse, brand content, and decision heuristics.",
+   "haiku_summary": "Content-driven strategy for Chinese social media platforms emphasizing IP building, multi-account matrices, cross-platform replication, and audience-building over ads.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.9,
+   "haiku_spec": 0.9
+  },
+  {
+   "skill_id": "eba0fb9b-9b85-4254-977e-0ded09617b4d",
+   "winner": "luna",
+   "luna_summary": "Implements a queue-driven batch plan executor with argument parsing, mode selection, cron scheduling, locking, state recovery, dispatch, failure handling, and plan-queue maintenance.",
+   "haiku_summary": "Batch-execute prioritized task plans with queue management, cron scheduling, mode overrides, and cross-session locking for deterministic workflow automation.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.95,
+   "haiku_spec": 0.9
+  },
+  {
+   "skill_id": "98db8793-b5d8-4dce-ad14-fee7320bba3b",
+   "winner": "luna",
+   "luna_summary": "Provides evidence-based security review guidance for implemented trust-boundary changes, including authentication, secrets, input handling, filesystem safety, SSRF, web controls, dependencies, artifacts, and calibrated findings.",
+   "haiku_summary": "Concrete security audit for authentication, cryptography, input validation, injection, SSRF, filesystem safety, data protection, dependencies, and trust boundaries.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.86,
+   "haiku_spec": 0.85
+  },
+  {
+   "skill_id": "sighting:36115bafd39a377df3b23e13fe5e586b",
+   "winner": "luna",
+   "luna_summary": "A verified setup and troubleshooting guide for remote Delve DAP debugging of Go services running in Tilt-managed Kubernetes from VS Code.",
+   "haiku_summary": "Remote Delve debugging setup for Go services in Tilt/Kubernetes with binary compilation, Dockerfile configuration, Kustomize overlays, port forwarding, and VS Code DAP integration.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 1.0,
+   "haiku_spec": 0.95
+  },
+  {
+   "skill_id": "c4da93a3-2f6f-4600-92a8-87fb6880c0e8",
+   "winner": "haiku",
+   "luna_summary": "Provides Java SDK procedures for Telnyx voice gathering, DTMF and speech collection, AI assistants, audio prompts, error handling, and signed webhook verification.",
+   "haiku_summary": "Telnyx Voice Gather Java SDK guide for collecting DTMF input and speech with examples for standard gather, AI-powered gather, audio playback, and webhook handling.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.95,
+   "haiku_spec": 0.95
+  },
+  {
+   "skill_id": "sighting:2cd3fe50447d4303bf00c2abe3b8dc17",
+   "winner": "haiku",
+   "luna_summary": "A broad Kubernetes operations skill covering production manifests, security hardening, Kyverno, ArgoCD, networking, RBAC, autoscaling, troubleshooting, and cluster operations.",
+   "haiku_summary": "Kubernetes operational expertise covering manifests, Kyverno policies, OPA/Gatekeeper, ArgoCD GitOps, AKS/TKG, RBAC, debugging, and production-grade deployment patterns.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.95,
+   "haiku_spec": 0.85
+  },
+  {
+   "skill_id": "f2c5907f-64a0-4f3e-b416-a0b00f1ac0df",
+   "winner": "haiku",
+   "luna_summary": "Specifies how to parse absolute or relative times, choose a resume command, schedule a future Claude Code session, confirm details, and warn about dirty worktrees.",
+   "haiku_summary": "Schedule future GSD project resumption at specific times or relative delays with command override, timezone handling, and HANDOFF state preservation.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.85,
+   "haiku_spec": 0.85
+  },
+  {
+   "skill_id": "a2517b73-800d-4dfd-83d3-4321b01ec1a0",
+   "winner": "haiku",
+   "luna_summary": "A CLI-based LinkedIn influencer discovery workflow using an Apify actor, with topic, geography, language, follower, email, output, pagination, cost, and enrichment guidance.",
+   "haiku_summary": "LinkedIn influencer discovery via Apify actor, filtering by topic, country, follower count, and email availability with CLI examples and cost estimates.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.91,
+   "haiku_spec": 0.9
+  },
+  {
+   "skill_id": "sighting:e5fc0e06ef8c9ceaaf3d1b80627d8332",
+   "winner": "luna",
+   "luna_summary": "Workflow for extracting ECharts examples and converting them into registered Streamlit st_echarts demos, including JavaScript-to-Python translation, interactive drilldowns, and verification.",
+   "haiku_summary": "Transform ECharts editor examples to Streamlit st_echarts Python code with JS-to-Python translation, render function patterns, and interactive chart state management.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.96,
+   "haiku_spec": 0.92
+  },
+  {
+   "skill_id": "69164c03-68c0-4d56-96f4-9bd6c0f6f08a",
+   "winner": "haiku",
+   "luna_summary": "Summarizes and applies RICE, Kano, MoSCoW, and Value-versus-Effort prioritization frameworks for backlog ranking, release scoping, and feature classification.",
+   "haiku_summary": "Prioritization frameworks including RICE scoring, Kano model (basic/performance/delighter), MoSCoW classification, and Value vs Effort 2x2 matrix with application guidance.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.6,
+   "haiku_spec": 0.65
+  },
+  {
+   "skill_id": "35b34335-590b-4073-8030-0217ef0e1c44",
+   "winner": "haiku",
+   "luna_summary": "Provides local Whisper CLI commands for speech transcription and translation, including model, output format, output directory, and caching guidance.",
+   "haiku_summary": "OpenAI Whisper local speech-to-text command-line usage with model selection, file format support, task options, and cache management.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.9,
+   "haiku_spec": 0.95
+  },
+  {
+   "skill_id": "684c9c52-62e6-4f28-9bcd-1ce991b90e31",
+   "winner": "luna",
+   "luna_summary": "Guides idiomatic Kotlin implementation across coroutines, Flow, KMP, Android Compose, Ktor, DSLs, modeling, testing, and performance.",
+   "haiku_summary": "Kotlin specialist guidance for coroutines, Kotlin Multiplatform development, Jetpack Compose, Ktor servers, type-safe DSLs with production patterns and testing.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.86,
+   "haiku_spec": 0.9
+  },
+  {
+   "skill_id": "4f0f0708-f945-41e8-a556-b159415887b5",
+   "winner": "luna",
+   "luna_summary": "Defines production Android Kotlin coroutine practices for dispatcher injection, lifecycle-safe Flow collection, ViewModel scopes, cancellation, callback conversion, exception handling, and testing.",
+   "haiku_summary": "Android-specific Kotlin coroutines patterns enforcing main-safety, lifecycle-aware collection, ViewModelScope usage, proper cancellation, and exception handling.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.9,
+   "haiku_spec": 0.95
+  },
+  {
+   "skill_id": "sighting:87e66351ce52b9b7b183bff77201ee3e",
+   "winner": "luna",
+   "luna_summary": "Defines a reusable workplace-experience capability covering workplace software, booking policies, utilization metrics, NPS, hybrid rituals, ABW, adaptation, and session records.",
+   "haiku_summary": "Workplace Experience strategy covering tech stack selection (Robin/Envoy), booking policies, utilization metrics, NPS measurement, hybrid rituals, and ABW implementation.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.78,
+   "haiku_spec": 0.85
+  },
+  {
+   "skill_id": "sighting:a8799929fac212eaac41a740d508e888",
+   "winner": "luna",
+   "luna_summary": "HelloNotes macOS release workflow covering Release builds, universal DMG packaging, notarization, signature and architecture checks, website metadata synchronization, GitHub publishing, and download verification.",
+   "haiku_summary": "macOS DMG release pipeline with archive building, code signing, notarization, website metadata sync, and verification against the shipped artifact.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.93,
+   "haiku_spec": 0.95
+  },
+  {
+   "skill_id": "sighting:d36e75c9ac5b578f4599935d81911300",
+   "winner": "haiku",
+   "luna_summary": "Audits recent decisions against ownership, options, criteria, assumptions, inputs, timing, and improvability, producing scored reports and trend analysis.",
+   "haiku_summary": "Decision quality audit across seven criteria (ownership, options, success, triggers, assumptions, input, timing) with improvability scoring by decision class and trend analysis.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.75,
+   "haiku_spec": 0.8
+  },
+  {
+   "skill_id": "3217cd7d-6dc4-48d5-a0f0-5bc409287ebb",
+   "winner": "luna",
+   "luna_summary": "Guides creation, testing, benchmarking, qualitative review, iterative improvement, description optimization, and packaging of Claude skills.",
+   "haiku_summary": "Skill creation and evaluation framework supporting test case design, parallel evaluation runs, quantitative benchmarking, visual review interface, and iterative optimization.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.88,
+   "haiku_spec": 0.75
+  },
+  {
+   "skill_id": "sighting:848ef673c0af59bc4b34ddf0644ae466",
+   "winner": "luna",
+   "luna_summary": "Documents the Todoist `td` CLI for task, project, workspace, label, filter, comment, reminder, backup, app, billing, authentication, and automation workflows.",
+   "haiku_summary": "Todoist CLI (`td`) command reference covering task management, projects, labels, filters, sections, comments, webhooks, templates, backups, and multi-account workflows.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.94,
+   "haiku_spec": 0.95
+  },
+  {
+   "skill_id": "sighting:6af8add11064bc327a7a7de7ec4d20fe",
+   "winner": "luna",
+   "luna_summary": "Provides a concise evidence-based debugging workflow: define expected versus actual behavior, reproduce the issue, add a regression test, fix the root cause, and validate the pipeline.",
+   "haiku_summary": "Systematic bug diagnosis with evidence collection, regression test creation, root cause fixing, and validation through complete pipeline testing.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.55,
+   "haiku_spec": 0.6
+  },
+  {
+   "skill_id": "ddf6f5c5-ff58-4347-85fc-efd0a50be5e3",
+   "winner": "tie",
+   "luna_summary": "Enforces Vertical Slice Architecture placement and isolation rules, with procedures for placing classes and modules or auditing cross-slice imports, shared types, events, and orchestration.",
+   "haiku_summary": "Guide placement of classes and modules under Vertical Slice Architecture rules, audit for cross-slice violations, detect isolation leaks, prescribe moves to restore module boundaries.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.8,
+   "haiku_spec": 0.85
+  },
+  {
+   "skill_id": "sighting:bd03c1c8f908da2b3b7802fc0e3dac66",
+   "winner": "luna",
+   "luna_summary": "Summarizes substantial commits authored by the current Git user over a specified date range while excluding merge and cosmetic-only changes.",
+   "haiku_summary": "Summarize authored commits over a specified time window into concise work status update, excluding cosmetic changes, describing behavioral and architectural shifts only.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.55,
+   "haiku_spec": 0.6
+  },
+  {
+   "skill_id": "sighting:798e7e81cafa296f385eeb1eda9fa584",
+   "winner": "haiku",
+   "luna_summary": "Defines a guarded workflow for importing a selected path from template/main, handling remotes, divergence, three-way merges, staging, conflict detection, validation, SHA updates, and optional commits.",
+   "haiku_summary": "Cherry-pick a path from template repository, detect divergence with merge-file, apply 3-way merges where needed, offer SHA update, commit with audit trail.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.9,
+   "haiku_spec": 0.8
+  },
+  {
+   "skill_id": "sighting:ca984136843c5b85398f091bd97fb7f5",
+   "winner": "haiku",
+   "luna_summary": "Provides a reusable workflow for exploring multiple disposable design or implementation prototypes, labeling their underlying assumptions, collecting reactions, and extracting requirements.",
+   "haiku_summary": "Generate three to five wildly different disposable design/UX variations labeled with underlying beliefs, collect reactions to reveal real underlying requirements.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.72,
+   "haiku_spec": 0.5
+  },
+  {
+   "skill_id": "71969857-26b0-4294-ab78-4a2f48b9d159",
+   "winner": "haiku",
+   "luna_summary": "Provides a session-closing workflow covering reconciliation, testing, cleanup, refactoring, documentation, ticket status, follow-ups, and final session reporting.",
+   "haiku_summary": "Close development session: reconcile outcomes against plan, run test/refactor pass, file follow-up tickets, capture documentation, update session state.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.8,
+   "haiku_spec": 0.85
+  },
+  {
+   "skill_id": "sighting:0b96af82046480cf7759369ef3d4f24d",
+   "winner": "haiku",
+   "luna_summary": "Defines a confirmation-gated workflow for synchronizing Japanese project documentation with API, schema, design, architecture, security, testing, and operations changes.",
+   "haiku_summary": "Sync documentation in docs/ after code changes: map change type to file, propose diffs, wait for confirmation, apply changes surgically.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.84,
+   "haiku_spec": 0.85
+  },
+  {
+   "skill_id": "sighting:06616f445d14f6d714c20d69a829a089",
+   "winner": "haiku",
+   "luna_summary": "Creates and maintains project design plans with prescribed locations, naming, progress tracking, checkbox structure, README indexing, and completion rules.",
+   "haiku_summary": "Create or update design plans in plan/ directory following standard structure with checkboxes and progress tracking, maintain README as truth.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.8,
+   "haiku_spec": 0.6
+  },
+  {
+   "skill_id": "sighting:d46fe3ce4fa90e8712548886b6f3655b",
+   "winner": "luna",
+   "luna_summary": "Defines an XR interface architect persona with guidance for spatial layouts, multimodal input, comfort, discoverability, accessibility, and immersive interaction design.",
+   "haiku_summary": "XR interface designer persona for spatial UIs, minimizing sickness, multimodal input in immersive environments.",
+   "luna_real": true,
+   "haiku_real": false,
+   "luna_spec": 0.82,
+   "haiku_spec": 0.8
+  },
+  {
+   "skill_id": "sighting:70cf3b82cdad4000d7ab5c8803710edb",
+   "winner": "haiku",
+   "luna_summary": "Defines Localsetup framework context, resolver contracts, package materialization, adapter handling, repair procedures, validation, and task-to-skill matching.",
+   "haiku_summary": "Localsetup framework context: resolver paths, invariants, adapter materialization, doctor repair, public/private boundaries, validation commands, skills catalog.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.92,
+   "haiku_spec": 0.9
+  },
+  {
+   "skill_id": "sighting:eeda75abc4cb74fa0a28dcbdb84525a4",
+   "winner": "haiku",
+   "luna_summary": "Defines a comprehensive Graphify pipeline for detecting, extracting, clustering, querying, exporting, updating, and maintaining persistent knowledge graphs from code and multimedia corpora.",
+   "haiku_summary": "Turn code, docs, papers, images, video into persistent knowledge graphs with community detection, audit trail, HTML/Obsidian/JSON exports, query interface.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.96,
+   "haiku_spec": 0.9
+  },
+  {
+   "skill_id": "sighting:83bd27b178305440bc45199e25116590",
+   "winner": "haiku",
+   "luna_summary": "Databricks CLI workflow for importing and exporting files, directories, notebooks, SQL, profiles, formats, backups, validation, and troubleshooting.",
+   "haiku_summary": "Upload and download files to/from Databricks workspace using CLI with correct argument order, format handling, interactive prompts, error recovery.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.94,
+   "haiku_spec": 0.85
+  },
+  {
+   "skill_id": "sighting:825f9899e811acb34baab48161aae86a",
+   "winner": "luna",
+   "luna_summary": "TypeScript audit and remediation guidance enforcing Supabase-derived types, runtime validation, strict typing, exhaustive unions, and elimination of any, unsafe assertions, and duplicate entities.",
+   "haiku_summary": "Audit TypeScript for type safety, anti-patterns, duplicate definitions; enforce Supabase types as source of truth with proper conversion.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.92,
+   "haiku_spec": 0.9
+  },
+  {
+   "skill_id": "2a0676f6-9220-48ca-a4ad-4a36cbcf3bb9",
+   "winner": "haiku",
+   "luna_summary": "Provides educational coverage of the history and philosophy of science, including theories, paradigms, landmark discoveries, scientific creativity, institutions, and society.",
+   "haiku_summary": "Teach history and philosophy of science: paradigm shifts, theory vs hypothesis vs law, landmark discoveries, creativity, science-society relationships.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.7,
+   "haiku_spec": 0.8
+  },
+  {
+   "skill_id": "99111842-b01a-426d-91d1-9117b19ef035",
+   "winner": "luna",
+   "luna_summary": "Provides an interactive two-stage model-alias picker and instructs users how to switch or persist the selected Claude model.",
+   "haiku_summary": "Present interactive two-step model picker by tier then variant displaying all Claude aliases with descriptions and versions.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.78,
+   "haiku_spec": 0.4
+  },
+  {
+   "skill_id": "sighting:75c7f5783212673d35cdce447fd0f993",
+   "winner": "luna",
+   "luna_summary": "Evidence-based journal-entry workflow covering context loading, validation evidence, classification, metadata, references, safe redaction, timeline maintenance, and concise reporting.",
+   "haiku_summary": "Create canonical journal entry documenting work: gather evidence from commits/files/commands, classify as implementation or status, structure appropriately.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.86,
+   "haiku_spec": 0.85
+  },
+  {
+   "skill_id": "sighting:436cda0875d8202a937ce21d7eb7337b",
+   "winner": "haiku",
+   "luna_summary": "Explains how to orchestrate Claude Code through print mode or tmux PTY sessions, including authentication, permissions, structured output, session continuation, MCP, hooks, monitoring, and safety practices.",
+   "haiku_summary": "Orchestrate Claude Code CLI for coding tasks: choose print mode for one-shots or tmux for multi-turn, manage permissions, MCP.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.95,
+   "haiku_spec": 0.9
+  },
+  {
+   "skill_id": "cf66e8c9-925f-40f1-8b18-9e238b896bd0",
+   "winner": "luna",
+   "luna_summary": "Guides academic prose drafting, rewriting, condensation, diagnosis, and final scrubbing while preserving claims, citations, LaTeX, terminology, and evidence discipline.",
+   "haiku_summary": "Write precise academic prose preserving claims, citations, LaTeX: pin behavior before rewrites, follow thesis register, validate integrity, separate interpretation.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.8,
+   "haiku_spec": 0.9
+  },
+  {
+   "skill_id": "63e66714-0885-458a-9e1c-6f444bbf0f05",
+   "winner": "luna",
+   "luna_summary": "Applies audience awareness, psychological mechanisms, customer language, proof placement, ethical persuasion, and low-friction calls to action when developing conversion copy.",
+   "haiku_summary": "Apply evidence-based psychology to conversion copy: anchor belief, translate JTBD to progress, choose mechanism, mirror voice, close.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.7,
+   "haiku_spec": 0.7
+  },
+  {
+   "skill_id": "508018fd-ba0c-4859-8d66-838471bed9f6",
+   "winner": "luna",
+   "luna_summary": "Explains practical Go interface design, including consumer-side interfaces, small compositions, concrete returns, compile-time compliance checks, functional options, and common anti-patterns.",
+   "haiku_summary": "Design Go interfaces: define at consumer not producer, keep 1-3 methods max, accept interfaces/return structs, verify compliance.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.85,
+   "haiku_spec": 0.9
+  },
+  {
+   "skill_id": "5ba5037e-5dcb-499e-a30e-b460130be289",
+   "winner": "haiku",
+   "luna_summary": "A sub-agent workflow for ingesting sources into an LLM wiki, reviewing proposed changes with the user, updating linked pages, flagging contradictions, and regenerating indexes.",
+   "haiku_summary": "Ingest sources into LLM wiki: read and propose summary with claims, identify touched pages, flag contradictions, update references, regenerate.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.83,
+   "haiku_spec": 0.85
+  },
+  {
+   "skill_id": "2c6fa58d-afa5-4ab6-90cd-7d014f404f31",
+   "winner": "haiku",
+   "luna_summary": "Provides a canon-grounded process for authoring, validating, gating, registering, and committing a Tier-1 citizen voice agent across identity, lens, rules, and skill files.",
+   "haiku_summary": "Author Tier-1 citizen voice agent: gather canon corpus, distill voice anchor, write IDENTITY/LENS/RULES/SKILL, validate, gate.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.96,
+   "haiku_spec": 0.9
+  },
+  {
+   "skill_id": "sighting:def8c785dd725daa496e402894cfd15d",
+   "winner": "haiku",
+   "luna_summary": "Provides academic literature research workflows using paper-search, arXiv, Semantic Scholar, AlphaXiv, WebSearch, citation tracing, full-text retrieval, and bibliography building.",
+   "haiku_summary": "Search and analyze academic papers: use paper-search MCP for topics, AlphaXiv for overviews, semantic-scholar for citations, build bibliographies.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.86,
+   "haiku_spec": 0.8
+  },
+  {
+   "skill_id": "7575fd6a-66c6-4212-94cd-999567589317",
+   "winner": "luna",
+   "luna_summary": "Guides German public-procurement review of EU tender documents, covering notices, specifications, eligibility, award criteria, lots, tariff obligations, contract terms, and objections.",
+   "haiku_summary": "Audit EU procurement for GWB compliance: check specs, eligibility, award criteria, losaufteilung, BTTG tariftreue, publish R\u00fcgeliste.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.97,
+   "haiku_spec": 0.95
+  },
+  {
+   "skill_id": "849e3369-2224-4b7e-8294-771be5d20c34",
+   "winner": "haiku",
+   "luna_summary": "Provides an AISP bridge for casting and interpreting I Ching hexagrams, requiring casting before interpretation and framing readings as reflective rather than predictive.",
+   "haiku_summary": "AISP-backed I Ching divination: cast hexagram for question, interpret using hexagrams.json, state findings for reflection only.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.8,
+   "haiku_spec": 0.75
+  },
+  {
+   "skill_id": "a2a67e48-45eb-4e20-9e06-2aeb48b8022d",
+   "winner": "luna",
+   "luna_summary": "Defines a gated, test-first workflow for behavior-preserving refactoring using characterization tests, coverage, semantic tooling, incremental changes, verification, and explicit stop conditions.",
+   "haiku_summary": "Behavior-preserving refactoring: pin with characterization tests before edits, apply one refactor type at a time, prove tests pass.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.78,
+   "haiku_spec": 0.9
+  },
+  {
+   "skill_id": "ffebff03-291b-4517-9bae-768da012d1a2",
+   "winner": "luna",
+   "luna_summary": "Creates Architecture Decision Records in a project-specific arc42 directory by analyzing changes, checking existing ADRs, following a filename and section convention, and verifying results.",
+   "haiku_summary": "Create Architecture Decision Records in docs/arc42: document context, decision drivers, decision, consequences split into positive and tradeoffs.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.82,
+   "haiku_spec": 0.8
+  },
+  {
+   "skill_id": "sighting:34e2a8dc17042851cdb875268b48ce6b",
+   "winner": "luna",
+   "luna_summary": "General documentation-writing workflow that identifies audience, inspects project files, extracts factual technical details, structures documentation, and avoids invented interfaces or commands.",
+   "haiku_summary": "Plan clear documentation by audience: inspect files first, decompose sections, extract facts before prose, avoid invented commands.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.45,
+   "haiku_spec": 0.5
+  },
+  {
+   "skill_id": "sighting:368fb6396a3f218b88465b36952a2a8e",
+   "winner": "haiku",
+   "luna_summary": "Guides vLLM feature design, implementation, performance analysis, Mermaid documentation, and saving a structured design document.",
+   "haiku_summary": "Design vLLM features: clarify requirements, produce design with Mermaid diagrams and data structures, implement core code, save doc.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.96,
+   "haiku_spec": 0.9
+  },
+  {
+   "skill_id": "53b23a32-e815-46ee-b732-9c5654b4e0a0",
+   "winner": "luna",
+   "luna_summary": "Analyzes a codebase and generates a project-specific developer onboarding guide, contribution guide, setup instructions, architecture overview, workflows, and troubleshooting documentation.",
+   "haiku_summary": "Generate developer onboarding guide: analyze tech stack and structure, extract build/test/lint commands, produce setup/architecture/conventions/git.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.7,
+   "haiku_spec": 0.75
+  },
+  {
+   "skill_id": "34b03ef1-44f9-40e0-8099-c25025c6ef4d",
+   "winner": "haiku",
+   "luna_summary": "Provides a governed workflow for one-time LinkedIn campaigns, including narrow audience definition, source selection, enrichment, suppression, approval modes, message drafting, daily caps, launch, enrollment, and logging.",
+   "haiku_summary": "Build ONE-TIME LinkedIn campaigns for narrow ICP: define audience precisely, choose dynamic or static mode, enrich, approve before launch.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.95,
+   "haiku_spec": 0.9
+  },
+  {
+   "skill_id": "6d636b57-a836-4441-b6a6-5098d785190d",
+   "winner": "luna",
+   "luna_summary": "Reviews cloud architecture against requirements for managed services, multi-AZ availability, scaling, networking, least privilege, backups, cost, residency, and explicit human approval before provisioning.",
+   "haiku_summary": "Design cloud architecture: choose managed vs self-hosted, design multi-AZ availability, define autoscaling, layout VPC, attach roles, estimate.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.91,
+   "haiku_spec": 0.9
+  },
+  {
+   "skill_id": "sighting:1308af5eee83b3cdf32eb45693e896de",
+   "winner": "haiku",
+   "luna_summary": "Defines detection logic for .NET test frameworks and distinguishes VSTest from Microsoft.Testing.Platform using SDK, project, and centrally managed configuration signals.",
+   "haiku_summary": "Reference guide for detecting .NET test platform (VSTest vs Microsoft.Testing.Platform) and test framework (MSTest, xUnit, NUnit, TUnit).",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.95,
+   "haiku_spec": 0.85
+  },
+  {
+   "skill_id": "sighting:8828b160f80ef2fa3fd0cec55063451c",
+   "winner": "luna",
+   "luna_summary": "Defines a fail-fast Mise version bump workflow for Bitrise, covering release discovery, checksum verification, GCS mirroring, changelog risk review, source edits, and optional pull-request creation.",
+   "haiku_summary": "Automates Mise version and checksum updates in Go files with validation, changelog review, GCS mirroring, and fail-fast on mismatch.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.95,
+   "haiku_spec": 0.85
+  },
+  {
+   "skill_id": "sighting:e4d76a2e50f431736712458360500ab7",
+   "winner": "luna",
+   "luna_summary": "Audits dependency files, detects package managers, checks outdated packages and vulnerabilities, analyzes major-version risks, and produces prioritized update plans.",
+   "haiku_summary": "Detects package managers, checks vulnerabilities, analyzes breaking changes, generates prioritized upgrade plans across npm, pip, cargo, go, ruby.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.85,
+   "haiku_spec": 0.75
+  },
+  {
+   "skill_id": "11b96ac5-dad6-4bec-bd4e-af0efb0b382c",
+   "winner": "tie",
+   "luna_summary": "Builds a developer-relations program with platform selection, contributor tiers, ambassador criteria, event planning, success metrics, and a 90-day launch checklist.",
+   "haiku_summary": "Builds DevRel program design with community platform selection, contributor tiers, ambassador criteria, event strategy, success metrics, 90-day playbook.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.82,
+   "haiku_spec": 0.85
+  },
+  {
+   "skill_id": "sighting:9f0c59ffb2e42246b1677762161adf2c",
+   "winner": "luna",
+   "luna_summary": "Provides a GitButler-first version-control workflow for inspecting status, branching, committing, pushing, stacking, amending, reordering, and resolving conflicts.",
+   "haiku_summary": "GitButler CLI commands for commits, branches, rebasing, stacking with ID-based mutations, conflict resolution, and git-to-but command mapping.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.96,
+   "haiku_spec": 0.9
+  },
+  {
+   "skill_id": "sighting:aef4e3f9dcba4d639671125d05222f34",
+   "winner": "luna",
+   "luna_summary": "Refines or creates epics, features, tasks, bugs, and chores using type detection, readiness checks, templates, optional codebase analysis, interactive prompts, validation, and project-management updates.",
+   "haiku_summary": "Refines work items into AI-ready specifications using templates, codebase analysis for context, readiness assessment, and auto-generated subtasks.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.91,
+   "haiku_spec": 0.82
+  },
+  {
+   "skill_id": "676c0c7b-53e7-4ab2-af5b-0de4ece1cae8",
+   "winner": "haiku",
+   "luna_summary": "Reports project and session progress by checking Git state, planning documents, roadmap status, verification debt, recent work, blockers, and the next recommended workflow action.",
+   "haiku_summary": "Shows project status, recent work, current phase position, decisions, blockers, verification debt; integrates GSD tooling and cross-session claude-mem context.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.79,
+   "haiku_spec": 0.88
+  },
+  {
+   "skill_id": "sighting:5c23d3c91e4de320967c4afe9e8c36e2",
+   "winner": "luna",
+   "luna_summary": "Teaches use of codemapper commands to inspect symbols, trace callers and callees, explore APIs, assess refactoring impact, and inspect Git history across multiple languages.",
+   "haiku_summary": "Maps symbols across codebases using tree-sitter AST parsing for call graphs, callers, callees, entrypoints; supports Python, JavaScript, Rust, Go, Java, C.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.96,
+   "haiku_spec": 0.9
+  },
+  {
+   "skill_id": "ec5c8fac-801f-45e4-ae2f-25f096175a2f",
+   "winner": "haiku",
+   "luna_summary": "Teaches implementation of Gemini File Search document Q&A, including store setup, uploads, chunking, metadata, polling, deletion, citations, cost controls, model constraints, and backend integrations.",
+   "haiku_summary": "Complete Gemini File Search setup: 12 error patterns documented, chunking configuration, cost optimization, metadata limits, polling timeouts, streaming support.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.96,
+   "haiku_spec": 0.95
+  },
+  {
+   "skill_id": "sighting:7088da421b57434756b46ecb6c23e420",
+   "winner": "luna",
+   "luna_summary": "Defines a guarded blog publishing workflow that validates SEO and AEO, regenerates date metadata, classifies commits, requests confirmation, and pushes approved changes to main.",
+   "haiku_summary": "Blog publishing with SEO/AEO validation: frontmatter checks, title/excerpt length, link verification, internal links, llms.txt freshness, JSON-LD.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.94,
+   "haiku_spec": 0.9
+  },
+  {
+   "skill_id": "sighting:a5684071b7c72496a00b533434a9fd81",
+   "winner": "luna",
+   "luna_summary": "Defines Airbnb-inspired services marketplace listing-card styling for FESTEN, including live-service tokens, photo ratios, typography, metadata hierarchy, responsive grids, and implementation checks.",
+   "haiku_summary": "Airbnb Services listing card design with 3:2 aspect ratio, 24px radius, exact typography, meta hierarchy, grid tokens, hover states for search grids.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.95,
+   "haiku_spec": 0.95
+  },
+  {
+   "skill_id": "4453cbd9-1b22-44f1-a53b-3429ce70ca91",
+   "winner": "luna",
+   "luna_summary": "A city-clerk agent workflow for auditing civic initiative filings, enforcing naming and canon conventions, maintaining registries, updating memory, and performing a constrained one-pass audit mode.",
+   "haiku_summary": "City Clerk agent audits initiative filings, enforces naming conventions, maintains document registry with canon-fidelity checks and role collection management.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.94,
+   "haiku_spec": 0.75
+  },
+  {
+   "skill_id": "sighting:1f2f25c7b1e0f3e12a22ddf78a95d3fa",
+   "winner": "haiku",
+   "luna_summary": "Standardizes Supabase Edge Function invocation and authoring with SDK calls, error handling, Deno setup, authentication, CORS, validation, and observability.",
+   "haiku_summary": "Supabase Edge Functions SDK pattern with error types, FormData uploads, custom headers, auto Content-Type handling, migration from raw fetch.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.93,
+   "haiku_spec": 0.92
+  },
+  {
+   "skill_id": "61652f9a-91c7-45a1-969a-1da04d4e873d",
+   "winner": "luna",
+   "luna_summary": "Documents a specific React Native LLM integration, including Gemini provider behavior, priority queues, retries, parsing, quotas, diagnostics, and provider swaps.",
+   "haiku_summary": "Complete LLM layer reference: provider abstraction, queue/priority system, 12 error patterns, model selection, 429 retry logic, Gemini quota tiers.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.99,
+   "haiku_spec": 0.95
+  },
+  {
+   "skill_id": "8630d3ee-f744-460b-97aa-108d6e2ee7b5",
+   "winner": "haiku",
+   "luna_summary": "A dependency-management guide covering semantic versioning, security patches, transitive dependency conflicts, monorepos, deprecation tracking, testing, and commits.",
+   "haiku_summary": "Semantic versioning, security patches, transitive dependencies, monorepo lock files, deprecation timelines, license compliance baseline guidance.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.53,
+   "haiku_spec": 0.35
+  },
+  {
+   "skill_id": "ff0e4950-f7aa-42ff-af4f-40b496d0beb2",
+   "winner": "haiku",
+   "luna_summary": "Defines a structured two-pass Stacks code-review workflow covering critical issues, informational findings, test coverage, mechanical fixes, and review output formatting.",
+   "haiku_summary": "Two-pass code review with critical issue detection, security/correctness checks, Stacks-specific validation, test coverage audit, auto-fix workflow.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.85,
+   "haiku_spec": 0.85
+  },
+  {
+   "skill_id": "e103018c-1bfb-4b83-96cc-fb37a86f84f3",
+   "winner": "haiku",
+   "luna_summary": "Provides safe, bounded procedures for researching public X data through Xquik REST or MCP, including input validation, source isolation, approvals, and structured reporting.",
+   "haiku_summary": "X/Twitter data research via Xquik: tweet search, account lookup, trends, media context; untrusted content isolation, source citation discipline.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.9,
+   "haiku_spec": 0.9
+  },
+  {
+   "skill_id": "6d3f7658-aeba-4121-b0c5-079f641fc5b1",
+   "winner": "luna",
+   "luna_summary": "Guides direct Preset Superset API inspection of database, schema, table, dataset, column, metric, sample, and value metadata with confirmation gates for mutations and sensitive operations.",
+   "haiku_summary": "Inspect Preset workspace datasets, schemas, tables, columns, metrics via Superset API with confirmation gates for mutations and connection work.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.92,
+   "haiku_spec": 0.88
+  },
+  {
+   "skill_id": "sighting:ab8c887c65923b03fc6c9b9f900c4e1b",
+   "winner": "luna",
+   "luna_summary": "Provides a disciplined workflow for deciding, writing, revising, removing, and validating durable maintainer-facing documentation comments.",
+   "haiku_summary": "Writes maintainer-facing doc comments explaining purpose, contract, constraints without paraphrasing; follows Comment Standard with inline invariant documentation.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.63,
+   "haiku_spec": 0.8
+  },
+  {
+   "skill_id": "cafa4bf4-7aa6-4347-a0fe-8c5ee68bacdd",
+   "winner": "haiku",
+   "luna_summary": "Orchestrates investment-idea generation from a zsxq report library through themed or fishing workflows, PDF analysis, evidence aggregation, ratings, citations, and optional tracked baskets.",
+   "haiku_summary": "Investment idea generation from zsxq reports: three modes (themed, fishing, theme-build) with memory-gated parallel extraction, detailed AI/robotics/semiconductor narratives.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.99,
+   "haiku_spec": 0.95
+  },
+  {
+   "skill_id": "961a73ec-86d2-40fe-9371-e03105d46fb5",
+   "winner": "luna",
+   "luna_summary": "Provides a concise momentum-trading analysis framework using OHLCV data, trend and volume confirmation, independent indicators, and fixed-fractional risk management.",
+   "haiku_summary": "Momentum trading strategy using OHLCV data with bullish/bearish bias detection, risk management, ATR stops, fixed-fractional position sizing.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.75,
+   "haiku_spec": 0.6
+  },
+  {
+   "skill_id": "ff5acc4a-2431-4e8c-aeaa-a6af4e621316",
+   "winner": "luna",
+   "luna_summary": "Analyzes job descriptions into explicit requirements, inferred criteria, resume gaps, keywords, cover-letter angles, and risks.",
+   "haiku_summary": "Analyzes job descriptions for role requirements, evaluation criteria, hidden criteria, resume keywords, cover letter angles with conservative inference rules.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.82,
+   "haiku_spec": 0.85
+  },
+  {
+   "skill_id": "sighting:e4779c5c4e85b0d341c354ebd856a1f4",
+   "winner": "haiku",
+   "luna_summary": "A guarded OpenSpec archival workflow that checks artifacts, tasks, delta synchronization, user confirmation, archive naming, and completion reporting.",
+   "haiku_summary": "Archives completed OpenSpec changes: artifact completion checks, task verification, delta spec sync assessment, move-to-archive with dated naming.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.9,
+   "haiku_spec": 0.9
+  },
+  {
+   "skill_id": "48da0a29-b9b2-459e-8d2d-00254fb1e2b5",
+   "winner": "luna",
+   "luna_summary": "Defines a gated Plan, Code, Verify, and Archive workflow for evolving a QA framework, including path invariants, session persistence, subagent orchestration, verification commands, and failure handling.",
+   "haiku_summary": "Framework evolution: Plan-Code-Verify-Archive pipeline with invariant enforcement, subagent dispatch patterns, ADR seeding, KATA-layer validation.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.96,
+   "haiku_spec": 0.95
+  },
+  {
+   "skill_id": "sighting:aa67eec22f4415f0a9cb87aac593aa1a",
+   "winner": "luna",
+   "luna_summary": "Provides a Flutter component architecture and scaffolding workflow using presentation, Bloc/Cubit, domain use cases, repositories, secure storage, API clients, and tests.",
+   "haiku_summary": "Flutter component architecture: folder structure, creation flow, Bloc/Repository pattern, secure storage, testing, scaffolding checklist, dependency injection.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.9,
+   "haiku_spec": 0.9
+  },
+  {
+   "skill_id": "1e801e20-4ed7-46c7-9336-8a3bc246a654",
+   "winner": "luna",
+   "luna_summary": "Provides SAP Cloud Identity Services procedures for IAS federation, IPS provisioning, SCIM user management, XSUAA migration, shadow-user cleanup, verification, and troubleshooting.",
+   "haiku_summary": "SAP Cloud Identity setup for IAS/IPS/AMS: corporate IdP federation via SAML, XSUAA migration, SCIM 2.0 API user management, MFA, shadow user cleanup.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.95,
+   "haiku_spec": 0.95
+  },
+  {
+   "skill_id": "0d57f0df-5f68-47af-ae3f-d5af05725a87",
+   "winner": "luna",
+   "luna_summary": "Provides a compact Google ADK Python API reference covering agents, tools, orchestration, callbacks, state, and common import, schema, and sub-agent mistakes.",
+   "haiku_summary": "Google ADK API quick reference: agent types, tool definitions, orchestration patterns, callbacks, state management, common pitfalls and troubleshooting.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.86,
+   "haiku_spec": 0.65
+  },
+  {
+   "skill_id": "sighting:bdd5cc455c3d68650b4bb761e279d574",
+   "winner": "haiku",
+   "luna_summary": "Provides commands and procedures for fetching OpenShift Prow artifacts, analyzing CI failure patterns, reproducing failures locally, and handling Prow or Tekton jobs.",
+   "haiku_summary": "OpenShift Prow CI analysis: fetch artifacts from GCS, parse build logs, detect failure patterns, generate markdown reports with actionable details.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.97,
+   "haiku_spec": 0.9
+  },
+  {
+   "skill_id": "sighting:f6a2f0a6d0e4f328776779138d5d0c78",
+   "winner": "luna",
+   "luna_summary": "Audits a codebase against eight agent-native architecture principles using parallel sub-agents, numeric scoring, gap analysis, and prioritized recommendations.",
+   "haiku_summary": "Agent-native audit: eight principles (action parity, tools, context, workspace, CRUD, UI, discovery, prompt-native) with parallel sub-agents and scored report.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.85,
+   "haiku_spec": 0.85
+  },
+  {
+   "skill_id": "1a48c128-195e-4166-9480-09b6f4c716c3",
+   "winner": "luna",
+   "luna_summary": "Provides a source-grounded procedure for answering questions about Christopher Batey's AI-era product-team talk using an outline, transcript, quotes, and explicit anti-speculation rules.",
+   "haiku_summary": "Reference for Christopher Batey's talk on AI-assisted product teams: ADR-first workflows, parallel execution, adoption metrics, producer bottlenecks.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.78,
+   "haiku_spec": 0.9
+  },
+  {
+   "skill_id": "sighting:6b09c97776401f46ae0987b9f792f35c",
+   "winner": "luna",
+   "luna_summary": "Defines a recursive, read-only vault-branch audit that inventories notes, scores checklist gaps, creates roadmaps, coordinates subagents, and stops for human review.",
+   "haiku_summary": "Obsidian vault branch auditing (Portuguese): generates roadmap.md with per-note enrichment status, scoring, execution plans, read-only on notes.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.9,
+   "haiku_spec": 0.9
+  },
+  {
+   "skill_id": "sighting:f6bea6d40c8423ee496421c64484c866",
+   "winner": "haiku",
+   "luna_summary": "Provides systematic citation discovery, metadata extraction, BibTeX conversion and cleanup, validation, duplicate detection, and bibliography integration for research workflows.",
+   "haiku_summary": "Academic citation management: Google Scholar/PubMed search, DOI/PMID metadata extraction, BibTeX formatting, validation, duplicate detection, reference building.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.9,
+   "haiku_spec": 0.92
+  },
+  {
+   "skill_id": "sighting:6d1c1f736a927d9673a2ff6b41773544",
+   "winner": "luna",
+   "luna_summary": "Provides GitHub Flow, Gitflow, and trunk-based branching guidance covering branch naming, synchronization, pushing, conflicts, protection, releases, and cleanup.",
+   "haiku_summary": "Git branching strategies: GitHub Flow (recommended), Gitflow, Trunk-Based with naming conventions, push rules, branch protection, merge conflict resolution.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.83,
+   "haiku_spec": 0.85
+  },
+  {
+   "skill_id": "5b3300c2-da94-442b-8cfe-f1c5dce0dd25",
+   "winner": "haiku",
+   "luna_summary": "Runs a focused premortem for plans and designs, catalogs likely failure modes, rates likelihood and impact, and folds mitigations or watch signals into the plan.",
+   "haiku_summary": "Identify what could go wrong before it goes wrong by conducting premortems, consulting failure catalogs (software, reasoning, communication, business, workflow), rating likelihood\u00d7impact, and folding mitigations into designs.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.56,
+   "haiku_spec": 0.7
+  },
+  {
+   "skill_id": "sighting:e8976a9d715375c7cea29a423412ef09",
+   "winner": "haiku",
+   "luna_summary": "PostgreSQL operations guide covering connection pools, query analysis, indexes, migrations, backups, restores, monitoring, partitioning, troubleshooting, and database security practices.",
+   "haiku_summary": "Manage PostgreSQL database operations including async connection pooling, EXPLAIN ANALYZE optimization, schema migrations with rollback, cardinality management, and backup/restore strategies for production systems.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.85,
+   "haiku_spec": 0.9
+  },
+  {
+   "skill_id": "0b77ae76-1ccb-40fd-8392-8b8327ed8987",
+   "winner": "haiku",
+   "luna_summary": "Defines a structured architecture audit covering system discovery, quality attributes, anti-pattern detection, migration recommendations, diagrams, and a saved review report.",
+   "haiku_summary": "Audit system architecture against quality attributes (maintainability, scalability, reliability, testability, observability, security); detect anti-patterns; produce C4 diagrams and graded findings (Critical/High/Medium/Low) with migration paths.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.8,
+   "haiku_spec": 0.75
+  },
+  {
+   "skill_id": "sighting:f78e0a9aa255c82c6d83155aba102e6d",
+   "winner": "haiku",
+   "luna_summary": "Guides Microsoft Entra app registration, OAuth flows, API permissions, credentials, MSAL integration, CLI usage, IaC, and security practices.",
+   "haiku_summary": "Guide Microsoft Entra ID app registration, OAuth 2.0 setup, MSAL integration, API permissions, client credentials, and service principal generation for web apps, SPAs, mobile, and daemon applications.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.95,
+   "haiku_spec": 0.85
+  },
+  {
+   "skill_id": "sighting:0fcc8716bb14b56a35e1df95c754fd6e",
+   "winner": "haiku",
+   "luna_summary": "Runs a grounded, venue-compliant academic rebuttal workflow covering review parsing, issue tracking, evidence provenance, commitment controls, character limits, drafting, stress testing, and follow-up rounds.",
+   "haiku_summary": "Workflow for academic paper rebuttals: parse reviews, atomize concerns, build strategy, draft responses with provenance gates (no fabrication), stress-test via Codex, maintain revision plan checklist, handle follow-up rounds.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.93,
+   "haiku_spec": 0.85
+  },
+  {
+   "skill_id": "sighting:16d562b95044d75b931c95e8b8ef21e7",
+   "winner": "haiku",
+   "luna_summary": "Documents Brand.dev API workflows for retrieving brand data, logos, colors, fonts, style guides, products, screenshots, classifications, and website-extracted facts.",
+   "haiku_summary": "Extract brand intelligence from any domain via the Gooseworks Brand.dev API: logos, colors, fonts, styleguides, industry classification, NAICS codes, and transaction identification with optional language forcing.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.98,
+   "haiku_spec": 0.9
+  },
+  {
+   "skill_id": "sighting:7c1d6406f9133249e781291926a14016",
+   "winner": "haiku",
+   "luna_summary": "Defines a TrendRadar daily-news workflow that crawls multiple platforms, classifies items into five categories, generates a fixed-format report, and sends it to Telegram in bounded batches.",
+   "haiku_summary": "Monitor trending topics across 11 platforms daily, generate hotspot reports in fixed 5-category format (Finance\u00b7Tech, Politics\u00b7Society, Sports\u00b7Gaming, International, Entertainment), push to Telegram via MCP tools with cron scheduling.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.97,
+   "haiku_spec": 0.8
+  },
+  {
+   "skill_id": "sighting:0dc46be92cb44c2dee96b428a4713147",
+   "winner": "haiku",
+   "luna_summary": "Routes Claude Code infrastructure tasks to specialized agent, skill, command, hook, plugin, research, and orchestration management skills using intent detection and progressive loading.",
+   "haiku_summary": "Route Claude Code infrastructure management (agents, skills, commands, MCP tools, hooks, plugins) to specialized subskills via intent detection; implements 3-tier loading and explicit 1% rule for skill invocation.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.89,
+   "haiku_spec": 0.85
+  },
+  {
+   "skill_id": "sighting:910bf8be62c435bab0172efb5f1a6f76",
+   "winner": "luna",
+   "luna_summary": "Provides a Spanish workflow for designing and deploying new skills, including collecting requirements, generating README and registry content, assigning numeric prefixes, and integrating the result.",
+   "haiku_summary": "Design and deploy new skills within Andru.ia repository following the Diamond Standard; requires Spanish documentation, expert role persona, few-shot prompt engineering, and folder numerics for stable ordering.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.78,
+   "haiku_spec": 0.7
+  },
+  {
+   "skill_id": "32afd519-590d-46c9-a4c1-078a0a3047a9",
+   "winner": "haiku",
+   "luna_summary": "Guides scalable sustainability reviews covering code quality, tests, architecture, documentation, assumptions, reuse, drift, compression, archiving, findings, and status updates.",
+   "haiku_summary": "Assess system health across code quality, test quality, architectural alignment, knowledge capture; scales from within-milestone to epic-scope reviews; includes optional reuse audits, doc-drift checks, and archive/compress workflows.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.6,
+   "haiku_spec": 0.8
+  },
+  {
+   "skill_id": "a4d33359-aabd-4d82-a2b2-4ca8f5f68766",
+   "winner": "haiku",
+   "luna_summary": "Guides maintenance of a public Jiang Lens atlas by organizing evidence-grounded concepts, relationships, stable anchors, readable structure, growth thresholds, and validation builds.",
+   "haiku_summary": "Maintain public Jiang Lens atlas documenting source-grounded concepts; enforce structure governance (concept word counts, parent/child relationships); add reusable lens-point anchors for episode citation and thematic mapping.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.85,
+   "haiku_spec": 0.75
+  },
+  {
+   "skill_id": "0bbde714-c595-4920-af94-7545af8152fd",
+   "winner": "luna",
+   "luna_summary": "Runs a five-seat, role-diverse multi-model consultation, persists the question and responses, and synthesizes consensus, disagreements, and a recommendation for strategic decisions.",
+   "haiku_summary": "Invoke five specialized LLM seats (Theorist, Validator, Provocateur, Diagnostician, Field Engineer) in parallel for strategic advisory; optional two-round collaborative mode with cross-seat feedback to reach consensus on high-stakes decisions.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.91,
+   "haiku_spec": 0.8
+  },
+  {
+   "skill_id": "fb7e1fab-9517-40d4-82dc-93d4153ac4fe",
+   "winner": "haiku",
+   "luna_summary": "Defines a structured workflow for reviewing plans, shells, and specs with artifact resolution, parallel internal and peer reviews, reference criteria, attribution, verdicts, and grouped findings.",
+   "haiku_summary": "Review planning artifacts (plan/shells/spec) by running structure and scope reviews internally plus optional peer review; aggregate findings into priority-tagged verdict (ready/needs revision) with reasoning.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.9,
+   "haiku_spec": 0.85
+  },
+  {
+   "skill_id": "f3a2b8f9-034a-48ee-ab87-3a6c09e0ab0d",
+   "winner": "luna",
+   "luna_summary": "Defines a stack-agnostic CI/CD and dependency-audit workflow covering pipeline ordering, SCA, SAST, supply-chain integrity, dependency updates, merge gates, and GitHub Actions examples.",
+   "haiku_summary": "Define CI/CD pipeline structure (lint\u2192build\u2192test\u2192security\u2192deploy) with SAST/SCA scanning, automated dependency updates, commit validation, merge gates, alert routing, and gradual severity-threshold escalation.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.82,
+   "haiku_spec": 0.85
+  },
+  {
+   "skill_id": "d2478ca0-5b9f-41cf-a9be-edd8863b45ee",
+   "winner": "haiku",
+   "luna_summary": "Provides MUI performance optimization guidance for tree-shaking, bundle analysis, Emotion SSR caching, render reduction, virtualization, lazy loading, code splitting, and theme reuse.",
+   "haiku_summary": "Optimize Material-UI applications: enforce deep imports for tree-shaking, configure Emotion caching for SSR, memoize sx objects and components, virtualize large lists, lazy-load heavy X-Data components, manage bundle size.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.94,
+   "haiku_spec": 0.95
+  },
+  {
+   "skill_id": "2ab520ab-6ebb-4ec9-b6cf-883f964dc5a0",
+   "winner": "luna",
+   "luna_summary": "Explains how to unpack PPTX files, extract slide text, images, and coordinates with python-pptx, convert extracted JSON to HTML, and handle round-trip limitations.",
+   "haiku_summary": "Extract PPTX content via ZIP unpacking and XML parsing; generate JSON intermediate format with layout/style metadata; round-trip to HTML for editing and back to PPTX using python-pptx.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.94,
+   "haiku_spec": 0.85
+  },
+  {
+   "skill_id": "498eaf5f-d262-4202-bab2-fff4a71afaf7",
+   "winner": "haiku",
+   "luna_summary": "Defines a narrowly scoped hardening workflow for the Parent Reports route, including state handling, validation, documentation updates, and scope boundaries.",
+   "haiku_summary": "Route-scoped UI/UX hardening for /parent/reports: validate gaps against parity board, implement deterministic loading/error/success states, verify API contracts, maintain navigation integrity, update board status.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.98,
+   "haiku_spec": 0.6
+  },
+  {
+   "skill_id": "sighting:1fe83a1d604bef7e24930e64f536f56d",
+   "winner": "haiku",
+   "luna_summary": "Defines a schema-driven healthcare CRM UI/UX workflow centered on navigation.yaml, user approval, reusable components, design decisions, implementation, styling, and visual verification.",
+   "haiku_summary": "Schema-driven frontend development for healthcare CRM: update navigation.yaml (source of truth) BEFORE code; present design decisions with trade-offs; reuse components; match existing visual language and information hierarchy.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.85,
+   "haiku_spec": 0.85
+  },
+  {
+   "skill_id": "edbd7a98-8b40-417b-a3b3-a48f3da13a69",
+   "winner": "luna",
+   "luna_summary": "Manages project learnings by showing, searching, pruning, exporting, reporting statistics, and manually adding durable entries with approval gates.",
+   "haiku_summary": "Manage project learnings across sessions: search by query, prune stale/contradictory entries, export as markdown, gather statistics; auto-suggest patterns and tag by type (pattern, pitfall, preference, architecture, tool).",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.85,
+   "haiku_spec": 0.8
+  },
+  {
+   "skill_id": "sighting:2c6fab655dbc11236c9183f6bc1349f5",
+   "winner": "haiku",
+   "luna_summary": "Evidence-tiered biblical scholarship workflow requiring MCP data, confidence declarations, controversy handling, transliteration rules, formal analogy verdicts, source attribution, and non-devotional analysis.",
+   "haiku_summary": "Scholarly biblical Q&A with confidence-tiered answers grounded in MCP morphological/discourse data and peer-reviewed sources; validate analogies via formal verdicts (SUPPORTED/COMPATIBLE/NOT SUPPORTED/INSUFFICIENT); supply cross-references with attribution.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.94,
+   "haiku_spec": 0.9
+  },
+  {
+   "skill_id": "sighting:5f75a7ced130b55c06d635a6a95c59f3",
+   "winner": "haiku",
+   "luna_summary": "Provides a platform observability design and implementation checklist covering OpenTelemetry, telemetry pipelines, trace correlation, cardinality, alerting, self-service, and cost control.",
+   "haiku_summary": "Design unified observability platforms using OpenTelemetry for vendor-neutral instrumentation; manage metrics cardinality (<10k time series), trace correlation, telemetry pipelines, and observability SLOs with cost controls.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.86,
+   "haiku_spec": 0.9
+  },
+  {
+   "skill_id": "sighting:055ee042ab2424ed2cea35ad2a95fa7e",
+   "winner": "haiku",
+   "luna_summary": "Defines a Tenon pipeline archive phase with validation, state transitions, OpenSpec archiving, learning capture, error handling, and confirmation gates.",
+   "haiku_summary": "Archive phase in tenon pipeline: validate applied specs, transition to terminal state, actively trigger learn-record for pattern capture, optionally generate skill templates and PM handoff documentation.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.9,
+   "haiku_spec": 0.8
+  },
+  {
+   "skill_id": "a5ba2b14-eee4-4209-bdab-b9e4cfff43ab",
+   "winner": "haiku",
+   "luna_summary": "Provides a testing and validation framework centered on validation matrices, golden user journeys, behavioral parity, contract tests, integration tests, deployment verification, and reliable truth sources.",
+   "haiku_summary": "Quality testing and verification: define contract/behavioral/integration test layers, map golden journeys from user endpoints, enforce behavioral parity across implementations, validate against frozen design and real consumption.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.8,
+   "haiku_spec": 0.75
+  },
+  {
+   "skill_id": "sighting:7977de417dd2c1c4e77ed886864b5f12",
+   "winner": "haiku",
+   "luna_summary": "Provides secure procedures for ERC-8004 agent wallet isolation, onchain registration, metadata publication, SIWA authentication, public identity memory, keyring proxy deployment, and verification.",
+   "haiku_summary": "Register AI agents on ERC-8004 trustless agents standard with onchain identity (ERC-721 NFT); authenticate via SIWA challenge-response protocol; isolate private keys via keyring proxy (separate process, HMAC-authenticated signing only).",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.99,
+   "haiku_spec": 0.95
+  },
+  {
+   "skill_id": "sighting:c690f2fbd4d9719efd0d4cdde6ce131d",
+   "winner": "haiku",
+   "luna_summary": "Provides a project-state management procedure for reading, validating, initializing, updating, checkpointing, and snapshotting project.yaml and setup.yaml workflow sections.",
+   "haiku_summary": "Manage project.yaml state throughout workflow: validate schemas, initialize/update sections, track lifecycle (pending\u2192in_progress\u2192completed/failed), verify prerequisites, maintain checkpoint approval status.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.82,
+   "haiku_spec": 0.75
+  },
+  {
+   "skill_id": "sighting:190175d7252cf95493adb2ab311c10aa",
+   "winner": "haiku",
+   "luna_summary": "Guides authoring, matching, linting, scoring, rendering, and verifying cat-meme reels through a repository-specific story-to-video pipeline.",
+   "haiku_summary": "Author and render vertical cat-meme reels: lock premise/beats with captions, write story JSON with clip matching queries, dry-run catalog matching, validate via 75/100+ scoring gate, render with ffmpeg.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.98,
+   "haiku_spec": 0.9
+  },
+  {
+   "skill_id": "sighting:d39915aab4b2d602415ad1ffb667de70",
+   "winner": "haiku",
+   "luna_summary": "Creates, reads, edits, converts, and validates DOCX and ODT documents using pandoc, docx-js, LibreOffice, XML workflows, and tracked-change/comment handling.",
+   "haiku_summary": "Create and edit Word (.docx) and OpenDocument (.odt) files via docx-js and XML manipulation; enforce smart typography, table dual-widths, DXA units, tracked changes/comments, validation, and round-trip conversion.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.9,
+   "haiku_spec": 0.9
+  },
+  {
+   "skill_id": "sighting:0c6b895907230102b58ed639508b5055",
+   "winner": "haiku",
+   "luna_summary": "Drafts and files outward-facing GitHub issues with verified repository pointers, automatic label classification, acceptance criteria, confirmation gates, batch handling, and reporting.",
+   "haiku_summary": "Draft and file well-structured GitHub issues for external contributors: auto-classify type+labels, verify concrete file pointers against tree, structure scope with steps, set acceptance criteria, batch-confirm before `gh issue create`.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.85,
+   "haiku_spec": 0.85
+  },
+  {
+   "skill_id": "sighting:d8ec44968d8e143257f6ba772e68c7fc",
+   "winner": "haiku",
+   "luna_summary": "Provides a YouTube topic research workflow using the Data API, configurable view and date filters, subscriber-based breakout ratios, JSON output, quota guidance, troubleshooting, and insight generation.",
+   "haiku_summary": "Research YouTube videos by topic: filter by min views and date range; calculate breakout ratio (views \u00f7 subscribers); identify overperforming channels; output ranked JSON with metadata, stats, and insight analysis.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.96,
+   "haiku_spec": 0.85
+  },
+  {
+   "skill_id": "sighting:f57c3d17e9f99cf664318751c9f0c0ac",
+   "winner": "haiku",
+   "luna_summary": "Audits cryptocurrency wallet security by scanning token approvals, transaction history, contract interactions, risk factors, supported chains, and prioritized revoke recommendations.",
+   "haiku_summary": "Audit cryptocurrency wallet security: scan ERC20 token approvals, analyze transaction patterns, calculate risk scores (0\u2013100) across approvals/interactions/patterns/age, provide revocation priority lists and recommendations.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 1.0,
+   "haiku_spec": 0.9
+  },
+  {
+   "skill_id": "64b3fe05-108d-4c4c-92fb-3c764cb105aa",
+   "winner": "haiku",
+   "luna_summary": "Provides mobile game development guidance for touch interaction, battery and thermal management, performance, responsive UI, app stores, and monetization.",
+   "haiku_summary": "Mobile game development principles: optimize for touch input, battery drain, thermal throttling; support landscape/portrait; respect iOS/Android app store requirements; evaluate monetization models (premium, IAP, ads, subscription).",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.6,
+   "haiku_spec": 0.6
+  },
+  {
+   "skill_id": "sighting:aeba1c3a63919b3489dc38d3eeac678d",
+   "winner": "haiku",
+   "luna_summary": "Provides React and TypeScript guidance for component structure, hooks, state management, effects, typing, performance, anti-patterns, and a practical review checklist.",
+   "haiku_summary": "Modern React 2024\u20132025 component best practices: functional components with TypeScript, custom hooks, context for global state, useEffect discipline with cleanup, no premature useMemo/useCallback, stable list keys.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.82,
+   "haiku_spec": 0.85
+  },
+  {
+   "skill_id": "sighting:4ac7f8b1c4dab00c242c345072416022",
+   "winner": "luna",
+   "luna_summary": "Defines a conventional-commit workflow based on actual Git diffs, including scope selection, splitting concerns, linting, breaking changes, confirmation, and commit creation.",
+   "haiku_summary": "Generate conventional commit messages from staged/unstaged diffs and create commits, enforcing pre-commit linting across the project.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.85,
+   "haiku_spec": 0.85
+  },
+  {
+   "skill_id": "f0414919-9b2d-4a5d-b5cd-fe6b5a46e0da",
+   "winner": "haiku",
+   "luna_summary": "Decodes personal, auto, and mortgage loan offers using total-cost calculations, APR reconciliation, ranked risks, scenario analysis, and negotiation questions.",
+   "haiku_summary": "Decode personal, auto, and mortgage loan offers into true costs, APR reconciliation, ranked red flags, and three deal-changing questions with visible arithmetic.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.9,
+   "haiku_spec": 0.9
+  },
+  {
+   "skill_id": "sighting:f7b09908328bd872ad9b64ad5a48640e",
+   "winner": "haiku",
+   "luna_summary": "Provides a UX design-director critique workflow covering AI-generated visual patterns, hierarchy, information architecture, states, typography, color, and microcopy.",
+   "haiku_summary": "Evaluate design effectiveness from UX perspective across visual hierarchy, information architecture, emotional resonance, and anti-patterns with actionable feedback.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.75,
+   "haiku_spec": 0.75
+  },
+  {
+   "skill_id": "sighting:b97bcf5b832e9a7f13b48ee577224c70",
+   "winner": "luna",
+   "luna_summary": "Workflow for reading GitHub pull-request reviews, classifying findings by severity, automatically fixing serious issues, requesting confirmation for minor issues, and validating the resulting changes.",
+   "haiku_summary": "Read PR\u5ba1\u67e5\u8bc4\u8bba, automatically fix critical and medium issues, confirm minor issues before fixing, handle merge conflicts, and auto-merge when ready.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.83,
+   "haiku_spec": 0.8
+  },
+  {
+   "skill_id": "sighting:65089f246e62711b6befe08ecd1548ae",
+   "winner": "luna",
+   "luna_summary": "A local-first natural-language planner that captures tasks and projects, tracks statuses and deadlines, manages tags and dependencies, maintains a dashboard, performs check-ins, and archives work.",
+   "haiku_summary": "Intelligent task and project manager capturing tasks from conversation, organizing into projects, tracking progress, and serving local Kanban dashboard.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.79,
+   "haiku_spec": 0.7
+  },
+  {
+   "skill_id": "aaa6976a-8357-4320-b1a9-875984e8f664",
+   "winner": "luna",
+   "luna_summary": "Provides a 37-check SQL Server Always On Availability Group configuration audit covering prerequisites, replicas, listeners, backups, endpoint security, distributed AGs, advanced features, monitoring, thresholds, and structured reporting.",
+   "haiku_summary": "Audit SQL Server Always On AG configuration across 37 checks spanning prerequisites, replica design, listener architecture, backup strategy, endpoint security, distributed topology.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.99,
+   "haiku_spec": 0.95
+  },
+  {
+   "skill_id": "sighting:18107538a5ae28058d9a27c9cd7e13c6",
+   "winner": "haiku",
+   "luna_summary": "Provides Chinese-language guidance for adding purposeful brand whimsy through microinteractions, copy, easter eggs, gamification, accessibility, cultural sensitivity, implementation, and measurement.",
+   "haiku_summary": "Framework for injecting personality, surprise, and playful elements into brand experiences through micro-interactions, whimsical copy, Easter eggs, and game-like engagement.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.72,
+   "haiku_spec": 0.75
+  },
+  {
+   "skill_id": "sighting:334a49419832247715cf82a0f0754c1e",
+   "winner": "haiku",
+   "luna_summary": "Offers a broad code-refactoring workflow covering code smells, SOLID principles, prioritization, performance, testing, migration, static analysis, and before-and-after quality reporting.",
+   "haiku_summary": "Expert code refactoring guide applying SOLID principles, design patterns, and clean code practices to improve quality, maintainability, and performance.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.62,
+   "haiku_spec": 0.8
+  },
+  {
+   "skill_id": "sighting:2cb3c86cef746716466ab3ed5a034eff",
+   "winner": "luna",
+   "luna_summary": "Guides project-specific API service functions and TanStack Query integration for reads and mutations, including typing, notifications, i18n, errors, loading, and cache invalidation.",
+   "haiku_summary": "Guide for creating API service functions using React Query with GET/POST/PUT/PATCH/DELETE, type definitions, error handling, notification integration, and i18n support.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.9,
+   "haiku_spec": 0.85
+  },
+  {
+   "skill_id": "sighting:f449c6170c7cb6ae2746d3bd84a97d58",
+   "winner": "luna",
+   "luna_summary": "Shepherds pull requests through exact-head CI checks and CodeRabbit review, verifies findings, fixes or explains issues, resolves threads, and merges only genuinely ready PRs.",
+   "haiku_summary": "Check CI and CodeRabbit review status, self-fix empirically-verified issues, resolve threads, and auto-merge when PR meets Ready criteria with transparent reporting.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.94,
+   "haiku_spec": 0.85
+  },
+  {
+   "skill_id": "sighting:951fcca4cdd688a80fe933d97dabe182",
+   "winner": "luna",
+   "luna_summary": "Explains IntelliVerseX Roblox SDK integration for AI NPCs, Hiro live-ops systems, cross-game identity, server-side HTTP, authentication, and client bridges.",
+   "haiku_summary": "Integration guide for IntelliVerseX Roblox SDK covering AI NPCs with LLM dialog, Hiro Live-Ops engagement systems, and cross-game player identity.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.96,
+   "haiku_spec": 0.9
+  },
+  {
+   "skill_id": "7d335d9f-ca11-48c5-ba99-5fcdea6a056f",
+   "winner": "haiku",
+   "luna_summary": "Explains shared-parent holon data structures for scalable guilds, pools, and agent swarms, including query, privacy, governance, and hierarchical patterns.",
+   "haiku_summary": "O(1) collective data structure patterns avoiding N-squared coupling for guilds, pools, and agent swarms through shared-parent holons architecture.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.95,
+   "haiku_spec": 0.75
+  },
+  {
+   "skill_id": "sighting:9fa96761fc6861aed7f233b32e3c54a1",
+   "winner": "luna",
+   "luna_summary": "Adapts an MVP phase-planning workflow to Codex, including structured user-story intake, SPIDR splitting, roadmap updates, delegation, and interaction fallbacks.",
+   "haiku_summary": "Plan a phase as vertical MVP slice through user story, SPIDR splitting check, roadmap annotation, and delegation to phase planning.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.94,
+   "haiku_spec": 0.8
+  },
+  {
+   "skill_id": "sighting:c35c50ee025d0eb3251f7be3a075f495",
+   "winner": "luna",
+   "luna_summary": "Explains how to implement a typed global EventBus in Godot 4.3+, including autoload setup, GDScript and C# signals, lifecycle cleanup, anti-patterns, testing, and design criteria.",
+   "haiku_summary": "Global signal hub for decoupled node communication in Godot 4.3+ using typed signals, with patterns for GDScript and C# including testing and anti-patterns.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.96,
+   "haiku_spec": 0.9
+  },
+  {
+   "skill_id": "sighting:e19711ec4b09469bd09c641ad27b6cd8",
+   "winner": "luna",
+   "luna_summary": "Guides creation, review, and refactoring of Sankhya Java global type adapters for JSON, Java, and Jape conversion, including interface selection, null handling, errors, native adapters, and validation.",
+   "haiku_summary": "Create and review `@GlobalTypeAdapter` adapters for JSON serialization in Sankhya Addon Studio 2.0 covering TypeAdapter, JsonSerializer, JsonDeserializer.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.93,
+   "haiku_spec": 0.95
+  },
+  {
+   "skill_id": "sighting:770d79ad4ad1da573d80d510f7b4ee41",
+   "winner": "luna",
+   "luna_summary": "Provides a progressive Three.js guide for building 3D web graphics, covering scenes, assets, textures, cameras, lighting, animation, interaction, materials, shaders, performance, physics, VR, and WebGPU.",
+   "haiku_summary": "Comprehensive Three.js guide for 3D web graphics development covering scenes, cameras, materials, lights, animations, model loading, post-processing, and WebXR.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.95,
+   "haiku_spec": 0.8
+  },
+  {
+   "skill_id": "ab2d0406-7116-49e9-a33d-b64faa4687a5",
+   "winner": "haiku",
+   "luna_summary": "A mobile E2E framework selection and CI planning workflow covering app classification, test goals, framework tradeoffs, simulator and emulator hosts, cadence, artifacts, and validation.",
+   "haiku_summary": "Decision framework for selecting mobile E2E test frameworks (Detox, Maestro, Appium, XCUITest, Espresso) with host/CI planning and artifact contracts.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.92,
+   "haiku_spec": 0.85
+  },
+  {
+   "skill_id": "0844ed82-90d3-4c61-8ac5-c27ac64b30ae",
+   "winner": "luna",
+   "luna_summary": "Provides a dependency security audit workflow covering direct and transitive inventory, vulnerability and license scanning, prioritization, upgrade planning, and staging verification.",
+   "haiku_summary": "Analyze project dependencies for known vulnerabilities, licensing issues, outdated packages, and provide actionable remediation strategies.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.83,
+   "haiku_spec": 0.7
+  },
+  {
+   "skill_id": "547947b4-23e5-4765-aebe-9488094e6051",
+   "winner": "luna",
+   "luna_summary": "Defines a prioritization workflow for concentrating limited resources on one main task, including selection criteria, execution rules, verification, and handoff.",
+   "haiku_summary": "Resource concentration strategy: when limited resources compete, select one main target, eliminate distribution, achieve breakthrough before expanding.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.65,
+   "haiku_spec": 0.6
+  },
+  {
+   "skill_id": "sighting:720bae7e935a744005ea701d1377df8f",
+   "winner": "luna",
+   "luna_summary": "Chinese roleplay and analysis skill modeling Donald Trump's public decision heuristics, rhetoric, negotiation framing, behavior prediction, research workflow, and uncertainty boundaries.",
+   "haiku_summary": "Six-core-mental-model framework for Donald Trump's thinking patterns, decision-making, negotiation tactics, and behavioral prediction based on public record.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.91,
+   "haiku_spec": 0.95
+  },
+  {
+   "skill_id": "d8c8458b-2adc-44bb-97b6-61ac6ec66bd6",
+   "winner": "haiku",
+   "luna_summary": "Provides an extensive compliance guide and checklist for developing Azure Verified Modules Terraform modules, covering providers, structure, variables, outputs, testing, documentation, and breaking changes.",
+   "haiku_summary": "Mandatory requirements for Azure Verified Modules certification covering provider versions, code style, variables, outputs, Terraform config, testing, documentation.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.94,
+   "haiku_spec": 0.95
+  },
+  {
+   "skill_id": "sighting:91f208005b26b7d6f30fb9aa6de905f0",
+   "winner": "luna",
+   "luna_summary": "Defines a strict test-first bug-fixing workflow requiring a failing regression test, user confirmation, minimal implementation change, and full-suite verification.",
+   "haiku_summary": "Test-driven bug fix workflow enforcing failing test before fix, empirical verification, user acknowledgment, minimal fix, and full suite validation.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.8,
+   "haiku_spec": 0.7
+  },
+  {
+   "skill_id": "sighting:01d66327a83497194aff69050cc9c1ab",
+   "winner": "haiku",
+   "luna_summary": "Defines namespace-isolated CCG graph operations for building, searching, documenting, federating, updating, and traversing cross-repository code graphs with explicit boundary and completion rules.",
+   "haiku_summary": "Isolate Code Context Graph build, search, documentation by namespace for multi-repository work, preventing cross-project leakage and enabling federated analysis.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.96,
+   "haiku_spec": 0.9
+  },
+  {
+   "skill_id": "2b06d4ed-2f1c-4644-80e4-74d5e22658f9",
+   "winner": "luna",
+   "luna_summary": "Apple-platform feedback and status design guidance covering state vocabulary, loading and progress behavior, errors, alerts, notifications, accessibility, reduced motion, and SwiftUI patterns.",
+   "haiku_summary": "Apple HIG framework for designing feedback, status, progress, alerts, errors, success states using consistent vocabulary and feedback levels.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.83,
+   "haiku_spec": 0.8
+  },
+  {
+   "skill_id": "sighting:11326889540e4743df046ef62fca02d3",
+   "winner": "luna",
+   "luna_summary": "Guides creation or updating of Claude Code skills by discovering repository conventions, defining triggers and scope, structuring folders, adding scripts or hooks, registering skills, and validating the result.",
+   "haiku_summary": "Comprehensive skill authoring guide covering requirements gathering, overlap checking, convention discovery, description craft, folder structure, registration.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.91,
+   "haiku_spec": 0.7
+  },
+  {
+   "skill_id": "11300cf2-bbdc-44dd-95d3-cda88d4a8268",
+   "winner": "luna",
+   "luna_summary": "Defines a fast, single-pass experimentation mode for bounded rough attempts, with casual output structure, observations, and a clear next action.",
+   "haiku_summary": "Mode for fast single disposable attempts to generate evidence or learning; acts once, treats result as data, reports findings without polish.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.45,
+   "haiku_spec": 0.6
+  },
+  {
+   "skill_id": "sighting:e676afa87d2fc7d0fbcd5b0ef38b32aa",
+   "winner": "luna",
+   "luna_summary": "Provides procedural guidance for building, versioning, deploying, publishing, and binding Power Apps Component Framework dataset controls using pac CLI and a bundled binding script.",
+   "haiku_summary": "Power Apps Component Framework development and deployment workflow covering versioning, building, pushing, and binding dataset controls to table grids.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.95,
+   "haiku_spec": 0.95
+  },
+  {
+   "skill_id": "57782b68-b9fb-4b7e-9ff7-0534485eeccb",
+   "winner": "luna",
+   "luna_summary": "Guides confirmed archival of completed Techneering changes, including artifact checks, task checks, ordered delta merging, verification, and moving to an archive.",
+   "haiku_summary": "Archive completed changes merging delta specs into main specs with RENAMED\u2192REMOVED\u2192MODIFIED\u2192ADDED ordering, verification, and timestamped archival.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.83,
+   "haiku_spec": 0.8
+  },
+  {
+   "skill_id": "sighting:568953d86337e962262bc75478e53a63",
+   "winner": "haiku",
+   "luna_summary": "Provides a comprehensive procedural workflow for inventorying, auditing, scoring, and modernizing legacy codebases with Python analysis tools.",
+   "haiku_summary": "Comprehensive legacy codebase analysis through seven Python tools for technical debt assessment, security scanning, performance detection, and modernization roadmap.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.9,
+   "haiku_spec": 0.75
+  },
+  {
+   "skill_id": "afbc04c2-eff8-4408-8d03-184a86d60275",
+   "winner": "luna",
+   "luna_summary": "Audits code, documentation, and skills coverage using category-specific extractors, reports gaps, supports JSON output, and optionally updates target documentation and skill files.",
+   "haiku_summary": "Audit code versus documentation versus skills, scan codebase for implemented features, compare with user docs and skills, auto-update or report gaps.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.85,
+   "haiku_spec": 0.8
+  },
+  {
+   "skill_id": "5fc90e2f-8bd6-4b67-97f0-7e813db56569",
+   "winner": "haiku",
+   "luna_summary": "Guides AWS CloudTrail security monitoring and forensic analysis using Athena, CloudWatch Logs Insights, metric filters, alarms, and SIEM integrations.",
+   "haiku_summary": "Implement AWS CloudTrail log analysis for security monitoring and threat detection using Athena, CloudWatch Logs Insights, and SIEM integration.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.95,
+   "haiku_spec": 0.9
+  },
+  {
+   "skill_id": "92fddaa4-62cf-4433-98e8-87d08064d312",
+   "winner": "haiku",
+   "luna_summary": "Forces structured problem reframing, assumption analysis, divergent approaches, adversarial challenge, failure-boundary definition, and compressed delivery before answering complex questions.",
+   "haiku_summary": "Deep reasoning protocol forcing interruption of surface responses through six mandatory steps (restate, surface alternatives, branch approaches, challenge best option, bound failure cases, deliver compressed answer) with written artifacts at each stage to activate deeper knowledge pathways.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.64,
+   "haiku_spec": 0.75
+  },
+  {
+   "skill_id": "a6ce4c95-5e28-4b7a-918b-9c2d693acc93",
+   "winner": "haiku",
+   "luna_summary": "Provides operational flight guidance for Bell 212 insertion, extraction, and resupply missions, including sortie filing, weight and balance, hoist limits, and abort criteria.",
+   "haiku_summary": "Bell 212 helicopter operations procedure: file sorties via flight-ops API, compute weight-and-balance with rooftop hoist load changes, execute flight profile with comms brevity protocol; no single-pilot night hoist, abort if power margin below 10%.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.96,
+   "haiku_spec": 1.0
+  },
+  {
+   "skill_id": "fba00f0c-28f2-4b82-8f69-3bdec4d3ade9",
+   "winner": "haiku",
+   "luna_summary": "Defines a mandatory six-section structure for PR descriptions, including context, goals, tenets, change summary, testing evidence, and low-level implementation details.",
+   "haiku_summary": "Pull request description canonical structure enforcing six sections in order: Background, Goals, Tenets, High-level description of changes, Testing, and Low-level details; serves as Skeptic Gate CI review context and template source for agent-led PRs.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.55,
+   "haiku_spec": 0.8
+  },
+  {
+   "skill_id": "ae57987c-06ba-48a3-a3e5-038a86342388",
+   "winner": "haiku",
+   "luna_summary": "Defines an intent-extraction workflow that converts rough requirements into structured implementation prompts, diagnoses ambiguity, asks limited clarifying questions, and preserves execution boundaries.",
+   "haiku_summary": "Intent extractor for coderX: extracts nine dimensions from user input (Task, Output format, Constraints, Input, Context, Success criteria, Audience, Examples, Target tool), runs diagnostic checklist for common failures, outputs structured implementation-ready prompt.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.75,
+   "haiku_spec": 0.7
+  },
+  {
+   "skill_id": "sighting:eff88609af5c1ccc9dc5eef0d2cc04bc",
+   "winner": "haiku",
+   "luna_summary": "Defines an approval-gated Spec Driven Development workflow for requirements, design, implementation tasks, and explicit stopping before code changes.",
+   "haiku_summary": "Spec Driven Development workflow: creates feature directories under .specs/ with optional requirements.md (EARS format), mandatory design.md with architecture/components/data models/testing strategy, and tasks.md checklist; approval gates between each step; no code implementation.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.76,
+   "haiku_spec": 0.85
+  },
+  {
+   "skill_id": "sighting:b1fdaef2c16db3384dc0012d9c312977",
+   "winner": "haiku",
+   "luna_summary": "Guides Azure API Management Bicep authoring for services, APIs, backends, policies, subscriptions, products, diagnostics, logging, and MCP server patterns.",
+   "haiku_summary": "Azure API Management Bicep infrastructure-as-code: quick-start instance creation, resource types reference, essential patterns for backends with managed identity, backend pools, APIs with OpenAPI specs, policies from files, subscriptions, MCP server integration, diagnostics/logging with LLM capture, best practices, performance considerations.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.96,
+   "haiku_spec": 0.95
+  },
+  {
+   "skill_id": "sighting:dfc32fefd73cdd8f083830e30779fc48",
+   "winner": "haiku",
+   "luna_summary": "Defines a five-step reconciliation protocol for combining parallel research findings into fact tables, conflict resolutions, overlap decisions, gap reports, and deduplicated figure candidates.",
+   "haiku_summary": "Cross-dimension fact reconciliation: extract fact table (entity-attribute-value triples with sources), detect conflicts with resolution strategy (preferred-one/kept-both/flagged-unresolved), detect semantic overlaps with merge decisions, detect gaps against research plan severity, aggregate and deduplicate figure candidate pool; compact markdown report for downstream analyst/writer.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.95,
+   "haiku_spec": 0.7
+  },
+  {
+   "skill_id": "e14de9b6-7564-409a-9fb6-f7edd31c2e0b",
+   "winner": "haiku",
+   "luna_summary": "Defines a detailed Japanese workflow for generating Alpha Factory run reports from logs, winners, archives, metrics, market regimes, prior reports, and Git history, then updating summaries and committing results.",
+   "haiku_summary": "Alpha Factory GA run report generation: collects results from genome archive/winners files/candidates/GA logs/director decisions/git commits/market regime data/diversity KPIs, generates comprehensive markdown report with adaptive vs standard mission metrics, Stage C window selection, strategy implementation log, performance cards, bottleneck analysis, strategic questions, and extensive appendices; supports both adaptive (RASI) and standard evaluation criteria.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.95,
+   "haiku_spec": 0.95
+  },
+  {
+   "skill_id": "ad8b89ac-960d-4fe0-8a84-7b9d142d1eca",
+   "winner": "haiku",
+   "luna_summary": "A React Email skill for creating transactional templates, integrating shared layouts, rendering HTML, and sending messages through a project email utility.",
+   "haiku_summary": "React Email transactional email pattern: create templates in src/emails/ using @react-email components with standard Layout wrapper, render with @react-email/render, send via sendMail utility function; supports Tailwind styling and appConfig for dynamic branding, layout integration, and sending logic.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.93,
+   "haiku_spec": 0.8
+  },
+  {
+   "skill_id": "sighting:fb46974491c668147a58b004fe4321ef",
+   "winner": "haiku",
+   "luna_summary": "Describes a workflow for checking and applying updates to agents, skills, and guides sourced from GitHub, documentation sites, and skills marketplaces, with version tracking and validation.",
+   "haiku_summary": "Update external resources (GitHub, docs, skills.sh) with version tracking: supports agents, skills, and guides from multiple sources; check mode validates available updates; update mode downloads, validates via audit gate, and syncs version metadata in index.yaml with last_updated timestamp and update history.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.83,
+   "haiku_spec": 0.65
+  },
+  {
+   "skill_id": "ce511f0f-77d2-4962-a9aa-281b3d1ae0c8",
+   "winner": "haiku",
+   "luna_summary": "Creates blameless incident postmortems from verified artifacts, reconstructing timelines, impact, contributing factors, lessons, and owned, dated preventive, detection, and mitigation actions.",
+   "haiku_summary": "Blameless incident postmortem procedure: gather logs/artifacts, reconstruct minute-level timeline with four mandatory anchors (impact start, detection, mitigation, resolution), identify multi-causal contributing factors via 5-whys stopping at systemic not personal answers, record what went well and poorly, write owned/dated action items classified by prevent/detect/mitigate with due dates within 30 days.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.78,
+   "haiku_spec": 0.85
+  },
+  {
+   "skill_id": "sighting:7181fb3205534b4da07d8f25ae889e2a",
+   "winner": "haiku",
+   "luna_summary": "Routes UI and design work through audits, HTML guidance, plan review, diagrams, documentation, and codebase inspection while defining enterprise safety constraints.",
+   "haiku_summary": "Design agent coordinator routing work to sub-skills: design-review for UX audits, design-html for implementation-ready guidance, plan-design-review for engineering plan validation, diagram for architecture visuals, document-generate for design decision capture; declares sub-skills and enables via custom agent context files.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.73,
+   "haiku_spec": 0.6
+  },
+  {
+   "skill_id": "sighting:da2ab0ecc4190841452439e83cc42400",
+   "winner": "haiku",
+   "luna_summary": "Comprehensive Apache Spark Catalyst guidance covering tree nodes, expressions, logical and physical plans, analyzers, optimizers, rules, code generation, data types, testing, and performance.",
+   "haiku_summary": "Apache Spark Catalyst query optimization framework reference: TreeNode infrastructure, Expression hierarchy (Leaf/Unary/Binary/Ternary), LogicalPlan/PhysicalPlan structures, Analyzer/Optimizer rules, RuleExecutor batching, code generation with ExprCode, type system (primitives/complex/decimal), pattern matching, traversal patterns, performance optimization, testing strategies, design decisions, common pitfalls.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.98,
+   "haiku_spec": 0.95
+  },
+  {
+   "skill_id": "sighting:f4e0bf86c76850c35f21a39f6581450e",
+   "winner": "luna",
+   "luna_summary": "Defines a completion-time behavioral gate that executes tests and shell entrypoints, detects empty suites and dead flags, enforces coverage, and blocks completion on unverifiable runtime behavior.",
+   "haiku_summary": "Post-completion behavioral testing gate: classifies code by touched languages, resolves test runner, applies empty-detection (zero tests is failure), runs suite under timeout, smoke-tests shell entrypoints verifying affordances with differential checks (with/without flags must differ), structured exit codes (0=pass, 2=failure, 3=usage); three-layer defense for code-producing runs.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.86,
+   "haiku_spec": 0.8
+  },
+  {
+   "skill_id": "sighting:81c1d4b3636283d18191bb64c00271ef",
+   "winner": "haiku",
+   "luna_summary": "Investigates unexpected agent sessions by gathering temporal, transcript, Slack, infrastructure, gateway, and ticket evidence before forming and validating hypotheses.",
+   "haiku_summary": "Agent issue debugging procedure: gather temporal context (when, deploy timing), read full transcripts for session lifecycle, check Slack history/Cloudflare logs/AI Gateway logs/Linear history, form hypothesis explaining all symptoms, validate before fixing; common patterns table mapping symptoms to root causes (deploys, timeouts, database state, skill loading).",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.91,
+   "haiku_spec": 0.65
+  },
+  {
+   "skill_id": "ef8c56d6-4cf1-4965-b259-5476d639e8f3",
+   "winner": "haiku",
+   "luna_summary": "Audits mobile application UX against navigation, gestures, loading states, platform conventions, adaptive layouts, accessibility, and cross-platform implementation patterns.",
+   "haiku_summary": "Mobile UX audit framework for iOS/Android/Flutter/React Native: seven phases covering framework detection, navigation patterns (primary/stack/modal/deep linking), gesture handling (tap/swipe/pinch/pull-refresh), list/search/infinite-scroll patterns, loading/error/empty states, iOS HIG and Material Design 3 compliance, accessibility (WCAG AA), adaptive layout, orientation handling, with self-healing validation iteration and UX score output.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.9,
+   "haiku_spec": 0.85
+  },
+  {
+   "skill_id": "a85f66fe-b825-4165-9ddd-8dfa7bac12a8",
+   "winner": "haiku",
+   "luna_summary": "Guides carrier portfolio strategy, freight-rate negotiation, RFPs, scorecards, compliance vetting, allocation, escalation, and carrier relationship decisions.",
+   "haiku_summary": "Carrier portfolio management expertise: rate negotiation (linehaul/FSC/accessorials/minimums), scorecarding metrics (OTD/tender acceptance/claims/invoice accuracy), portfolio strategy (asset/broker/concentration/lane density), RFP process, market intelligence (DAT/Greenscreens), FMCSA compliance vetting, decision frameworks for carrier selection/consolidation/spot vs contract, edge cases (hurricanes, double-brokering, volume changes), escalation protocols.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.94,
+   "haiku_spec": 0.9
+  },
+  {
+   "skill_id": "c1b72b88-b24e-4390-a760-82f99e3eac11",
+   "winner": "haiku",
+   "luna_summary": "Guides tenant-wide Power Automate monitoring through FlowStudio cached-store tools, covering flow health, failures, makers, environments, connections, governance, freshness, and escalation to live diagnosis.",
+   "haiku_summary": "Power Automate flow health monitoring via FlowStudio MCP cached store: list flows with failure rates, get aggregated run stats, retrieve per-run history with remediation hints, update governance metadata; store vs live tool guidance; monitoring workflows for health checks, maker audits, flow inventory; requires Pro+ subscription for store tools.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.95,
+   "haiku_spec": 0.9
+  },
+  {
+   "skill_id": "882bbc45-6986-4408-9493-3577712ffa13",
+   "winner": "haiku",
+   "luna_summary": "Provides a roadmap and task-pipeline management workflow covering project context, specification state, task queues, issue classification, prioritization, roadmap creation, and next-step routing.",
+   "haiku_summary": "Project roadmap scanner and builder: resolves project context, scans pipeline state (specs/roadmap/todos/phases), classifies state (no specs/no roadmap/WIP/complete/documentation queue), interviews user for roadmap strategy, builds tasks/roadmap.md with phase structure, identifies 14 issue types (dirty tree, stale todo, blocking tasks, missing journey/UX/UI), orders priority queue, seeds Phase 1, routes to next executor.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.7,
+   "haiku_spec": 0.7
+  },
+  {
+   "skill_id": "sighting:51a9e3677c28dd491e6aa5203abb763b",
+   "winner": "haiku",
+   "luna_summary": "Provides concise anti-slop frontend guidance for design direction, visual hierarchy, responsive layout, motion, accessibility, interaction states, and final UI checks.",
+   "haiku_summary": "Frontend design anti-slop guidance: name design direction explicitly, audit existing UI before changing, use real type and spacing scales consistently, apply single accent color with intent, create hierarchy via size/weight/space not borders, mobile-first at 360px, purposeful 150-300ms motion respecting prefers-reduced-motion, semantic HTML with ARIA, accessible contrast and focus states, avoid generic hero/cards/gradients patterns.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.5,
+   "haiku_spec": 0.5
+  },
+  {
+   "skill_id": "347cee64-1c8a-4cd2-a984-dcb7e0bd2a42",
+   "winner": "haiku",
+   "luna_summary": "A research-project iteration workflow for classifying material, maintaining Markdown-first project records, organizing attempts and evidence, synchronizing a project board, preserving handoffs, and managing data and literature boundaries.",
+   "haiku_summary": "Research project iteration framework: markdown-first organization with 0-Project (attempts), 1-Docs (discussion), 2-Data, 3-Paper_Survey, 4-Skills, _ai (working memory); subproject lanes (mainline/parked/archived); classification system for work type; Sync Scale for deciding when to update PROJECT_BOARD.html; iteration loop with context handoff discipline; proof of evidence and reconciliation.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.9,
+   "haiku_spec": 0.75
+  },
+  {
+   "skill_id": "sighting:4cb032b07957252df45d5bca3e65aea1",
+   "winner": "haiku",
+   "luna_summary": "Describes platform-aware production deployment principles covering preparation, backups, deployment, verification, monitoring, rollback, zero-downtime strategies, and emergency response.",
+   "haiku_summary": "Production deployment framework: platform selection matrix, pre-deployment verification (code/build/environment/safety), five-phase process (prepare/backup/deploy/verify/confirm-or-rollback), post-deployment verification window (5min active / 15min stable / 1hr final), rollback strategies by platform, zero-downtime strategies (rolling/blue-green/canary), emergency procedures, anti-patterns to avoid.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.43,
+   "haiku_spec": 0.75
+  },
+  {
+   "skill_id": "sighting:984dd9e974f2e59fdde3442354e1c50b",
+   "winner": "haiku",
+   "luna_summary": "Defines a bounded post-completion coding-agent review with simplify, harden, and documentation passes, scope and budget limits, approval gates for refactors, security checks, and structured reporting.",
+   "haiku_summary": "Post-completion agent code review: three passes (Simplify: remove dead code/imports/tighten naming/reduce visibility with refactor approval gate; Harden: validate inputs/check injection/auth/secrets/races with security refactor approval gate; Document: \u22645 comments on non-obvious decisions); 20% budget cap on additional changes; structured YAML output; learning loop for pattern promotion to agent context.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.75,
+   "haiku_spec": 0.85
+  },
+  {
+   "skill_id": "5665a281-cab9-4b23-a664-840ef5f7db41",
+   "winner": "haiku",
+   "luna_summary": "Frames payment-system integration decisions across authorization, capture, refunds, disputes, webhooks, tokenization, PCI scope, SCA, payment methods, reconciliation, and multi-processor architecture.",
+   "haiku_summary": "Payment processing expertise: processor selection, vocabulary (PSP, payment method, intent, charge, token, SCA, 3DS, CIT/MIT, settlement, reconciliation), canonical model (order\u2192intent\u2192charge lifecycle), variation dimensions (capture timing, integration model, payment methods, recurring, merchant model, geography), decision frameworks (hosted vs embedded vs Payment Request API, sale vs auth-then-capture, webhook vs synchronous, saved methods, multi-PSP routing), regional payment methods, anti-patterns.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.9,
+   "haiku_spec": 0.95
+  },
+  {
+   "skill_id": "sighting:4a67d498ad78585a4ae6dfe220bd5310",
+   "winner": "haiku",
+   "luna_summary": "Describes an incremental note-archive workflow that scans topics, updates an index, adds backlinks, removes dead links, and records changes.",
+   "haiku_summary": "Note indexing skill for building bidirectional link indices: scans \u7b14\u8bb0/ directories excluding Wiki/, generates unified \u7b14\u8bb0/index.md with wiki-format [[\u53cc\u94fe]] references, adds backlinks to each note, supports incremental updates with change detection, cleans dead links and orphans, logs operations; maintains markdown-based knowledge factory indexing.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.9,
+   "haiku_spec": 0.75
+  },
+  {
+   "skill_id": "adc3d3fd-1e49-48d0-9815-7507c3154073",
+   "winner": "haiku",
+   "luna_summary": "Provides local PDF inspection, structured extraction, OCR, and professional PDF generation workflows using Docling and fpdf2 with scripts, schemas, and validation rules.",
+   "haiku_summary": "PDF on-device processing: read PDFs via Docling (IBM document AI) extracting structured JSON/Markdown/text/HTML with table understanding and native Vision OCR for scanned pages; create professional PDFs via fpdf2 from JSON config supporting titles, justified paragraphs, styled tables with alternating rows, images with captions, lists, KPI blocks, headers/footers with page numbers; 100% local execution.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.95,
+   "haiku_spec": 0.8
+  },
+  {
+   "skill_id": "d364e767-44df-419a-970c-b5900b7b446f",
+   "winner": "haiku",
+   "luna_summary": "Ingests verified claims from completed deep plans into agent instructions, architecture documentation, and live roadmaps while checking staleness, preserving citations, and merging safely.",
+   "haiku_summary": "Deep-plan knowledge ingestion: locates plan, re-verifies stale claims via git log before ingestion, ingests only verified facts into AGENTS.md (agent rules, \u2264150 lines), docs/ARCHITECTURE.md (component structure/data flow), ROADMAP.md (phased sequencing with status); merges into existing files preserving user-authored content; mechanical checks on line counts and citation preservation.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.86,
+   "haiku_spec": 0.7
+  },
+  {
+   "skill_id": "60ff2780-ff1d-4593-add2-94bae6830c02",
+   "winner": "haiku",
+   "luna_summary": "Provides R gganimate patterns for time and state transitions, views, shadows, entering and exiting elements, easing, and GIF or video rendering.",
+   "haiku_summary": "R gganimate animation patterns: transition types (time, states, reveal, filter, layers), view options (follow, step, zoom), shadow effects (wake, trail, mark), enter/exit animations (fade, grow, fly, drift), easing curves (linear through exponential), rendering options (GIF via gifski, video via av/ffmpeg); includes racing bar chart example.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.85,
+   "haiku_spec": 0.9
+  },
+  {
+   "skill_id": "5ae0595c-dc11-4f26-b9ee-7c386934ef6f",
+   "winner": "haiku",
+   "luna_summary": "Guides safe isolated feature work by detecting existing worktrees, choosing native or Git fallbacks, installing dependencies, running baseline tests, and reporting workspace readiness.",
+   "haiku_summary": "Git worktree setup procedure: detect existing isolation (check git-dir vs git-common-dir, guard against submodules), prefer native worktree tools, fallback to git worktree add with directory selection priority (declared preference / existing .worktrees or worktrees / default .worktrees), verify .gitignore, auto-detect dependency setup (npm/cargo/pip/poetry/go mod), verify baseline tests passing.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.86,
+   "haiku_spec": 0.8
+  },
+  {
+   "skill_id": "dc4942f3-938c-4d5e-83ef-fe0c82e90fba",
+   "winner": "haiku",
+   "luna_summary": "Teaches React command-palette implementation patterns for keyboard navigation, focus, filtering, scroll behavior, stable references, effect cleanup, and re-render prevention.",
+   "haiku_summary": "React command palette Cmd+K implementation: keyboard navigation with arrow keys/Enter/Escape clamping to bounds via useRef array, keeping selected item in view with scrollIntoView block:nearest, filtering by label and stripped shortcut matching, preventing infinite re-renders via stable icon/handler references using useMemo/useCallback, testing checklist; wrapper pattern for conditional rendering ensures effects only run when open.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.9,
+   "haiku_spec": 0.85
+  },
+  {
+   "skill_id": "792da09f-d085-4959-843b-a7400a82d5e9",
+   "winner": "haiku",
+   "luna_summary": "Drafts overdue-invoice reminders with escalation based on days overdue, payment history, prior contact, disputes, hardship, and promised payments.",
+   "haiku_summary": "Invoice payment reminder procedure: gather facts (amount, due date, payment history), pick escalation stage (1-4 based on days overdue and history), write email with subject + invoice attachment + single CTA, deliver with next-stage template ready; edge cases for disputes, broken promises, hardship; escalation templates avoid burning relationships while ensuring payment.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.9,
+   "haiku_spec": 0.8
+  },
+  {
+   "skill_id": "sighting:095cd56760988dd56b90c1cf78641e98",
+   "winner": "haiku",
+   "luna_summary": "Guides implementation of CIS Controls v8 through security hardening examples for AWS, Java, Spring, configuration, access control, logging, and CI scanning.",
+   "haiku_summary": "Implements prioritized CIS Controls v8 security hardening with code examples for asset inventory, configuration, access control, account management, audit logging, and application security practices.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.9,
+   "haiku_spec": 0.7
+  },
+  {
+   "skill_id": "e2a29584-5c66-42a8-8b30-7d595294a820",
+   "winner": "luna",
+   "luna_summary": "Chinese-language framework for analyzing complex decisions through multiple mental models, cross-disciplinary validation, capability-boundary checks, misuse detection, and structured action plans.",
+   "haiku_summary": "Applies eight cognitive science frameworks (bisociation, reformulation, analogical reasoning, constraint manipulation, negation, abstraction laddering, adjacent possible, Janusian thinking) to CS and AI research ideation for generating novel research directions.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.67,
+   "haiku_spec": 0.8
+  },
+  {
+   "skill_id": "0dc2f40d-e1f2-4f8c-b9c8-782d33543a34",
+   "winner": "luna",
+   "luna_summary": "Performs structured pull-request review or response workflows using preflight analysis, parallel lenses, disagreement synthesis, consequence-aware severity, targeted fixes, and permalinked reviewer responses.",
+   "haiku_summary": "Provides structural PR review using parallel analysis agents across convention compliance, behavioral correctness, and infrastructure dimensions, with synthesis, disagreement handling, and GitHub posting.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.88,
+   "haiku_spec": 0.75
+  },
+  {
+   "skill_id": "sighting:832d4fa20525def50a01715c23a85a8e",
+   "winner": "luna",
+   "luna_summary": "A GitHub issue creation skill for gh-cherry that selects enhancement, bug, or task templates and provides the corresponding gh issue create command and body structure.",
+   "haiku_summary": "Creates GitHub issues for gh-cherry project using matched templates (enhancement, bug, task) with structured body format via gh CLI.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.98,
+   "haiku_spec": 0.4
+  },
+  {
+   "skill_id": "bc34aadd-7378-439a-9d21-6b4eae1e7b9a",
+   "winner": "tie",
+   "luna_summary": "Vercel Marketplace guidance for discovering, installing, managing, and building integrations, including environment provisioning, billing, webhooks, and observability drains.",
+   "haiku_summary": "Expert guidance for discovering, installing, and building Vercel Marketplace integrations covering auto-provisioning, unified billing, integration CLI, observability drains, and end-to-end setup patterns.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.95,
+   "haiku_spec": 0.75
+  },
+  {
+   "skill_id": "3babb093-eecb-4c7c-aa1d-4e9c32645405",
+   "winner": "haiku",
+   "luna_summary": "An interactive gstack developer-experience review workflow covering preamble state, developer personas, competitive benchmarking, friction analysis, review modes, decision gates, review reports, plan-file persistence, and chaining.",
+   "haiku_summary": "Interactive developer experience plan review covering personas, competitive benchmarking, magical moments, and friction analysis across DX EXPANSION, POLISH, and TRIAGE modes with multi-agent verification.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.8,
+   "haiku_spec": 0.65
+  },
+  {
+   "skill_id": "sighting:81f8f54ddf0ecc1d27399217a352b5c5",
+   "winner": "haiku",
+   "luna_summary": "Provides a guided Chinese MRD-generation workflow that derives market requirements from traceable user data, integrates BRD context, asks adaptive questions, creates MRD.md, and performs data and logic self-review.",
+   "haiku_summary": "\u5e02\u573a\u9700\u6c42\u6587\u6863\uff08MRD\uff09\u5f15\u5bfc\u5f0f\u751f\u6210\u5668 \u2014 Guided generator for market requirements documents that analyzes user data, identifies P0/P1/P2 needs, evaluates competitors, and produces structured MRD with data-backed indices.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.88,
+   "haiku_spec": 0.75
+  },
+  {
+   "skill_id": "sighting:d59624c21623b5079f20ea5f8ddaf69b",
+   "winner": "haiku",
+   "luna_summary": "Explains how to decompose reviewed architecture and contracts into small, testable, dependency-mapped implementation tasks, including brownfield sequencing.",
+   "haiku_summary": "Breaks architecture and API specs into implementation-ready tasks with clear ownership, 1-3 day estimates, dependency mapping for brownfield/reversible increments, and explicit done criteria.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.78,
+   "haiku_spec": 0.7
+  },
+  {
+   "skill_id": "sighting:6277940519f81ea49e947fb637363112",
+   "winner": "haiku",
+   "luna_summary": "Synchronizes hardcoded solver table snapshots and analyzer metadata after table changes, deriving membership and sizes from source and binaries, then running client type checks.",
+   "haiku_summary": "Synchronizes solver engine table configurations (move/prune tables, sizes, tiers) with hardcoded UI constants in /code/solvers page when tables are modified, using source-based derivation rather than manual updates.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 1.0,
+   "haiku_spec": 0.95
+  },
+  {
+   "skill_id": "sighting:0ffeda891c2ab55c6f06f91df74a37be",
+   "winner": "haiku",
+   "luna_summary": "Specifies Feature-Sliced Design rules for frontend applications, including layer hierarchy, dependency direction, slice isolation, public APIs, segmentation, framework integration, enforcement, and testing conventions.",
+   "haiku_summary": "Feature-Sliced Design (FSD) frontend architecture with strict unidirectional layer imports (app\u2192pages\u2192widgets\u2192features\u2192entities\u2192shared), public API contracts per slice, and framework-agnostic decomposition into layers/slices/segments.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.93,
+   "haiku_spec": 0.8
+  },
+  {
+   "skill_id": "833aeea6-c43b-479f-8304-a3403e7ec56f",
+   "winner": "haiku",
+   "luna_summary": "Azure IoT Hub reference and workflow guidance spanning DPS, twins, routing, security, quotas, integrations, Device Update, and deployment.",
+   "haiku_summary": "Expert knowledge for Azure IoT Hub development covering troubleshooting, best practices, decision making, architecture patterns, limits/quotas, security, configuration, integrations, and deployment with category index and 60+ reference URLs.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.98,
+   "haiku_spec": 0.85
+  },
+  {
+   "skill_id": "sighting:512b924fb824dc9a4596b09de55dc7e8",
+   "winner": "haiku",
+   "luna_summary": "Provides a Chinese interactive learning system with diagnostic assessment, mastery checks, branching lessons, source grounding, visualizations, and spaced review.",
+   "haiku_summary": "Interactive learning system based on Bloom's 2-Sigma problem theory implementing mastery learning with diagnostic assessment, branching exploration, Feynman verification, spaced repetition, and Obsidian integration for cross-conversation progress tracking.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.86,
+   "haiku_spec": 0.75
+  },
+  {
+   "skill_id": "sighting:1bcaac81f61d178f43e3a2e02d9fd719",
+   "winner": "haiku",
+   "luna_summary": "Teaches behavioral Gherkin scenario design, feature-type pattern selection, integration-test decisions, TDD integration, anti-pattern avoidance, and measurable observable-outcome verification.",
+   "haiku_summary": "Guides behavioral Gherkin scenario writing emphasizing observable outcomes over code structure, with patterns for end-to-end workflows, process interactions, state persistence, and integration test requirements.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.85,
+   "haiku_spec": 0.75
+  },
+  {
+   "skill_id": "175a64e2-1dac-4afd-b251-94727d6ff162",
+   "winner": "haiku",
+   "luna_summary": "Applies eight cognitive creativity frameworks to computer-science and AI research ideation, with workflows for combination, reformulation, analogy, constraints, inversion, abstraction, adjacent possibilities, and synthesis.",
+   "haiku_summary": "Applies eight empirically-grounded cognitive science frameworks (bisociation, reformulation, analogical reasoning, constraint manipulation, negation, abstraction laddering, adjacent possible, Janusian thinking) to CS/AI research ideation for generating genuinely novel research directions.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.8,
+   "haiku_spec": 0.75
+  },
+  {
+   "skill_id": "sighting:3427da4649427a03971e08211ceccbe9",
+   "winner": "luna",
+   "luna_summary": "Defines Phase 1 product-requirements generation from a problem statement, including clarification handling, user stories, functional and non-functional requirements, acceptance criteria, scope, and conflict guardrails.",
+   "haiku_summary": "Phase 1 of spec-driven development that transforms problem statements into spec.md documents with requirements, user stories, acceptance criteria, and out-of-scope markers via subagent delegation.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.82,
+   "haiku_spec": 0.7
+  },
+  {
+   "skill_id": "sighting:4742e990d4c8f9bf0372aabc415cfe15",
+   "winner": "haiku",
+   "luna_summary": "Opinionated DHH-style review workflow for Ruby, Rails, and JavaScript, emphasizing Rails conventions, simplicity, Hotwire, ActiveRecord, and avoidance of unnecessary abstractions.",
+   "haiku_summary": "DHH-style code review enforcing Rails conventions, identifying JavaScript/framework anti-patterns, detecting unnecessary complexity, and favoring vanilla Rails with Hotwire over modern abstractions like GraphQL or microservices.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.88,
+   "haiku_spec": 0.85
+  },
+  {
+   "skill_id": "d7a09f72-08a3-4141-8f0b-96751549ffcd",
+   "winner": "luna",
+   "luna_summary": "Provides a codebase-grounded deep-dive workflow for tracing blast radius, execution paths, edge cases, concrete risks, and revised implementation plans.",
+   "haiku_summary": "Deep-dive analysis during planning that traces execution paths, finds all related code, surfaces edge cases and risks via systematic codebase searching with concrete evidence requirements.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.66,
+   "haiku_spec": 0.65
+  },
+  {
+   "skill_id": "sighting:007d06d70153e1340f92c0717069b875",
+   "winner": "tie",
+   "luna_summary": "Provides Night-orch TypeScript and ESM conventions covering imports, Zod schemas, unchecked indexed access, readonly types, discriminated unions, Vitest, and typed errors.",
+   "haiku_summary": "Night-orch TypeScript/ESM patterns covering ESM imports with .js extensions, Zod schema patterns, noUncheckedIndexedAccess handling, readonly types, discriminated unions, vitest, and error types.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.8,
+   "haiku_spec": 0.85
+  },
+  {
+   "skill_id": "sighting:8e00a0f12097a5fb6eaf89b93349415b",
+   "winner": "haiku",
+   "luna_summary": "Guides strategic creative portfolio management, including vision setting, project orchestration, resource allocation, risk management, ROI tracking, deliverables, and verification criteria.",
+   "haiku_summary": "Senior strategic leadership for creative and technical project orchestration covering portfolio management, resource allocation, talent development, innovation pipeline, and M&A strategy with 25% ROI and 95% on-time targets.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.55,
+   "haiku_spec": 0.7
+  },
+  {
+   "skill_id": "sighting:d32f65cc0a547db1a76cc125caf625f3",
+   "winner": "haiku",
+   "luna_summary": "Defines a strict evidence-first SDLC orchestrator for bounded task execution, worktrees, dispatch, verification, reviews, PR artifacts, completion tokens, and controlled continuation.",
+   "haiku_summary": "Evidence-first SDLC orchestrator for bounded task execution with dispatch modes (pi/claude/local), 7-pass review gating, mutation testing, falsification verifier, and completion verification with deterministic continuation.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.84,
+   "haiku_spec": 0.8
+  },
+  {
+   "skill_id": "f1cb05e4-9427-497e-9b7e-6b546d3ece2b",
+   "winner": "haiku",
+   "luna_summary": "A production-readiness audit skill that performs a ten-dimension go/no-go sweep across security, accessibility, compliance, analytics, SEO, GEO, performance, monitoring, documentation, and behavior quality, with trend persistence.",
+   "haiku_summary": "Production readiness audit across 10 dimensions (security, accessibility, compliance, analytics, SEO, GEO, performance, monitoring, docs, behavior-quality) with verdict logic, optional workflow parallelization, and trend tracking.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.9,
+   "haiku_spec": 0.75
+  },
+  {
+   "skill_id": "11dcba45-ab83-4b50-ab77-68271378eedd",
+   "winner": "haiku",
+   "luna_summary": "Provides Armature worker procedures for initialization, task execution, DAG health, evidence citation, testing, scoped commits, delivery gates, and task transitions.",
+   "haiku_summary": "Armature task worker that receives pre-claimed tasks, implements them with progress tracking, records decisions, verifies DAG hygiene, cites sources, runs pre-transition checks, commits work, and transitions to done via delivery gate.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.96,
+   "haiku_spec": 0.8
+  },
+  {
+   "skill_id": "sighting:a549778a4f6dbd74a50e900b0c3bc4b5",
+   "winner": "haiku",
+   "luna_summary": "Defines a comprehensive code-review procedure covering repository context, correctness, security, performance, architecture, tests, documentation, recommendations, and explicit uncertainty handling.",
+   "haiku_summary": "Comprehensive code quality review covering repository analysis, code smells, security, performance, architecture, testing, documentation, and assumptions with severity prioritization and actionable recommendations.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.55,
+   "haiku_spec": 0.65
+  },
+  {
+   "skill_id": "d1bec22e-0e47-42d6-b857-3e1e3b115c92",
+   "winner": "haiku",
+   "luna_summary": "Directs creation of a fixed-layout Editorial Forest HTML slide deck with locked design tokens, typography, slide masters, navigation runtime, content guardrails, and attribution requirements.",
+   "haiku_summary": "Editorial Forest design system for creating quiet, literary HTML presentation decks with fixed 1920\u00d71080 stage, forest green/dusty pink/cream palette, Source Serif 4 typography, and 8-slide rhythm template.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.91,
+   "haiku_spec": 0.8
+  },
+  {
+   "skill_id": "eab10b44-6aee-4e51-a12f-af3230774e4f",
+   "winner": "haiku",
+   "luna_summary": "Conducts an OWASP-based security audit using automated scans, category checklists, search patterns, remediation guidance, severity prioritization, and a structured security report.",
+   "haiku_summary": "Security audit based on OWASP Top 10 with automated scanning, 10-category checklist, search patterns for common vulnerabilities, security headers configuration, and severity-prioritized reporting.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.82,
+   "haiku_spec": 0.7
+  },
+  {
+   "skill_id": "sighting:33fa195307abc28c092eb6644cd61d5f",
+   "winner": "haiku",
+   "luna_summary": "Defines a guarded multi-surface release workflow for skill collections, including preflight checks, commit analysis, version synchronization, dry runs, approvals, tagging, pushing, and publishing.",
+   "haiku_summary": "Multi-surface deployment orchestrator for skill collections supporting GitHub releases, Claude Code, VS Code, and Copilot CLI marketplaces with preflight validation, conventional commit analysis, version bumping, and dry-run capability.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.98,
+   "haiku_spec": 0.75
+  },
+  {
+   "skill_id": "0603c144-eb22-4fb7-beca-20785ad35323",
+   "winner": "haiku",
+   "luna_summary": "Guides project intake, stack selection, and generation of a sequenced consumer guide containing six to ten seed features for an AOD lifecycle.",
+   "haiku_summary": "POC kickstart skill that transforms project ideas into sequenced consumer guides with 6-10 seed features via three stages: idea intake, stack selection, and guide generation with feature ordering principles.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.91,
+   "haiku_spec": 0.75
+  },
+  {
+   "skill_id": "522c398d-320d-4b26-83aa-e5d290652d92",
+   "winner": "haiku",
+   "luna_summary": "Routes Cloudflare deployment and infrastructure requests across Workers, Pages, storage, AI, networking, security, and infrastructure-as-code services.",
+   "haiku_summary": "Consolidated deployment guidance for Cloudflare platform covering decision trees for compute (Workers/Pages), storage (KV/D1/R2), AI/ML, networking, security, and media with authentication and troubleshooting guidance.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.95,
+   "haiku_spec": 0.8
+  },
+  {
+   "skill_id": "sighting:c43853efd55825898ca59aa7e81d70bf",
+   "winner": "luna",
+   "luna_summary": "Workflow wrapper for exporting skills, templates, or agents into a plugin architecture, including argument handling, shared workflow delegation, preflight checks, and repository path resolution.",
+   "haiku_summary": "Exports reusable assets (skills, templates, agents) from projects into v0.2 plugin architecture with preflight path resolution and destination repository validation.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.8,
+   "haiku_spec": 0.85
+  },
+  {
+   "skill_id": "b344cdfe-cd4e-4fc3-bf1f-4be0836e7d85",
+   "winner": "haiku",
+   "luna_summary": "Guides drafting and polishing American Sociological Review manuscripts for ASA style, cross-subfield readability, masking, citation consistency, abstracts, and word limits.",
+   "haiku_summary": "Guides ASR manuscript writing for disciplinary reach and ASA Style Guide compliance, tightening prose to fit 15,000-word cap (including references/footnotes), crafting \u2264200-word abstracts, and achieving cross-subfield readability.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.92,
+   "haiku_spec": 0.8
+  },
+  {
+   "skill_id": "15bedf6a-a464-40af-a7db-b3020bf5658a",
+   "winner": "haiku",
+   "luna_summary": "Teaches extraction and application of brand kits covering visual tokens, typography, logo rules, voice mechanics, artifact restyling, conformance, and accessibility checks.",
+   "haiku_summary": "Extract a brand's visual and verbal identity into tokens, voice rules, and do/don't pairs, then apply consistently across documents, decks, and pages. Produces compact brand kits or restyled artifacts with conformance notes.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.82,
+   "haiku_spec": 0.75
+  },
+  {
+   "skill_id": "c87d55ce-af39-4850-be51-47fb3d144068",
+   "winner": "luna",
+   "luna_summary": "Defines an evidence-gated research workflow for designing product engagement loops using triggers, actions, variable rewards, investments, applicability checks, and staged artifact approval.",
+   "haiku_summary": "Nir Eyal engagement loop design research\u2014trigger, action, variable reward, investment. Applicability assessment, hook pattern design, interaction mapping, ethical considerations, strategic implications. Staged research with approval gates and downstream impact checks.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.84,
+   "haiku_spec": 0.6
+  },
+  {
+   "skill_id": "sighting:5f54782dbc39ebea73d49090ca19e785",
+   "winner": "haiku",
+   "luna_summary": "Guides repository contributions by first inspecting project guidance, checking related issues, creating a branch, grouping commits, running prerequisites with user confirmation, and preparing issues and pull requests safely.",
+   "haiku_summary": "Repository contribution workflow\u2014discover guidelines, create issues, branch, commit, open PRs. Respects project conventions (naming, formatting, review) while enforcing security boundaries against command execution, external requests, and credential exposure.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.75,
+   "haiku_spec": 0.7
+  },
+  {
+   "skill_id": "sighting:211c10cfae2bec79423e2b2ef15fc782",
+   "winner": "luna",
+   "luna_summary": "Railway setup workflow for initializing projects, linking existing projects, adding services, handling parent directories and monorepos, analyzing project types, configuring deployments, and delegating database or environment setup.",
+   "haiku_summary": "Railway projects and services initialization with decision trees for linking, creating, configuring. Covers monorepo patterns, static/SSR/Python detection, database wiring, build command setup, environment configuration via staged-changes API.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.97,
+   "haiku_spec": 0.8
+  },
+  {
+   "skill_id": "dffa9a45-194e-4165-8611-f443f8422340",
+   "winner": "haiku",
+   "luna_summary": "Defines measurable goals and runs an autonomous plan-execute-validate-decide convergence loop, with validation-only, recurring, status, and cleanup modes.",
+   "haiku_summary": "Define goals with measurable success criteria and run autonomous convergence loops. Three-tier environment detection: CronCreate (Claude Code), cmux reinjection (launchd), or bash CLI. Iterates plan\u2192execute\u2192validate\u2192decide until convergence or limits.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.9,
+   "haiku_spec": 0.5
+  },
+  {
+   "skill_id": "22ff420d-1855-4c85-80c9-558ad3fa911e",
+   "winner": "haiku",
+   "luna_summary": "Defines Pax8 catalog search, product-detail retrieval, pricing comparison, provisioning checks, pagination, margin calculation, and catalog export workflows.",
+   "haiku_summary": "Pax8 product catalog navigation with MCP tools\u2014search, filter by vendor, retrieve SKU details, pricing tiers. Covers Microsoft 365, Azure, security, backup products. Field reference, billing terms, provisioning types, margin calculations, common workflows.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 1.0,
+   "haiku_spec": 0.8
+  },
+  {
+   "skill_id": "b2cf209f-5f28-4a8c-adf3-5978ce51ed48",
+   "winner": "haiku",
+   "luna_summary": "Documents the MTGA Mono runtime memory walker, pointer chains, struct offsets, disassembly verification, match-state extraction, read budgets, failure handling, and related Rust and Elixir artifacts.",
+   "haiku_summary": "MTGA Mono runtime walker reference for in-process memory navigation\u2014PE layout, pointer chains (inventory, match info, board state), struct offsets, field resolution rules, proof checklist for validating against live disassembly and read budgets.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.99,
+   "haiku_spec": 0.95
+  },
+  {
+   "skill_id": "34bf5de2-90c5-4dd7-8a30-934b0395dfc5",
+   "winner": "haiku",
+   "luna_summary": "Teaches Aptos Move language fundamentals and advanced patterns, covering abilities, generics, phantom types, references, global storage, signer authorization, visibility, testing, and common errors.",
+   "haiku_summary": "Move programming language expertise\u2014type system (abilities, generics, phantom types), references, global storage, signer authentication, visibility modifiers, friend functions, inline optimization. Patterns, best practices, common errors, testing strategy.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.96,
+   "haiku_spec": 0.85
+  },
+  {
+   "skill_id": "sighting:81f0a341f949abebc66473f127f134ec",
+   "winner": "haiku",
+   "luna_summary": "Describes scalable static-site handling for large read-only datasets using sharded catalogs, lazy details, lookup maps, precomputed search haystacks, routing indexes, cache priming, and shipping checks.",
+   "haiku_summary": "Frontend patterns for tens of thousands of static rows\u2014shard JSON catalogs, lazy-load detail records, build O(1) lookup maps, precompute search haystacks, optional routing indexes. Performance checklist, anti-patterns, reference implementation example.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.93,
+   "haiku_spec": 0.75
+  },
+  {
+   "skill_id": "sighting:d63441fd223ebace9bac47fbf95e8646",
+   "winner": "haiku",
+   "luna_summary": "Repository-specific Go development guide for ncmctl, covering CLI commands, API endpoints, encryption modes, NCM decryption, configuration, testing, and implementation patterns.",
+   "haiku_summary": "NetEase Cloud Music CLI (ncmctl) development in Go\u2014project structure, build, CLI commands (login, tasks, download, upload, NCM decryption), API integration, encryption modes, configuration, dependencies. Command table and quality levels.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.95,
+   "haiku_spec": 0.8
+  },
+  {
+   "skill_id": "sighting:86aa767ba2840c2102c206e9b3236305",
+   "winner": "haiku",
+   "luna_summary": "Specifies operator setup, status, testing, and clearing procedures for always-on hosts and delivery channels while separating configuration from secrets.",
+   "haiku_summary": "Operator-level connection profile setup for always-on hosts and delivery channels. Interview-based configuration writing ~/.codify/operator.md. Modes: setup (host selection, delivery channel choice, budget caps), status, test, clear.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.9,
+   "haiku_spec": 0.6
+  },
+  {
+   "skill_id": "sighting:853ebccaf70d81e90ac00b6acd5aa56c",
+   "winner": "haiku",
+   "luna_summary": "Defines SERP-overlap keyword clustering using Jaccard similarity, buyer-state layering, local-versus-global intent separation, citation considerations, and anti-cannibalization checks.",
+   "haiku_summary": "Semantic keyword clustering for SEO\u2014expand seed keyword via autocomplete/People Also Ask, fetch SERPs, compute overlap (Jaccard \u226530%), group by buyer state (L1 awareness through L4 decision). Local vs global intent split, cannibalization check.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.95,
+   "haiku_spec": 0.7
+  },
+  {
+   "skill_id": "sighting:c02eaf9076e55f883ee6427f95d6a103",
+   "winner": "haiku",
+   "luna_summary": "Defines Terraform infrastructure patterns for project structure, remote state, modules, secrets, environments, ECS, IAM least privilege, and production safeguards.",
+   "haiku_summary": "Terraform Infrastructure as Code patterns\u2014remote S3+DynamoDB backend, reusable modules, environment isolation, ECS/Fargate, IAM least-privilege, workspaces. Project structure, state management, CI/CD integration, common mistakes, security hardening.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.9,
+   "haiku_spec": 0.8
+  },
+  {
+   "skill_id": "8ac72564-5f5a-42dc-990a-5b5912ff815b",
+   "winner": "haiku",
+   "luna_summary": "Guides Fleet Pi React Agent Elements UI changes with key component locations, compact operational design rules, accessibility guidance, and package-specific typecheck and lint commands.",
+   "haiku_summary": "Fleet Pi React Agent Elements UI\u2014InputBar, model/mode pickers, tool cards, question prompts, resource drawer, streaming state. Key files, design rules for chat surface, validation commands, compact controls for operational coding tool.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.9,
+   "haiku_spec": 0.8
+  },
+  {
+   "skill_id": "sighting:58049280c0531e29c5af3783b66a07b9",
+   "winner": "haiku",
+   "luna_summary": "Defines an adversarial requirements-discovery workflow using frontier interviews, alternatives, premise refresh, routing, and optional briefs or executable plans.",
+   "haiku_summary": "Adversarial requirement discovery\u2014frontier questioning hunts for unknowns. Structured close (alternatives, premise refresh) routes to to-spec, wayfinder, or local brief+plan. Never silently skips gates; supports chat-only or file output modes.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.84,
+   "haiku_spec": 0.6
+  },
+  {
+   "skill_id": "584b6259-193f-4ab7-be0d-3969e3233530",
+   "winner": "haiku",
+   "luna_summary": "Routes FinOps requests to narrow specialists, supports bounded parallel dispatch, enforces catalog-only routing, and blocks unconfirmed live mutations.",
+   "haiku_summary": "FinOps task router classifying domain and dispatching to specialist agents. Single-domain\u2192one specialist; multi-domain\u2192parallel (max 4). Refuses live-guard mutations without explicit human confirmation of blast-radius and rollback plan.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.88,
+   "haiku_spec": 0.7
+  },
+  {
+   "skill_id": "f567f022-49d0-4860-a125-e9609a3c9199",
+   "winner": "haiku",
+   "luna_summary": "Generates a concise markdown newsletter from a title, topic, optional items, links, intro, and audience, then saves it as a slugged output file with a preview.",
+   "haiku_summary": "Generate lightweight markdown newsletters from topic and items list. Assembles formatted markdown with intro, section headers, item summaries with optional links. Writes to outputs/newsletter-generator/. No external services, MCP calls, or publishing.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.84,
+   "haiku_spec": 0.6
+  },
+  {
+   "skill_id": "sighting:1d57942f07586acc31308c82c07ea8b2",
+   "winner": "luna",
+   "luna_summary": "Guides Scenescape pytest authoring with category routing, Zephyr IDs, positive and negative cases, import-path policy, markers, and runtime verification.",
+   "haiku_summary": "Scenescape pytest\u2014unit, functional, UI, BAT categories. Zephyr IDs required, positive/negative coverage, SCENESCAPE_SPEC declaration. Category routing, runtime verification via test-verification-gate; import-path policy enforced to prevent per-file sys.path manipulation.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.92,
+   "haiku_spec": 0.8
+  },
+  {
+   "skill_id": "42ef0778-9eb7-44ff-9e88-5455bc6cdbe4",
+   "winner": "haiku",
+   "luna_summary": "Defines a multi-agent team workflow with role assignment, proposal and voting, parallel implementation, review, QA, escalation, and anti-fake-pass gates.",
+   "haiku_summary": "AI team as structured roles (architect, implementer, reviewer, QA, integrator, watchdog)\u2014propose/vote/implement/review/ship cycle. Cross-agent review checklist, consensus mechanisms, escalation triggers (voting tie, repeated failure, anomalies). Anti-fake-pass gates required.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.88,
+   "haiku_spec": 0.7
+  },
+  {
+   "skill_id": "sighting:1c175bfee204a70db0e52252f6460343",
+   "winner": "haiku",
+   "luna_summary": "Provides a checklist for analyzing Rust State Transition Functions for threading bounds, determinism, atomicity, gas, resource limits, tests, and simplification opportunities.",
+   "haiku_summary": "State Transition Function analysis\u2014threading correctness, non-determinism sources, atomicity verification, resource limits, test coverage gaps. Decision trees for Send/Sync bounds, HashMap iteration, checkpoint/restore patterns. Includes quick commands and audit report template.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.94,
+   "haiku_spec": 0.8
+  },
+  {
+   "skill_id": "4cf65e3c-669b-406e-8084-45aab9b16da5",
+   "winner": "haiku",
+   "luna_summary": "Guides end-to-end Xiaohongshu content production, including competitor research, tag selection, image generation, layout checks, copy constraints, artifact organization, publishing, and post-publication verification.",
+   "haiku_summary": "\u5c0f\u7ea2\u4e66 content generation\u2014seven-phase workflow from competitor research to publishing verification. Includes local database for competitor analysis, tag selection, HTML design (1080x1440) with overflow detection, copywriting within limits, platform publishing with MCP.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.95,
+   "haiku_spec": 0.8
+  },
+  {
+   "skill_id": "sighting:5f9ade6b09f0d92dbda7fa4b9bb76c50",
+   "winner": "haiku",
+   "luna_summary": "Defines JSON task-template schemas, dependency DAG rules, trigger types, expansion and cancellation lifecycle, scheduled checks, guards, deduplication, and design practices for an action tracker.",
+   "haiku_summary": "Task template design for reusable multi-step chains with DAG dependencies. Trigger types (on_task_complete, on_template_complete, schedule), expansion lifecycle with variable substitution, cycle detection via topological sort, dedup windows, cancellation semantics.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.9,
+   "haiku_spec": 0.7
+  },
+  {
+   "skill_id": "sighting:1fad9cc24e97bc40940f70b8fce479c2",
+   "winner": "haiku",
+   "luna_summary": "Provides symptom-based iOS energy diagnostics using decision trees, profiling guidance, optimization fixes, time estimates, and escalation criteria.",
+   "haiku_summary": "iOS energy diagnostics\u2014symptom-based decision trees for battery drain, device heat, background usage, cellular efficiency. Power Profiler workflows, time-cost analysis, quick diagnostic checklist, common fixes table, escalation criteria to specialized auditor.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.9,
+   "haiku_spec": 0.8
+  },
+  {
+   "skill_id": "7fe4fed6-249c-42bf-9d21-a0ca0c260431",
+   "winner": "haiku",
+   "luna_summary": "German-language legal review procedure for platform and app-store terms, covering German AGB law, P2B, DSA, DMA, BGH case law, risk classification, and a clause review raster.",
+   "haiku_summary": "AGB bei Plattformnutzung App Stores\u2014German legal review of platform terms (Apple, Google, Steam, Amazon). Checks inclusion, transparency, control factors under BGB \u00a7\u00a7305-310 and P2B/DMA regulations. Produces clause audit matrix and risk assessment.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.9,
+   "haiku_spec": 0.8
+  },
+  {
+   "skill_id": "dec3102f-3659-48f0-a144-d27ff8a5cdc7",
+   "winner": "haiku",
+   "luna_summary": "Teaches software effort estimation using story points, t-shirt sizes, planning poker, three-point estimates, calibration stories, uncertainty, and buffers.",
+   "haiku_summary": "Work estimation approaches\u2014story points (1-21 scale for complexity), T-shirt sizing (XS-XL), estimation factors (complexity, uncertainty, effort, risk). Techniques: planning poker, three-point formula. Addresses anchoring, optimism bias, scope creep, overhead.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.5,
+   "haiku_spec": 0.5
+  },
+  {
+   "skill_id": "sighting:191347eb37491404906a955bfabc5758",
+   "winner": "luna",
+   "luna_summary": "Guides creation and validation of Optuna-based trading experiments with temporal train/test splits, realistic portfolio simulation, look-ahead prevention, audit proofs, and result artifacts.",
+   "haiku_summary": "Volatio research experiment lifecycle\u2014exploration, Optuna optimization, portfolio backtest, documentation. Includes 15 audit proofs (data integrity, determinism, causality, entry/exit prices, ledger reconciliation) catching look-ahead bias, overfitting, and reconciliation errors.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.9,
+   "haiku_spec": 0.8
+  },
+  {
+   "skill_id": "sighting:0c276fc86d0fe406816295c85688b59f",
+   "winner": "haiku",
+   "luna_summary": "Teaches Smithery CLI workflows for discovering MCP servers, managing namespaces and connections, inspecting tools, applying token policies, and calling tools.",
+   "haiku_summary": "Smithery AI marketplace CLI\u2014search MCPs, authenticate, add/manage connections, browse tools, inspect schemas, call tools. Covers namespaces, connection lifecycle (connected/auth_required/error), token scoping with policies, request-level restrictions, piped JSONL output.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.9,
+   "haiku_spec": 0.7
+  },
+  {
+   "skill_id": "sighting:b11e37d61f1207c598c74e3ec17b524f",
+   "winner": "luna",
+   "luna_summary": "Defines a main-seat coordination model for dispatching bounded implementation work to specialized or cheaper workers while retaining planning, design, review, verification, and git ownership.",
+   "haiku_summary": "Multi-agent orchestration delegating bounded code volume to cheaper workers (Grok, Codex, native agents) while main seat owns planning, review, git, validation. Covers worker selection, parallel dispatch without collisions (disjoint files/waves/worktrees), visual validation loops, escape hatch.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.9,
+   "haiku_spec": 0.75
+  },
+  {
+   "skill_id": "f2b7aefe-975a-4300-86c4-4ee0c3464e38",
+   "winner": "haiku",
+   "luna_summary": "Provides an end-to-end MLOps workflow for packaging, serving, registering, monitoring, retraining, progressive deployment, reproducibility, drift detection, and rollback.",
+   "haiku_summary": "MLOps\u2014model packaging (weights, preprocessing, signature, environment), serving patterns (batch, online, streaming, edge), reproducibility (version everything), experiment tracking, registries, CI/CD/CT, monitoring (drift, decay, quality), retraining triggers, progressive deployment.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.91,
+   "haiku_spec": 0.8
+  },
+  {
+   "skill_id": "0ed82721-c4e2-46f2-a3d9-d04e0978a6e8",
+   "winner": "haiku",
+   "luna_summary": "Provides Python workflows for reading, sanitizing, summarizing, searching, extracting chapters from, and creating EPUB books from Markdown.",
+   "haiku_summary": "EPUB tools\u2014read/analyze/search chapters using ebooklib + BeautifulSoup with Unicode sanitization. Summary generation, chapter extraction, text search. Create EPUB from Markdown with HTML conversion, CSS styling, TOC, table of contents generation.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.9,
+   "haiku_spec": 0.6
+  },
+  {
+   "skill_id": "3496962d-8ca4-43ff-9ec7-4731868c3222",
+   "winner": "haiku",
+   "luna_summary": "Provides SHAP model-interpretability workflows for explainer selection, feature attribution, plots, debugging, feature engineering, model comparison, fairness analysis, production deployment, and optimization.",
+   "haiku_summary": "SHAP model interpretability\u2014explainer selection (Tree, Deep, Linear, Kernel, Gradient, Permutation), SHAP value computation, visualizations (waterfall, beeswarm, bar, scatter, force, heatmap). Workflows for explanation, debugging, fairness, production deployment, feature engineering.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.9,
+   "haiku_spec": 0.8
+  },
+  {
+   "skill_id": "sighting:23bda1a32d3f16792b938e616d9b896b",
+   "winner": "haiku",
+   "luna_summary": "Runs language-appropriate linters on changed files, supports scoped arguments, and reports lint results.",
+   "haiku_summary": "Language-aware linter runner on changed files\u2014Go (incremental golangci via make), TypeScript/JavaScript (ESLint, Prettier), SCSS (Prettier). Detects changes via git diff; runs appropriate tools; reports results with optional language filtering.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.8,
+   "haiku_spec": 0.75
+  },
+  {
+   "skill_id": "3da5753f-0dcb-4167-b286-f654edd95e18",
+   "winner": "tie",
+   "luna_summary": "Creates disposable self-contained UI mockups, preferring frontend-design when available and otherwise producing a single HTML artifact with realistic data and basic state coverage.",
+   "haiku_summary": "Create self-contained UI mockups or components as disposable artifacts using HTML/CSS/JS or React/Tailwind, with realistic mock data and multiple states, without backend wiring or testing pipelines.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.66,
+   "haiku_spec": 0.65
+  },
+  {
+   "skill_id": "sighting:88066fc8ca872ec78cddc88c75f3979b",
+   "winner": "haiku",
+   "luna_summary": "Defines an entry gate that evaluates task or fix instructions for clarity, consistency, scope, feasibility, authenticity, accuracy, and reasonableness before execution.",
+   "haiku_summary": "Evaluate incoming tasks and fix instructions for reasonableness before execution, checking clarity, consistency, scope, feasibility, authenticity, and accuracy with structured item-by-item verdicts.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.55,
+   "haiku_spec": 0.7
+  },
+  {
+   "skill_id": "f747c558-8c80-4926-8415-b1d87578c79b",
+   "winner": "haiku",
+   "luna_summary": "Provides a modular LaTeX workflow for extracting, composing, refactoring, injecting, converting, templating, validating, and safely writing LuaLaTeX or XeLaTeX documents.",
+   "haiku_summary": "Create, extract, refactor, validate, and compose modular LaTeX documents using Python scripts with component-based generation, supporting LuaLaTeX/XeLaTeX/pdfLaTeX engines with workflow guards and atomic file writes.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.98,
+   "haiku_spec": 0.9
+  },
+  {
+   "skill_id": "39fcad3f-d786-444b-8f36-d6f7248a2008",
+   "winner": "haiku",
+   "luna_summary": "Teaches Vaex-based out-of-core processing for massive tabular datasets, including loading, lazy transformations, aggregation, visualization, machine learning, performance optimization, and format conversion.",
+   "haiku_summary": "Process and analyze large tabular datasets exceeding available RAM using Vaex for out-of-core DataFrames, lazy evaluation, fast aggregations, efficient visualization, and machine learning on terabyte-scale data.",
+   "luna_real": true,
+   "haiku_real": true,
+   "luna_spec": 0.94,
+   "haiku_spec": 0.8
+  }
+ ]
+}

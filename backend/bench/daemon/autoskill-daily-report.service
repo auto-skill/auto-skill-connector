@@ -1,0 +1,5 @@
+[Unit]
+Description=Auto-Skill daily ingestion report to Discord
+[Service]
+Type=oneshot
+ExecStart=/srv/mobile-codex/autoskill-daemon/bin/daily-report.sh

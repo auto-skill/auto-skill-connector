@@ -1,0 +1,17 @@
+[Unit]
+Description=Auto-Skill repo-level expansion pass (continuous, checkpoint-resumed)
+StartLimitIntervalSec=3600
+StartLimitBurst=3
+OnFailure=autoskill-alert@%n.service
+
+[Service]
+Type=simple
+ExecStart=/srv/mobile-codex/autoskill-daemon/bin/expand-loop.sh
+Restart=on-failure
+RestartSec=60
+StandardOutput=append:/srv/mobile-codex/autoskill-daemon/logs/expand-unit.log
+StandardError=append:/srv/mobile-codex/autoskill-daemon/logs/expand-unit.log
+Nice=10
+
+[Install]
+WantedBy=default.target

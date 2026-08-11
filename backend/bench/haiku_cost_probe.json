@@ -1,0 +1,11 @@
+{
+ "skills": 32,
+ "seconds": 121.5,
+ "input_tokens": 9,
+ "cache_creation": 80722,
+ "cache_read": 17536,
+ "output_tokens": 11363,
+ "billed_input": 98267,
+ "verdicts": 32,
+ "total_cost_usd": 0.2934176
+}

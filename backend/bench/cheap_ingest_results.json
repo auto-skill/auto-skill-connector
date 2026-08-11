@@ -1,0 +1,46 @@
+{
+ "A_control_medium_24k": {
+  "effort": "medium",
+  "cap": 24000,
+  "n": 96,
+  "coverage": 1.0,
+  "verdict_agreement": 0.9896,
+  "tokens_in": 263222,
+  "tokens_out": 19888,
+  "calls": 3,
+  "tokens_per_skill": 2741.9
+ },
+ "B_low_24k": {
+  "effort": "low",
+  "cap": 24000,
+  "n": 96,
+  "coverage": 1.0,
+  "verdict_agreement": 0.9792,
+  "tokens_in": 263006,
+  "tokens_out": 15930,
+  "calls": 3,
+  "tokens_per_skill": 2739.6
+ },
+ "C_low_6k": {
+  "effort": "low",
+  "cap": 6000,
+  "n": 96,
+  "coverage": 1.0,
+  "verdict_agreement": 0.9792,
+  "tokens_in": 171689,
+  "tokens_out": 14550,
+  "calls": 3,
+  "tokens_per_skill": 1788.4
+ },
+ "D_medium_6k": {
+  "effort": "medium",
+  "cap": 6000,
+  "n": 96,
+  "coverage": 1.0,
+  "verdict_agreement": 0.9792,
+  "tokens_in": 171679,
+  "tokens_out": 17816,
+  "calls": 3,
+  "tokens_per_skill": 1788.3
+ }
+}
