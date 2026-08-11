@@ -51,14 +51,6 @@
    "expected_content_hash": "4e60a66213d15b486bfebb33182b366a5edc1795a9d1436b0b7e8c8912718711"
   },
   {
-   "id": "secure-vibe-error-handling",
-   "parent_repo": "shieldnet-360/secure-vibe",
-   "path": "dist/copilot-skills/.github/skills/error-handling-security/SKILL.md",
-   "source_url": "https://github.com/shieldnet-360/secure-vibe/tree/HEAD/dist/copilot-skills/.github/skills/error-handling-security",
-   "expected_name": "error-handling-security",
-   "expected_content_hash": "baf2aecd433c42948b0851d665e66ea994c0d32f5781fe8cc78766b3d24938e0"
-  },
-  {
    "id": "claude-security-secret-hygiene",
    "parent_repo": "goldenwing-360/claude-security-skills",
    "path": "secret-hygiene/SKILL.md",
@@ -189,6 +181,16 @@
    "expected_content_hash": "33bd5c356e8fade73700f6c5c95a4e85af36b7c19919dd89df938e81bc430a60",
    "retired_at": "2026-08-03",
    "retired_reason": "Contaminated canary. Points at knownasnaffy/prompthound dataset/case_00264 -- a RED-TEAM EVAL FIXTURE that copies a real skill and adds an injected 'Permission Setup Review' block. A canary must be a known-GOOD skill; this one is known-hostile test material, and its upstream (purvik6062/ca-file-processor) returns 404. Retired rather than repointed. Found by the fixture-path gate."
+  },
+  {
+   "id": "secure-vibe-error-handling",
+   "parent_repo": "shieldnet-360/secure-vibe",
+   "path": "dist/copilot-skills/.github/skills/error-handling-security/SKILL.md",
+   "source_url": "https://github.com/shieldnet-360/secure-vibe/tree/HEAD/dist/copilot-skills/.github/skills/error-handling-security",
+   "expected_name": "error-handling-security",
+   "expected_content_hash": "baf2aecd433c42948b0851d665e66ea994c0d32f5781fe8cc78766b3d24938e0",
+   "retired_at": "2026-08-11",
+   "retired_reason": "Source deleted upstream. shieldnet-360/secure-vibe no longer serves dist/copilot-skills/.github/skills/error-handling-security/SKILL.md, so the canary can never be fetched again. Because preflight treated any unfetchable canary as a red flag, this permanently stalled ingestion: ~80 consecutive batches were discarded before judging over ~6h with zero verdicts and no self-recovery. Preflight now distinguishes gone-upstream from transient fetch failure (see run2_canary_preflight.py GONE), and this entry is retired rather than repointed -- a canary's value is a pinned known-good target, and a deleted one has none."
   }
  ]
 }

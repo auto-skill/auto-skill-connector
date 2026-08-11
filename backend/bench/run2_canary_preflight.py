@@ -60,15 +60,43 @@ def main() -> int:
         print("canary-preflight: no canaries in this batch", flush=True)
         return 1
 
-    unfetched = []
+    # A canary whose upstream file is GONE can never be fetched again, so
+    # treating it like a transient fetch failure stalls the pipeline forever:
+    # every batch is discarded at preflight, 0 judged, indefinitely. Measured
+    # 2026-08-11: canary `error-handling-security` was deleted from GitHub and
+    # ~80 consecutive batches were discarded over ~6h with zero verdicts.
+    #
+    # These statuses mean "the content no longer exists / is not admissible
+    # upstream", which says nothing about GitHub health or our fetcher -- the
+    # canary has simply retired itself and must be dropped from the gate.
+    GONE = {"source_deleted", "symlink_escapes_repo", "not_found", "repo_deleted"}
+
+    unfetched, retired = [], []
     for s in canaries:
         rec = cache.get(s["id"])
-        if not isinstance(rec, dict) or rec.get("status") != "ok":
-            unfetched.append((s.get("name") or s["id"],
-                              (rec or {}).get("status") or "absent"))
+        st = (rec or {}).get("status") if isinstance(rec, dict) else None
+        if st == "ok":
+            continue
+        name = s.get("name") or s["id"]
+        if st in GONE:
+            retired.append((name, st))
+        else:
+            unfetched.append((name, st or "absent"))
 
-    total, bad = len(canaries), len(unfetched)
-    print(f"canary-preflight: {total - bad}/{total} canaries fetched", flush=True)
+    live = len(canaries) - len(retired)
+    bad = len(unfetched)
+    print(f"canary-preflight: {live - bad}/{live} canaries fetched"
+          f"{f' ({len(retired)} retired upstream)' if retired else ''}", flush=True)
+    for name, st in retired[:5]:
+        print(f"  RETIRED (gone upstream, not blocking): {name} ({st})", flush=True)
+
+    if live == 0:
+        # Every canary is gone upstream -- we have no regression coverage at all.
+        # Don't silently judge without a gate; surface it and let the caller's
+        # fail-open path decide, same as a batch with no canaries riding.
+        print("canary-preflight: NO live canaries remain -- refresh the canary set",
+              flush=True)
+        return 1
     if bad:
         for name, st in unfetched[:5]:
             print(f"  unfetched: {name} ({st})", flush=True)
