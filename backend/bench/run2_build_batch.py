@@ -32,6 +32,11 @@ DB = BACKEND / "enrichment_v1.db"
 CANARIES = BACKEND / "evals" / "corpus_canaries.json"
 SAMPLE_V1 = BENCH / "enrichment_sample_v1.json"
 
+# Which blob-sha first digits THIS machine may judge. Empty = all (solo mode).
+# Set to the complement of a collaborator's manifest partition so the two sides
+# cannot draw the same skill. See the note in the sweep draw loop.
+SHA_PARTITION = set(os.environ.get("AUTOSKILL_SHA_PARTITION", "").lower().strip())
+
 
 def parse_raw(raw):
     try:
@@ -397,6 +402,17 @@ def main() -> int:
             if got_sweep >= n_sweep:
                 break
             sha = sha_of.get(ext or "")
+            # Collaborator partition. Judging is content-addressed, so splitting
+            # the backlog by the first hex digit of the blob sha gives two halves
+            # that cannot overlap, with no lock and no coordination -- but ONLY
+            # if both sides filter. Measured 2026-08-12: we shipped a 0-7 manifest
+            # to a collaborator and told them to stay out of 8-f, but never
+            # constrained this builder, so our draws stayed uniform across all 16
+            # digits and ~87k of our verdicts landed inside their half. Duplicated
+            # work is wasted quota on both sides, not corruption (the enrichment
+            # PK is content-addressed, so a double judge is idempotent).
+            if sha and SHA_PARTITION and sha[0] not in SHA_PARTITION:
+                continue
             if sha and (sha in judged_shas or sha in drawn_shas):
                 continue
             if sha:
