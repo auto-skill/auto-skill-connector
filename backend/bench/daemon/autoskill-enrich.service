@@ -1,7 +1,7 @@
 [Unit]
 Description=Auto-Skill enrichment (drive-to-completion mode: continuous)
-StartLimitIntervalSec=3600
-StartLimitBurst=3
+StartLimitIntervalSec=0
+# StartLimitBurst intentionally unset: see StartLimitIntervalSec=0 above
 OnFailure=autoskill-alert@%n.service
 
 [Service]
@@ -51,12 +51,13 @@ Environment=AUTOSKILL_CLOSURE_MAX_FILES=100
 # codex Node-boot CPU that is the binding constraint on the primary stage.
 # Not 48: it buys only 3.8 vs 4.0 s/skill while agreement drops back to 84.4%
 # and timeout headroom narrows (420s / 114s call, before ~50% load inflation).
+Environment=AUTOSKILL_SHA_PARTITION=89abcdef
 Environment=AUTOSKILL_LUNA_BATCH=32
 # Budget is in CALLS; skill budget = calls x batch size = 3200/run.
 Environment=AUTOSKILL_MAX_LUNA_CALLS=400
 ExecStart=/srv/mobile-codex/autoskill-daemon/bin/enrich-nightly.sh
 Restart=on-failure
-RestartSec=30
+RestartSec=900
 StandardOutput=append:/srv/mobile-codex/autoskill-daemon/logs/enrich-unit.log
 StandardError=append:/srv/mobile-codex/autoskill-daemon/logs/enrich-unit.log
 Nice=5

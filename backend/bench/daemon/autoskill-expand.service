@@ -1,6 +1,6 @@
 [Unit]
 Description=Auto-Skill repo-level expansion pass (continuous, checkpoint-resumed)
-StartLimitIntervalSec=3600
+StartLimitIntervalSec=0
 StartLimitBurst=3
 OnFailure=autoskill-alert@%n.service
 
