@@ -10,7 +10,7 @@ OnFailure=autoskill-alert@%n.service
 # 24/30 at medium vs 20/30 low, 10/30 none). Pinned explicitly.
 Environment=AUTOSKILL_LUNA_EFFORT=medium
 Environment=AUTOSKILL_FETCH_DEADLINE=900
-Environment=AUTOSKILL_FETCH_CONCURRENCY=3
+Environment=AUTOSKILL_FETCH_CONCURRENCY=16
 Type=simple
 # DRIVE-TO-COMPLETION: window widened to 24h and the daily ceiling raised on
 # Sami's explicit instruction ("just start and drive it to completion now").

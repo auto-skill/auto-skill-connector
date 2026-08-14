@@ -300,6 +300,20 @@ while in_window; do
       export AUTOSKILL_CONCURRENCY="$_lc"
     fi
   fi
+
+  # Live-tunable FETCH concurrency, same rationale. This is a different limit
+  # from judge concurrency and from AUTOSKILL_API_CONCURRENCY: skill fetches go
+  # to raw.githubusercontent first, which is OFF the REST quota (measured 41-91
+  # files/sec at 20-96 way, zero errors). Only the authenticated contents-API
+  # fallback is rate-limited, and that is bounded separately by _API_GATE. The
+  # unit shipped 3 here, a leftover from when contents API was the primary path;
+  # it throttled every batch to the speed of a limit we no longer hit.
+  if [[ -s "$STATE_DIR/fetch_concurrency" ]]; then
+    _fc=$(tr -dc '0-9' < "$STATE_DIR/fetch_concurrency" | head -c 3)
+    if [[ -n "$_fc" && "$_fc" -ge 1 && "$_fc" -le 64 ]]; then
+      export AUTOSKILL_FETCH_CONCURRENCY="$_fc"
+    fi
+  fi
   # Canary FETCH gate, BEFORE any Luna spend. The post-combine canary gate
   # discards a batch whose canaries came back unfetched -- but by then the batch
   # has already been judged, so ~520 Luna calls die with it. Six batches went
