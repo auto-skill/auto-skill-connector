@@ -121,6 +121,13 @@ def primary_snapshot() -> str:
     """Never label a failover verdict as a Luna verdict."""
     return FAILOVER_SNAPSHOT if JUDGE_FAILOVER else LUNA_SNAPSHOT
 HAIKU_SNAPSHOT = "claude-haiku-4-5-20251001"
+# Verdict snapshots produced elsewhere that we accept as equivalent to our own,
+# so already_judged() does not re-spend quota on skills a collaborator judged.
+# Comma-separated env override. Equivalence means: same model family, same
+# prompt file, same reasoning effort -- verified before adding one here.
+ACCEPT_SNAPSHOTS = tuple(
+    x.strip() for x in os.environ.get(
+        "AUTOSKILL_ACCEPT_SNAPSHOTS", "gpt-5.6-luna@medium").split(",") if x.strip())
 # Judge failover. Luna hit a hard usage limit with a multi-day reset; without a
 # fallback the corpus stops growing entirely for that whole window. Failover
 # verdicts are tagged with their own snapshot so they are attributable and can
@@ -323,6 +330,21 @@ def already_judged(con, norm_hash: str, role: str, snapshot: str) -> dict | None
         "SELECT output_json,status FROM enrichments WHERE norm_hash=? AND judge_role=?"
         " AND prompt_version=? AND model_snapshot=?",
         (norm_hash, role, PROMPT_VERSION, snapshot)).fetchone()
+    if not r and role == "primary" and ACCEPT_SNAPSHOTS:
+        # A collaborator's verdict is still a verdict. Their model_snapshot is
+        # deliberately kept distinct so provenance survives the merge, but that
+        # means an exact-snapshot lookup misses it and we would pay Luna AGAIN
+        # for 379k skills someone already judged on their own quota -- the exact
+        # duplication this collaboration exists to avoid.
+        #
+        # Only snapshots we have accepted as equivalent are honoured: same model
+        # family, same prompt file, same effort. Anything else still re-judges.
+        q = ",".join("?" * len(ACCEPT_SNAPSHOTS))
+        r = con.execute(
+            f"SELECT output_json,status FROM enrichments WHERE norm_hash=? AND"
+            f" judge_role='primary' AND prompt_version=? AND model_snapshot IN ({q})"
+            f" AND status='ok' LIMIT 1",
+            (norm_hash, PROMPT_VERSION, *ACCEPT_SNAPSHOTS)).fetchone()
     if not r:
         return None
     if (r[1] or "").startswith("failed"):
