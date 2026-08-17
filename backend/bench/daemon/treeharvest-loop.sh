@@ -36,7 +36,14 @@ while true; do
 
   summary_args=()
   (( cycle % INHERIT_EVERY == 0 )) && summary_args+=(--summary-counts)
-  python3 run2_treeharvest.py --budget 150 "${summary_args[@]}" >> "$LOG_DIR/treeharvest.log" 2>&1
+  # Hard cap per iteration. Measured 2026-08-17: one iteration hung 13h in
+  # D-state (folio_wait_bit_common, a WSL2 page-cache stall) after finishing its
+  # maintenance pass -- the loop blocked on wait() and harvesting silently
+  # stopped while the unit stayed "active". A budget-150 iteration takes ~20min;
+  # 60min means it is wedged, not slow. timeout sends TERM then KILL 60s later.
+  timeout --kill-after=60 3600 \
+    python3 run2_treeharvest.py --budget 150 "${summary_args[@]}" >> "$LOG_DIR/treeharvest.log" 2>&1 \
+    || echo "iteration killed by timeout guard rc=$? at $(date '+%F %T')" >> "$LOG_DIR/treeharvest.log"
   rc=$?
 
   # These are full-corpus local scans. They preserve data quality but do not
