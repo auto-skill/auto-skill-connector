@@ -50,11 +50,11 @@ while true; do
   # need to run after every 150-repo network slice; keeping inheritance within
   # three slices bounds duplicate-judging delay while taking the scans off the
   # enrichment critical path. Popularity is retrieval metadata, so it can lag.
-  (( cycle % INHERIT_EVERY == 0 )) && python3 run2_inherit.py >> "$LOG_DIR/treeharvest.log" 2>&1 || true
-  (( cycle % POPULARITY_EVERY == 0 )) && python3 run2_popularity.py >> "$LOG_DIR/treeharvest.log" 2>&1 || true
+  (( cycle % INHERIT_EVERY == 0 )) && timeout --kill-after=60 1800 python3 run2_inherit.py >> "$LOG_DIR/treeharvest.log" 2>&1 || true
+  (( cycle % POPULARITY_EVERY == 0 )) && timeout --kill-after=60 1800 python3 run2_popularity.py >> "$LOG_DIR/treeharvest.log" 2>&1 || true
 
   if (( cycle % INHERIT_EVERY == 0 )); then
-    left=$(python3 - <<'PY'
+    left=$(timeout --kill-after=30 300 python3 - <<'PY'
 import sqlite3
 c=sqlite3.connect("file:/srv/mobile-codex/sessions/autoskill_7e0dd3fa/workspace/auto-skill-connector/backend/enrichment_v1.db?mode=ro",uri=True)
 try:
