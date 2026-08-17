@@ -114,15 +114,36 @@ def keeps_from_inbox(skip: set[str]) -> list[dict]:
     return out
 
 
+def fetch_with_backoff(repo: str, path: str):
+    """raw fetch that does not mistake throttling for deletion.
+
+    Measured 2026-08-15: after ~50k sustained fetches at 12-way,
+    raw.githubusercontent began refusing; the run's "gone" rate jumped from
+    4.9% to ~40%, and a same-day refetch of 60 "gone" samples returned 59x
+    HTTP 200. Only a 404 is evidence the content is absent -- anything else
+    gets one backoff+retry and is otherwise classed `throttled` (retryable),
+    never `gone` (terminal).
+    """
+    for attempt in (0, 1):
+        try:
+            st, body = raw_url_fetch(repo, path)
+        except Exception:
+            st, body = 0, None
+        if st in (200, 404):
+            return st, body
+        if attempt == 0:
+            time.sleep(25)
+    return st, None
+
+
 def hydrate_one(d: dict):
     """Fetch entry + closure. Returns (class, norm_hash, payload)."""
     repo, path, nh = d["repo"], d["path"], d["norm_hash"]
-    try:
-        st, body = raw_url_fetch(repo, path)
-    except Exception:
-        st, body = 0, None
-    if st != 200 or body is None or len(body) > MAX_BYTES:
+    st, body = fetch_with_backoff(repo, path)
+    if st == 404:
         return ("gone", nh, None)
+    if st != 200 or body is None or len(body) > MAX_BYTES:
+        return ("throttled" if st != 200 else "gone", nh, None)
     if norm_hash_of(body.decode("utf-8", "replace")) != nh:
         return ("drifted", nh, None)
 
@@ -134,10 +155,7 @@ def hydrate_one(d: dict):
     fetched, tree_extra, blobs = [], [], {}
     for cp in closure_paths:
         full = cp if cp.startswith(skill_dir) else str(Path(skill_dir) / cp)
-        try:
-            cst, cbody = raw_url_fetch(repo, full)
-        except Exception:
-            continue
+        cst, cbody = fetch_with_backoff(repo, full)
         if cst == 200 and cbody is not None and len(cbody) <= MAX_BYTES:
             gsha = git_blob_sha(cbody)
             blobs[gsha] = cbody
@@ -196,7 +214,7 @@ def main() -> int:
                 if (m := _re.search(r"b(9\d+)\.json$", f))]
     chunk_start = (max(existing) - CHUNK_BASE + 1) if existing else 0
 
-    stats = {"ok": 0, "gone": 0, "drifted": 0}
+    stats = {"ok": 0, "gone": 0, "drifted": 0, "throttled": 0}
     jf = open(JOURNAL, "a", encoding="utf-8")
     chunk_cache: dict = {}
     chunk_rows: list = []
@@ -206,7 +224,9 @@ def main() -> int:
     with ThreadPoolExecutor(max_workers=CONCURRENCY) as ex:
         for cls, nh, payload in ex.map(hydrate_one, todo):
             stats[cls] += 1
-            jf.write(f"{nh}\t{cls}\n")
+            # `throttled` is NOT journaled: it must stay eligible for rerun.
+            if cls != "throttled":
+                jf.write(f"{nh}\t{cls}\n")
             if cls == "ok":
                 sid, fe, row, blobs = payload
                 for gsha, content in blobs.items():
@@ -224,7 +244,7 @@ def main() -> int:
             if n % 2000 == 0:
                 el = time.time() - t0
                 print(f"    {n:,}/{len(todo):,}  ok={stats['ok']:,}"
-                      f" gone={stats['gone']:,} drifted={stats['drifted']:,}"
+                      f" gone={stats['gone']:,} drifted={stats['drifted']:,} thr={stats['throttled']:,}"
                       f"  ({n/max(el,1):.1f}/s)", flush=True)
 
     if chunk_rows:

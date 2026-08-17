@@ -111,10 +111,17 @@ def main() -> int:
             continue
 
         def one(path):
-            try:
-                return path, *raw_url_fetch(repo, path, ref=ref)
-            except Exception:
-                return path, 0, None
+            # Only 404 means absent; throttling must not be recorded as gone.
+            for attempt in (0, 1):
+                try:
+                    st, body = raw_url_fetch(repo, path, ref=ref)
+                except Exception:
+                    st, body = 0, None
+                if st in (200, 404):
+                    return path, st, body
+                if attempt == 0:
+                    import time as _t; _t.sleep(25)
+            return path, st, None
 
         with ThreadPoolExecutor(max_workers=CONCURRENCY) as ex:
             results = list(ex.map(one, targets))
