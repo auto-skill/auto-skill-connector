@@ -3,7 +3,7 @@ uvicorn
 httpx
 ddgs
 numpy
-onnxruntime
+onnxruntime==1.26.0
 tokenizers
 huggingface_hub
 mcp>=1.0,<2.0

@@ -405,7 +405,8 @@ def _read_library_file(files_root: Path, filename: str) -> str:
     return quality.canonicalize_skill_content(text)
 
 
-def export_package(db_path: Path, library_dir: Path, output: Path) -> dict:
+def export_package(db_path: Path, library_dir: Path, output: Path,
+                   offset: int = 0, limit: int = 0) -> dict:
     # Streams rows and library file content one skill at a time instead of
     # collecting the whole active corpus into memory first -- with a
     # few-hundred-thousand-skill library this was the difference between
@@ -425,9 +426,16 @@ def export_package(db_path: Path, library_dir: Path, output: Path) -> dict:
         missing = required - columns
         if missing:
             raise SkillDeltaError(f"collector database is missing skill columns: {', '.join(sorted(missing))}")
+        # Deterministic url-ordered window so a corpus larger than MAX_RECORDS
+        # ships as several packages that partition exactly, with no overlap
+        # and no gap, regardless of when each export runs.
+        window = ""
+        if limit:
+            window = f" LIMIT {int(limit)} OFFSET {int(offset)}"
         cursor = conn.execute(
             f"SELECT {','.join(SKILL_FIELDS)},embedding FROM skills "
             "WHERE quality_status='active' AND embedding IS NOT NULL AND url IS NOT NULL ORDER BY url"
+            + window
         )
         skipped_invalid = 0
         for row in cursor:
@@ -698,6 +706,8 @@ def _parser() -> argparse.ArgumentParser:
     export.add_argument("--db", type=Path, required=True)
     export.add_argument("--library-dir", type=Path, required=True)
     export.add_argument("--output", type=Path, required=True)
+    export.add_argument("--offset", type=int, default=0)
+    export.add_argument("--limit", type=int, default=0)
     validate = sub.add_parser("validate", help="validate a package without opening a database")
     validate.add_argument("package", type=Path)
     plan = sub.add_parser("plan", help="show inserts/updates without changing production")
@@ -718,7 +728,8 @@ def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
         if args.command == "export":
-            result = export_package(args.db, args.library_dir, args.output)
+            result = export_package(args.db, args.library_dir, args.output,
+                                    offset=args.offset, limit=args.limit)
         elif args.command == "validate":
             package = load_package(args.package)
             result = {
