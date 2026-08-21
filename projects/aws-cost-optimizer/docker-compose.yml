@@ -1,0 +1,18 @@
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      DEMO_MODE: "true"
+      CORS_ORIGINS: "http://localhost:5173,http://localhost:4173,http://localhost:8080"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: "http://localhost:8000"
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
