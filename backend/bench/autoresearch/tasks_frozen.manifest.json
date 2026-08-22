@@ -1,0 +1,8 @@
+{
+ "frozen_at": "2026-08-20T06:20:00Z",
+ "n": 51,
+ "dev": 31,
+ "holdout": 20,
+ "sha256": "329044c2620be62bd02f4a86a3d5ed95369cf0a97bcef17bfc385b5d7e12235b",
+ "cuts": "5:multi-answer 8:dup 11:placeholder 17:placeholder 50:unverifiable 54:multi-form 55:args-ambiguous 56:term-ambiguous 59:unverifiable"
+}
