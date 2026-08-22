@@ -119,7 +119,9 @@ def main() -> int:
             except Exception as e:
                 print(f"  [{i}] discard: {e}", flush=True)
                 continue
-            b = call_luna(ANSWER_PROMPT.format(prompt=d["prompt"]))
+            # Screening must run at the SAME setting as the model-under-test
+            # (luna@none) or the kept-because-it-fails set won't transfer.
+            b = call_luna(ANSWER_PROMPT.format(prompt=d["prompt"]), effort="none")
             answer = (b.get("text") or "").strip()
             if not answer and b.get("error"):
                 print(f"  [{i}] baseline error, skip", flush=True)

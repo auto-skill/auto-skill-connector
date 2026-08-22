@@ -105,7 +105,8 @@ def main() -> int:
                     skills_block = SKILLS_TEMPLATE.format(
                         skills=render_skills(policy, hits, retriever))
             r = call_luna(BASE_INSTRUCTIONS.format(skills_block=skills_block,
-                                                   prompt=t["prompt"]))
+                                                   prompt=t["prompt"]),
+                          effort=policy.get("effort"), model=policy.get("model"))
             answer = (r.get("text") or "").strip()
             if not answer and r.get("error"):
                 n_err += 1

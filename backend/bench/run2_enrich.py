@@ -73,7 +73,9 @@ SECONDARY_PROMPT = BENCH / "enrichment_prompt_v2_secondary.md"
 # --- judge pinning -----------------------------------------------------------
 CODEX_BIN = "/home/sami/discord_codex/node_modules/.bin/codex"
 CODEX_HOME = "/srv/mobile-codex/codex-home"
-LUNA_MODEL = "gpt-5.6-luna"
+# Overridable so the autoresearch harness can point its model-under-test at a
+# weaker model without touching the judge path (which never sets this env).
+LUNA_MODEL = os.environ.get("AUTOSKILL_LUNA_MODEL", "gpt-5.6-luna")
 # Reasoning effort is an operational lever, not a constant: it is the single
 # biggest control on judging latency. The API accepts none/low/medium/high/
 # xhigh/max ("minimal" is rejected by this model). The snapshot string embeds it,
@@ -1209,8 +1211,14 @@ def note_luna_blackout(message: str) -> None:
         pass
 
 
-def call_luna(prompt_text: str) -> dict:
-    """One sealed codex exec call. Empty temp cwd, scrubbed env, read-only sandbox."""
+def call_luna(prompt_text: str, effort: str | None = None,
+              model: str | None = None) -> dict:
+    """One sealed codex exec call. Empty temp cwd, scrubbed env, read-only sandbox.
+
+    `effort`/`model` override the module defaults for THIS call only -- the
+    autoresearch harness uses this to run its model-under-test at a weaker
+    setting without touching the judge configuration.
+    """
     if JUDGE_FAILOVER:
         return call_haiku_primary(prompt_text)
     jail = tempfile.mkdtemp(prefix="luna-judge-")
@@ -1218,8 +1226,8 @@ def call_luna(prompt_text: str) -> dict:
     env = {"HOME": "/home/sami", "PATH": "/usr/bin:/bin",
            "CODEX_HOME": CODEX_HOME, "TERM": "dumb"}
     cmd = [CODEX_BIN, "exec", "--ephemeral", "--ignore-user-config", "--skip-git-repo-check",
-           "-s", "read-only", "-C", jail, "-m", LUNA_MODEL,
-           "-c", f'model_reasoning_effort="{LUNA_EFFORT}"',
+           "-s", "read-only", "-C", jail, "-m", model or LUNA_MODEL,
+           "-c", f'model_reasoning_effort="{effort or LUNA_EFFORT}"',
            "--json", "-o", str(outfile), "-"]
     try:
         p = subprocess.run(cmd, input=prompt_text, env=env, capture_output=True,
