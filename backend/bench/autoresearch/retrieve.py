@@ -31,26 +31,52 @@ class Retriever:
         self.k, self.floor = k, floor
         self.qw, self.pw = quality_weight, prominence_weight
         self.dedup_by_repo = dedup_by_repo
+        npy = BACKEND / "vectors_v2" / "vectors.f32.npy"
+        rid = BACKEND / "vectors_v2" / "row_ids.json"
         con = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
         con.execute("pragma busy_timeout=120000")
-        rows = con.execute(
-            "select canonical_id, name, url, capability_summary, triggers,"
-            "       quality_score, prominence_score, embedding"
-            "  from skills where embedding is not null").fetchall()
-        con.close()
-        if not rows:
-            raise RuntimeError("no embedded rows in export DB -- load vectors first")
-        self.meta = []
-        mat = np.empty((len(rows), DIM), dtype=np.float32)
-        for i, (cid, name, url, summary, triggers, q, p, blob) in enumerate(rows):
-            mat[i] = np.frombuffer(blob, dtype=np.float32, count=DIM)
-            self.meta.append({
-                "canonical_id": cid, "name": name, "url": url,
-                "summary": summary or "",
-                "triggers": json.loads(triggers or "[]"),
-                "quality": (q or 0) / 100.0, "prominence": p or 0.0,
-            })
-        self.mat = mat  # rows are already L2-normalized at embed time
+        if npy.exists() and rid.exists():
+            # Fast path: the matrix artifact built straight from the verified
+            # vector dump; metadata joins by canonical_id, embeddings never
+            # touch SQLite. Identical numbers to the DB path.
+            mat = np.load(npy, mmap_mode="r")
+            ids = json.loads(rid.read_text())
+            metadata = {r[0]: r for r in con.execute(
+                "select canonical_id, name, url, capability_summary, triggers,"
+                "       quality_score, prominence_score from skills")}
+            con.close()
+            self.meta, keep_rows = [], []
+            for i, cid in enumerate(ids):
+                r = metadata.get(cid)
+                if r is None:
+                    continue
+                keep_rows.append(i)
+                self.meta.append({
+                    "canonical_id": cid, "name": r[1], "url": r[2],
+                    "summary": r[3] or "", "triggers": json.loads(r[4] or "[]"),
+                    "quality": (r[5] or 0) / 100.0, "prominence": r[6] or 0.0,
+                })
+            self.mat = np.asarray(mat[keep_rows], dtype=np.float32) \
+                if len(keep_rows) != len(ids) else np.asarray(mat, dtype=np.float32)
+        else:
+            rows = con.execute(
+                "select canonical_id, name, url, capability_summary, triggers,"
+                "       quality_score, prominence_score, embedding"
+                "  from skills where embedding is not null").fetchall()
+            con.close()
+            if not rows:
+                raise RuntimeError("no embedded rows in export DB -- load vectors first")
+            self.meta = []
+            mat = np.empty((len(rows), DIM), dtype=np.float32)
+            for i, (cid, name, url, summary, triggers, q, p, blob) in enumerate(rows):
+                mat[i] = np.frombuffer(blob, dtype=np.float32, count=DIM)
+                self.meta.append({
+                    "canonical_id": cid, "name": name, "url": url,
+                    "summary": summary or "",
+                    "triggers": json.loads(triggers or "[]"),
+                    "quality": (q or 0) / 100.0, "prominence": p or 0.0,
+                })
+            self.mat = mat  # rows are already L2-normalized at embed time
 
     def content_of(self, canonical_id: str) -> str:
         p = BACKEND / "judged_library_v2" / "files" / f"{canonical_id}.md"
