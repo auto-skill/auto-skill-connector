@@ -1,0 +1,18 @@
+#!/bin/bash
+# Install codex in the task container and authenticate with the ChatGPT tokens
+# shipped via CODEX_AUTH_B64 (never written to a logged command). ca-certificates
+# is required or the TLS handshake to chatgpt.com fails with UnknownIssuer.
+set -e
+
+apt-get update -qq
+apt-get install -y -qq ca-certificates curl >/dev/null
+
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.2/install.sh | bash
+source "$HOME/.nvm/nvm.sh"
+nvm install 22 >/dev/null 2>&1
+
+npm install -g @openai/codex@latest >/dev/null 2>&1
+
+mkdir -p "$HOME/.codex"
+echo "$CODEX_AUTH_B64" | base64 -d > "$HOME/.codex/auth.json"
+echo "autoskill-codex ready: $(codex --version 2>/dev/null || echo codex-installed)"

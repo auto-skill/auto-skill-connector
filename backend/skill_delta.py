@@ -466,6 +466,13 @@ def export_package(db_path: Path, library_dir: Path, output: Path,
                     content)
                 if assessed.get("quality_status") not in QUALITY_STATUSES:
                     raise SkillDeltaError("fails current quality gate")
+                # Same reason: load_package recomputes this hash from the
+                # CANONICALIZED library content; a row whose stored hash was
+                # computed on pre-canonical bytes would abort the package.
+                expected_eth = embed_text_hash(build_embed_text(
+                    {f: record.get(f) for f in SKILL_FIELDS}, content))
+                if record.get("embedding_text_hash") != expected_eth:
+                    raise SkillDeltaError("embedding text hash drift vs canonical content")
             except (SkillDeltaError, OSError):
                 # The collector's corpus is scraped from noisy sources (e.g.
                 # web search results with occasionally malformed URLs); one bad
