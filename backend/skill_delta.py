@@ -456,6 +456,16 @@ def export_package(db_path: Path, library_dir: Path, output: Path,
                 # instead of passing the per-row loop and only failing during
                 # load_package's whole-package self-verification at the end.
                 _validate_text(content, "library content", MAX_CONTENT_CHARS, required=True)
+                # Apply the SAME gate load_package enforces at self-verify, so
+                # one gate-failing row is excluded here (and counted) instead
+                # of aborting the whole package after the export work is done.
+                assessed = quality.evaluate_quality(
+                    {"name": record.get("name"), "description": record.get("description"),
+                     "source": record.get("source"), "url": url,
+                     "tags": record.get("tags") or []},
+                    content)
+                if assessed.get("quality_status") not in QUALITY_STATUSES:
+                    raise SkillDeltaError("fails current quality gate")
             except (SkillDeltaError, OSError):
                 # The collector's corpus is scraped from noisy sources (e.g.
                 # web search results with occasionally malformed URLs); one bad
