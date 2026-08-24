@@ -1,0 +1,143 @@
+{"task_id": "1f98a363", "split": "dev", "pass": false, "answer": "StarlingDove.SelectResourceConfig", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "4c82d383", "split": "dev", "pass": false, "answer": "rg --pcre2 -n -g '!node_modules' -g '!.git' -g '!vendor' '[\\p{Hiragana}\\p{Katakana}\\p{Han}]' .", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "ef076b9c", "split": "dev", "pass": false, "answer": "maven.test.skip=true", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "897198e7", "split": "holdout", "pass": false, "answer": "POST /rest/api/3/issue/{issueIdOrKey}/transitions", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "bd92d2e6", "split": "dev", "pass": false, "answer": "curl -X POST https://www.zohoapis.com/crm/v8/coql -H \"Authorization: Zoho-oauthtoken {access_token}\" -H \"Content-Type: application/json\" -d '{\"select_query\":\"select Last_Name from Contacts\"}'", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "c451e6dc", "split": "dev", "pass": false, "answer": "adr status 1 accepted", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "31f73594", "split": "dev", "pass": false, "answer": "POST /freeBusy/query", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "3b166cfa", "split": "dev", "pass": false, "answer": "\\(x \\le Uy\\)", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "27c6c0cd", "split": "dev", "pass": false, "answer": "git diff --name-only --diff-filter=ACMR HEAD^ HEAD -- '*.md' '*.markdown' '*.html' '*.htm'", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "13eb52a9", "split": "dev", "pass": false, "answer": "/api/v1/App/user \u043a\u0430\u0447Winvalid", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "161b7af9", "split": "holdout", "pass": false, "answer": "winapp python -m winapp.cli --help --json", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "00f66898", "split": "dev", "pass": false, "answer": "--halt now,fail=1", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "cc23cfb5", "split": "holdout", "pass": false, "answer": "`~/.modal.toml`, `[default]`, `token_id = \"...\"`, `token_secret = \"...\"`", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "d5bad989", "split": "holdout", "pass": false, "answer": "--apparent-size=\u25a3", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "e0ed72f1", "split": "holdout", "pass": false, "answer": "GET /api/v2/flags/:projectKey/:featureFlagKey", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "2496a6e1", "split": "dev", "pass": false, "answer": "/api/v2/check", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "3932ed60", "split": "dev", "pass": false, "answer": "2 U.S.C. \u00a7 191.", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "517d1bd9", "split": "holdout", "pass": false, "answer": "--lf, --last-failed", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "eab7febc", "split": "dev", "pass": false, "answer": "/switch mode plan", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "44d48f59", "split": "dev", "pass": false, "answer": "/docs", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "1467ce8c", "split": "dev", "pass": false, "answer": "/services/data/vXX.0/query/", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "64869430", "split": "dev", "pass": false, "answer": "/authors/{author_id}/works.json", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "79248b89", "split": "dev", "pass": false, "answer": "/v1/messages?receive_id_type=open_id", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "addd00ca", "split": "dev", "pass": false, "answer": "npx skills add vercel-labs/agent-skills --disable-telemetry", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "6308a78d", "split": "dev", "pass": false, "answer": "https://osmand.net/map/?pin=latitude,longitude#zoom/latitude/longitude", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "9595f5b0", "split": "dev", "pass": false, "answer": "https://constructionandengineering.oraclecloud.com/auth/token", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "c9b27aba", "split": "holdout", "pass": false, "answer": "![[Plan.md#^todo]] or ![[Plan.md#^todo|display alias]]", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "1c5fa812", "split": "holdout", "pass": false, "answer": "--slurp (or -s)", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "1edd7446", "split": "dev", "pass": false, "answer": "windows.vadyarascan.VadYaraScan --yara-rules.creator", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "37818e1a", "split": "dev", "pass": false, "answer": "jscodeshift src/ --dry --parser=babel-ts --transform=transform.js", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "50f14989", "split": "holdout", "pass": false, "answer": "/specify plan", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "dfc936e9", "split": "holdout", "pass": false, "answer": "npx @modelcontextprotocol/inspector.conversation  code_", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "0c1e5dee", "split": "dev", "pass": false, "answer": "https://openpyxl.readthedocs.io/en/stable/api/openpyxl.workbook.properties.html#openpyxl.workbook.properties.CalcProperties", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "c338240b", "split": "dev", "pass": false, "answer": "EndAConnectionObject", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "c5410ae3", "split": "dev", "pass": false, "answer": "windows.vadinfo.VadYaraScan", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "5b7c4fc1", "split": "dev", "pass": false, "answer": "claude mcp add --transport http grafbase https://mcp.grafbase.com/mcp", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "959e8fff", "split": "holdout", "pass": false, "answer": "USING hnsw (embedding vector_cosine_ops)", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "fe0c9f7f", "split": "holdout", "pass": false, "answer": "/**\n * @jest-environment jsdom\n * @jest-environment-options {\"url\": \"https://example.test/\"}\n */", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "fc983092", "split": "dev", "pass": false, "answer": "/repos/{owner}/{repo}/compare/{basehead}", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "731371f9", "split": "dev", "pass": false, "answer": "/app/api-reference/config/next-config-js/typedRoutes", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "b0ecb2cb", "split": "dev", "pass": false, "answer": "#^block-id", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "0391d40e", "split": "dev", "pass": false, "answer": "/maps/api/js?key=YOUR_API_KEY&v=weekly", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "e589deaf", "split": "dev", "pass": false, "answer": "npx @modelcontextprotocol/inspector npx tsx src/index.ts", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "81d5058e", "split": "holdout", "pass": false, "answer": "/calendars/{calendarId}/events", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "97d761cb", "split": "holdout", "pass": false, "answer": "/works/{doi}", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "f1dbae54", "split": "dev", "pass": false, "answer": "https://docs.daft.ai/en/stable/api/config/", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "cf87ebb2", "split": "dev", "pass": false, "answer": "/apis/image.toolkit.fluxcd.io/{version}/namespaces/{namespace}/imageupdateautomations", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "9554de7f", "split": "holdout", "pass": false, "answer": "--output-format=github crescent.gif", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "3b37fda4", "split": "holdout", "pass": false, "answer": "/\u2212/npm/v1/security/advisories/bulk", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "5fdf4875", "split": "holdout", "pass": false, "answer": "Fair, Apologies, Stick to values, Truthful", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "270bd7f0", "split": "dev", "pass": false, "answer": "/user_guide/file_based_rules/", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "b7af0873", "split": "dev", "pass": false, "answer": "fabric profile use production", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "6c0fa25d", "split": "holdout", "pass": false, "answer": "dotnet ef dbcontext scaffold \"<connection-string>\" Microsoft.EntityFrameworkCore.SqlServer --table Player --output-dir Entities --context-dir Data --no-onconfiguring --preserve-database-names", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "29f12052", "split": "holdout", "pass": false, "answer": "/v1/{project}/{lang}/page/html/{title}[/{revision}]", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "7518970f", "split": "dev", "pass": false, "answer": "/apis/hostedcontrolplanes.hypershift.openshift.io/v1alpha1/namespaces/<namespace>/hostedclusters/<name>", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "60bb61e4", "split": "dev", "pass": false, "answer": "tail -n +2 filename", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "05de4a78", "split": "dev", "pass": false, "answer": "gsap.context(animationCallback, scope)", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "8ef94cf8", "split": "dev", "pass": false, "answer": "neptune", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "8bd06501", "split": "dev", "pass": false, "answer": "--skip-proof-key-regeneration", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "bc75dbda", "split": "dev", "pass": false, "answer": "`-osrt`", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "edb2fabe", "split": "holdout", "pass": false, "answer": "GET /repos/OWNER/REPO/readme", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "3bf2cf72", "split": "dev", "pass": false, "answer": "onlyBeAccessedByLayers", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "174bc3bd", "split": "dev", "pass": false, "answer": "-NJ", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "e93d3ff6", "split": "holdout", "pass": false, "answer": "curl -G https://api.twilio.com/2010-04-01/Accounts/{AccountSid}/Messages.json -u \"{AccountSid}:{AuthToken}\"", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "e3eee484", "split": "holdout", "pass": false, "answer": "/alerts-active", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "3c482db5", "split": "dev", "pass": false, "answer": "preload(\"/fonts/example.woff2\", { as: \"font\", type: \"font/woff2\", crossOrigin: \"anonymous\" });", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "c8e254e6", "split": "dev", "pass": false, "answer": "/messages_batch", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "32dbadf1", "split": "dev", "pass": false, "answer": "curl -L -H \"Accept: application/vnd.github+json\" https://api.github.com/repos/OWNER/REPO/secret-scanning/alerts", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "44f94a6e", "split": "holdout", "pass": false, "answer": "/echo/dfr_rest_services.get_dfr", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "299dff37", "split": "dev", "pass": false, "answer": "curl -X POST \"https://production.wompi.co/v1/payment_sources\" -H \"Authorization: Bearer priv_prod_xxx\" -H \"Content-Type: application/json\" -d '{\"type\":\"CARD\",\"token\":\"tok_prod_xxx\",\"customer_email\":\"test@test.com\",\"acceptance_token\":\"acceptance_token\",\"accept_personal_auth\":\"accept_personal_auth\"}'", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "a8d22794", "split": "dev", "pass": false, "answer": "/molecule.json", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "3dffe781", "split": "dev", "pass": false, "answer": "/checkout/v2/sessions", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "ec37eb3f", "split": "dev", "pass": false, "answer": "https://pypi.org/pypi/<project_name>/json[?version=<version>]", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "d62e2d8b", "split": "holdout", "pass": false, "answer": "/v1/foods/list", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "7608af44", "split": "holdout", "pass": false, "answer": "Wait crescent to=functions.exec code\nconst r = await tools.exec_command({cmd:\"rg -n \\\"FullMode|BoundedChannelFullMode\\\" /usr/share/dotnet 2>/dev/null | head\",\"yield_time_ms\":1000,\"max_output_tokens\":200});\ntext(r.output);\u0ab0\u0acd\u0aaf siulittaasipping?", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "9246aa85", "split": "holdout", "pass": false, "answer": "POST https://googleads.googleapis.com/v22/customers/1234567890:uploadClickConversions", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "eb95b331", "split": "holdout", "pass": false, "answer": "kubectl rollout undo deployment/story-plan -n marketing --to-revision=3", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "fb42cdaa", "split": "dev", "pass": false, "answer": "/apis/{group}/{version}/namespaces/{namespace}/httproutes/{name}", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "86e8719f", "split": "dev", "pass": false, "answer": "rg --files --hidden --glob '! .git/**' -g 'SKILL.md'", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "5a0e8bbf", "split": "dev", "pass": false, "answer": "/api/v2/scim", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "57c5e080", "split": "holdout", "pass": false, "answer": "https://api.github.com/repos/OWNER/REPO/actions/runs/RUN_ID/artifacts (GHES: https://HOSTNAME/api/v3/repos/OWNER/REPO/actions/runs/RUN_ID/artifacts)", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "1556662e", "split": "holdout", "pass": false, "answer": "/repos/{owner}/{repo}/releases/{release_id}/assets{?name,label}", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "08eae82d", "split": "holdout", "pass": false, "answer": "--low_vram", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "54f65e29", "split": "holdout", "pass": false, "answer": "addProjectItemById", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "267e80d7", "split": "holdout", "pass": false, "answer": "git show --check --pretty=fuller <commit>", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "625f66a8", "split": "dev", "pass": false, "answer": "widget.handle_event(cx, event);", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "e0fe5570", "split": "holdout", "pass": false, "answer": "gridTemplateColumns", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "d806c5c8", "split": "dev", "pass": false, "answer": "make -np", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "74e34b4c", "split": "dev", "pass": false, "answer": "adr new -s \"Use PostgreSQL\" -r 3 \"Use PostgreSQL\"", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "ab432bb4", "split": "dev", "pass": false, "answer": "`--export-area-page`", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "9cb3a572", "split": "dev", "pass": false, "answer": "--rerun-each", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "b2132e91", "split": "dev", "pass": false, "answer": "`experiments: { typedRoutes: true }`", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "1c00f659", "split": "holdout", "pass": false, "answer": "curl -X POST \"https://api.firecrawl.dev/v1/scrape\" -H \"Authorization: Bearer API_KEY\" -H \"Content-Type: application/json\" -d '{\"url\":\"TARGET_URL\"}'", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "56e4a383", "split": "dev", "pass": false, "answer": "await chromium.connectOverCDP('http://localhost:9222');", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "91b8da34", "split": "dev", "pass": false, "answer": "react-dom/experimental", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "f4b864eb", "split": "dev", "pass": false, "answer": "50T chainring / 15T cog", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "652adfd3", "split": "dev", "pass": false, "answer": "resources/read \u2014 uri", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "47a93dab", "split": "dev", "pass": false, "answer": "-", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "e7bf70df", "split": "dev", "pass": true, "answer": "lsof -nP -iTCP -sTCP:LISTEN", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "c6657f73", "split": "dev", "pass": true, "answer": "GET /2/users/me", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "044ce739", "split": "dev", "pass": true, "answer": "SubagentStop", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "136ed8f5", "split": "dev", "pass": true, "answer": "@custom-variant aqua (&:where([data-theme=\"aqua\"], [data-theme=\"aqua\"] *));", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "ded72623", "split": "holdout", "pass": true, "answer": "/repos/{owner}/{repo}/contents/{path}", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "4b671c58", "split": "holdout", "pass": true, "answer": "\"github-actions\"", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "244fad88", "split": "dev", "pass": true, "answer": "@anthropic-ai/claude-code", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "306f47e1", "split": "dev", "pass": true, "answer": "cargo clippy --all-targets --all-features -- -D warnings", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "01f33605", "split": "holdout", "pass": true, "answer": "evaluate.load(\"bertscore\")", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "4bc10ca0", "split": "dev", "pass": true, "answer": "https://api.semanticscholar.org/graph/v1/paper/search", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "2bb993f3", "split": "holdout", "pass": true, "answer": "eth_getLogs", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "c48e15c5", "split": "dev", "pass": true, "answer": "-bbox-layout", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "a388945c", "split": "dev", "pass": true, "answer": "disable-model-invocation", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "c47a9a13", "split": "dev", "pass": true, "answer": "curl -s \"https://export.arxiv.org/api/query?id_list=1706.03762v1\"", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "da55c81d", "split": "dev", "pass": true, "answer": "POST /v1/data_sources/{data_source_id}/query", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "4c961b09", "split": "dev", "pass": true, "answer": "POST /v1/messages", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "37618f4a", "split": "holdout", "pass": true, "answer": "/v1/images/generations", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "8eaf81a2", "split": "dev", "pass": true, "answer": "useUnknownInCatchVariables", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "885524b1", "split": "dev", "pass": true, "answer": "var(--vscode-editor-background)", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "ec01860e", "split": "dev", "pass": true, "answer": "java -Ddoi=3 -jar acts_cmd.jar cmd model.txt out.txt", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "c1b7cdc1", "split": "holdout", "pass": true, "answer": "https://api.perplexity.ai/v1/chat/completions", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "32b76cd5", "split": "dev", "pass": true, "answer": "kornia.feature.LoFTR", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "3de1dca0", "split": "holdout", "pass": true, "answer": "/v1/messages", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "3c23bc21", "split": "dev", "pass": true, "answer": "/docs/linking", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "043bb4d9", "split": "dev", "pass": true, "answer": "Task<AuthorizationPolicy?> GetPolicyAsync(string policyName);", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "dfdd281b", "split": "dev", "pass": true, "answer": "uv run --with anthropic summarize.py", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "1a8614c0", "split": "holdout", "pass": true, "answer": "npm create vite@latest my-app -- --template vanilla-ts", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "4dfda15f", "split": "dev", "pass": true, "answer": "tail -n +1 FILE", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "aeb331e0", "split": "dev", "pass": true, "answer": "/repos/{owner}/{repo}/pulls/{pull_number}/reviews", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "c688566f", "split": "holdout", "pass": true, "answer": "Very good user", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "79ac4a78", "split": "dev", "pass": true, "answer": "POST /v1/messages", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "527cd0bb", "split": "dev", "pass": true, "answer": "GET /services/data/vXX.X/query?q={SOQL}", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "e047e126", "split": "holdout", "pass": true, "answer": "loading.js", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "610719a2", "split": "holdout", "pass": true, "answer": "{\"type\":\"ephemeral\"}", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "f5358fd7", "split": "dev", "pass": true, "answer": "POST /v1/messages", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "4aa139f8", "split": "holdout", "pass": true, "answer": "--print", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "77258c12", "split": "dev", "pass": true, "answer": "/repos/{owner}/{repo}/pulls/{pull_number}/comments", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "682533ec", "split": "dev", "pass": true, "answer": "tail -n +2 helper", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "3226493a", "split": "holdout", "pass": true, "answer": "tail -n +2 input.txt", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "5106e18d", "split": "holdout", "pass": true, "answer": "POST /webmasters/v3/sites/{siteUrl}/searchAnalytics/query", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "e9701b6d", "split": "dev", "pass": true, "answer": "cq.exporters.export(obj, \"filename.step\")", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "d09290b7", "split": "holdout", "pass": true, "answer": "--served-model-name", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "554539c9", "split": "dev", "pass": true, "answer": "--dangerously-skip-permissions", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "002b0d13", "split": "holdout", "pass": true, "answer": "'nativewind/preset'", "hits": [], "ts": "2026-08-24T04:18:49Z"}
+{"task_id": "e6fed8d7", "split": "holdout", "pass": true, "answer": "/api/v1/query", "hits": [], "ts": "2026-08-24T04:18:49Z"}

@@ -1,0 +1,11 @@
+{
+ "frozen_at": "2026-08-24T04:18:49Z",
+ "n": 143,
+ "dev": 92,
+ "holdout": 51,
+ "baseline_fail": 98,
+ "sha256": "e9069b102e320fecfca5d780cc949e28dc4ab44b84e869de1e3e756ed09fb865",
+ "cuts": "F18 unverifiable-niche, F87 leakage-suspect",
+ "model_under_test": "gpt-5.6-luna@none",
+ "baseline_source": "adversarial screen answers (identical prompt shape)"
+}
