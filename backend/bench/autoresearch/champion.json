@@ -1,5 +1,6 @@
 {
- "policy": {"k": 3, "format": "summary"},
- "certified": false,
- "note": "initial incumbent; replaced automatically by coliseum wins"
+ "policy": {"k": 3, "format": "full", "max_chars": 2500, "effort": "none"},
+ "certified": true,
+ "certified_at": "2026-08-24",
+ "evidence": "v1.1 suite: dev +21.7pts p<0.0001 (n=92); holdout +15.7pts p=0.0215 (n=51, 9 fixes / 1 regression). Journal + results in bench/autoresearch/."
 }
