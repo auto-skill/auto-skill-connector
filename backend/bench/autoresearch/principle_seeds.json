@@ -1,0 +1,260 @@
+[
+ {
+  "canonical_id": "dec6952e704fdfb70bd80aba19de9fbafe3034d81a863f0020b0287d3ee552fb",
+  "name": "first-principles-skill",
+  "summary": "Provides a general first-principles reasoning method: identify assumptions, reduce problems to fundamentals, challenge constraints, rebuild solutions, and validate them against reality.",
+  "url": "https://github.com/emmanuelortiz87/gentle-vanguard-public/blob/HEAD/public/skills/first-principles-skill/SKILL.md"
+ },
+ {
+  "canonical_id": "303d2b1245e4a8c7d94b6a511dcdbf82ea614e8aee1da0ad80063b86896b2c5f",
+  "name": "first-principles-thinking",
+  "summary": "Teaches a first-principles problem-solving method using decomposition, assumption verification, constraint testing, reconstruction, and structured reporting.",
+  "url": "https://github.com/meghal86/stacksignal/blob/HEAD/.agents/skills/first-principles-thinking/SKILL.md"
+ },
+ {
+  "canonical_id": "937ac5eea2a2516c5cbb9ad9027a472e37f4a849e7c97b96fab326f44277344c",
+  "name": "first-principles",
+  "summary": "Teaches a first-principles problem-solving method: define outcomes, expose assumptions, distinguish fundamentals from conventions, quantify constraints, rebuild, and compare against the conventional solution.",
+  "url": "https://github.com/opelpleple/meta-skills/tree/HEAD/first-principles"
+ },
+ {
+  "canonical_id": "f336349ce76d9c5885089c03151829a7d8018ec7fe46ce3178d3e41ff65bd382",
+  "name": "consider-first-principles",
+  "summary": "Provides a structured first-principles reasoning method that identifies assumptions, tests them, extracts fundamental truths, rebuilds understanding, and presents new possibilities.",
+  "url": "https://github.com/hhellbusch/zanshin-pi-extension/blob/HEAD/skills/consider-first-principles/SKILL.md"
+ },
+ {
+  "canonical_id": "c86543544316265c52fbcc70fd14cbe0b647d2a001e81fe9fb311ad2db3a4055",
+  "name": "first-principles-thinking",
+  "summary": "Provides a structured first-principles reasoning process: challenge assumptions, identify fundamentals, rebuild solutions, and test outcomes.",
+  "url": "https://github.com/lev-os/agents/blob/HEAD/skills-db/thinking/patterns/first-principles-thinking/SKILL.md"
+ },
+ {
+  "canonical_id": "98e1b6275679fd303e9b5b6f97863dbe9076616753c2da58e19dea790b1e6086",
+  "name": "first-principles-thinking",
+  "summary": "Guides a Socratic first-principles problem-solving process through clarification, assumption testing, evidence review, fundamentals, solution rebuilding, and a structured final summary.",
+  "url": "https://github.com/onfire7777/universal-ai-skills-library/blob/HEAD/skills/first-principles-thinking/SKILL.md"
+ },
+ {
+  "canonical_id": "49c4643b130574807cbc22b45359550ff56a47d97d18b7e3bc6a5bc6d392b91b",
+  "name": "coding-before-dev",
+  "summary": "Discovers and applies project-specific coding guidelines by reading task artifacts, package spec indexes, checklists, shared guides, and relevant standards before implementation.",
+  "url": "https://github.com/Mininglamp-OSS/octo-mail/blob/HEAD/.claude/skills/coding-before-dev/SKILL.md"
+ },
+ {
+  "canonical_id": "76f63ddca7b088c578cf3cd61b32ea51dbd2b275a618900333b2c3cec538e552",
+  "name": "brainstorm",
+  "summary": "Requires problem exploration before implementation, including repository understanding, focused clarification, approach comparison, recommendation, and explicit approval.",
+  "url": "https://github.com/jessedegans/jstack/tree/HEAD/skills/brainstorm"
+ },
+ {
+  "canonical_id": "1c27b3b239301b3f77f7bff0344f34c807e6cab0dd19f07a46ad5af23e954084",
+  "name": "brainstorming",
+  "summary": "Requires agents to explore a codebase, propose multiple implementation approaches with trade-offs, obtain approval, and then create an implementation plan before coding.",
+  "url": "https://github.com/modbender/skill-library-mcp/blob/HEAD/data/craftwork/skills/brainstorming/SKILL.md"
+ },
+ {
+  "canonical_id": "ab280baf3ded984f5a9fd362e064f122f5a44a6e8fca2a40a1a036913cbc28a2",
+  "name": "debug",
+  "summary": "Systematic debugging workflow for active failures: read and reproduce the error, isolate the affected layer, test one root-cause hypothesis at a time, fix the cause, and verify the original case.",
+  "url": "https://github.com/peter-tnc-453/mvp-os/blob/HEAD/.claude/skills/debug/SKILL.md"
+ },
+ {
+  "canonical_id": "b53f4793a3daac97b174254ff5ce2aee07d65dafa92f07227cc22113f9cb3cf9",
+  "name": "debug",
+  "summary": "Debugging discipline covering reproduction before reasoning, symptom vs cause separation, systematic bisection, avoiding masking, suspecting assumptions, fixing the class not instance, regression testing.",
+  "url": "https://github.com/angad-kandhari/deliberate/tree/HEAD/skills/debug"
+ },
+ {
+  "canonical_id": "a62f7cebe3db81550ed12bb59d53ba87b7ecdfad789d2c05164f9bebb88c3875",
+  "name": "debug",
+  "summary": "Provides a hypothesis-driven debugging workflow covering reproduction, root-cause analysis, targeted investigation, minimal fixes, verification, and reporting across several programming languages.",
+  "url": "https://github.com/anshul-garg27/claude-enhancement-suite/blob/5ce8143187772e3be17f6b0650911e30b27551b6/.claude/skills/debug/SKILL.md"
+ },
+ {
+  "canonical_id": "0496cd568b63babb11cb5847d24d51cdf1c32f156dae059bf6e26d3cbf6ad52b",
+  "name": "debugging",
+  "summary": "Defines a systematic debugging process based on reproduction tests, hypothesis testing, isolation, minimal fixes, verification, log analysis, and production safety.",
+  "url": "https://github.com/diegosouzapw/awesome-omni-skill/blob/HEAD/skills/data-ai/debugging/SKILL.md"
+ },
+ {
+  "canonical_id": "4a671f54b23b6d10beeb7b78aa78902c20a159cb29b4e5d7eeaa8f2d9130b447",
+  "name": "debug",
+  "summary": "Provides a systematic debugging workflow covering error collection, reproduction, hypothesis formation, isolation, root-cause fixes, verification, documentation, common symptoms, and reporting.",
+  "url": "https://github.com/learn-automated-testing/agent-team-mcp/blob/HEAD/templates/skills/debug/SKILL.md"
+ },
+ {
+  "canonical_id": "a70e728d8102070f5f5e3aac0a0f83489e87f11a32e1914bb75da0225d81091c",
+  "name": "debug",
+  "summary": "Provides a procedural debugging workflow covering evidence preservation, reproduction, root-cause analysis, test-driven fixes, verification, and reporting.",
+  "url": "https://github.com/kostadindraganov/nightshift0S/blob/HEAD/vendor/blueprint-skills/skills/debug/SKILL.md"
+ },
+ {
+  "canonical_id": "cb63bed1f579a6739ff80852d07a82879f085f7d0748bdc75a90e19a2a4c85cc",
+  "name": "workflow-checklist",
+  "summary": "Runs an interactive four-phase workflow checklist covering pre-work state, delegation and verification reminders, post-work gates, and session health checks.",
+  "url": "https://github.com/tmalcolm-0607/mad-council-claw/blob/HEAD/.claude/skills/workflow-checklist/SKILL.md"
+ },
+ {
+  "canonical_id": "872414b34164567427e0037f373d478da332efb8a76c4dc0a822c7b32fc8f023",
+  "name": "completion-checklist",
+  "summary": "Completion gate requiring implementation, tests, progress tracking, lock cleanup, memory updates, session logging, and communication of next pipeline steps.",
+  "url": "https://github.com/RepairYourTech/cfsa-antigravity/blob/HEAD/.factory/skills/completion-checklist/SKILL.md"
+ },
+ {
+  "canonical_id": "b82835eeb2053cb29187b111f5f361f3520fc86ea9e37bb0b7b614c628c256eb",
+  "name": "work-complete",
+  "summary": "Provides a completion checklist covering acceptance criteria, builds, tests, linting, self-review, committing, pushing, clean status verification, and completion reporting.",
+  "url": "https://github.com/eltmon/overdeck/blob/HEAD/sync-sources/skills/work-complete/SKILL.md"
+ },
+ {
+  "canonical_id": "fc7e094829372474ccb285c07af8e982b7544d93d09a63f38ab7445d3bff9e99",
+  "name": "review-task",
+  "summary": "Checklist for reviewing task notes for concrete goals, bounded scope, references, observable acceptance criteria, completion evidence, durable documentation, and sensitive information.",
+  "url": "https://github.com/kurosawa-kuro/study-ai-tool/blob/c0860647497a6290574287e1fb5b5b4f95a2f3e7/.claude/skills/review-task/SKILL.md"
+ },
+ {
+  "canonical_id": "db029215a52f9d9a270229ed0a56c43d69b8b01e4048ed00815c97d57dc139e2",
+  "name": "checklist",
+  "summary": "Provides a structured checklist workflow for non-code activities, requiring goals, deadlines, owners, dependencies, observable completion criteria, follow-ups, and optional backlog registration.",
+  "url": "https://github.com/DanielLourencoFil/agentic-harness/blob/HEAD/home/skills/checklist/SKILL.md"
+ },
+ {
+  "canonical_id": "354372d37677f5bdccf5cece417623b2ea30714171b14ae3afbcc273d46969c9",
+  "name": "checklist",
+  "summary": "Creates and maintains persistent task checklists by decomposing large work, defining acceptance criteria and risks, executing items sequentially, updating progress, and requiring phase audits.",
+  "url": "https://github.com/kkroid/OneLLMRouter/blob/b6ff7d3c70ed3507091810962fcd96e31c7c9420/.claude/skills/checklist/SKILL.md"
+ },
+ {
+  "canonical_id": "a169ce2cf1e662c3e562c50ae546c091dc381e3eac942e71c727d009b6ddc04c",
+  "name": "tradeoff-analysis",
+  "summary": "Teaches structured architectural trade-off analysis using comparison matrices, weighted scoring, CAP and PACELC framing, decision templates, and checklists.",
+  "url": "https://github.com/majiayu000/claude-skill-registry/blob/HEAD/skills/analysis/tradeoff-analysis/SKILL.md"
+ },
+ {
+  "canonical_id": "17b8410f31f0d8ecc69ad530c0c58b2f742606c85acc2caaf8b1d15e5b307764",
+  "name": "tradeoff-analysis",
+  "summary": "Provides a structured multi-axis tradeoff-analysis process with comparison tables, prioritization, implications, mitigation options, alternatives, rollback planning, and human decision handoff.",
+  "url": "https://github.com/thinkyou0714/claude-lab-skills/tree/HEAD/lab-thinking-core/skills/tradeoff-analysis"
+ },
+ {
+  "canonical_id": "761135ec4eb1fae71532050f2abe30afd94dec5f3d0b12719228d8c1768fef06",
+  "name": "investigating-codebases",
+  "summary": "Defines a systematic method for investigating unfamiliar codebases through structural reconnaissance, entry-point discovery, dependency tracing, targeted searches, execution-flow analysis, pattern recognition, and structured reporting.",
+  "url": "https://github.com/aiskillstore/marketplace/blob/HEAD/skills/c0ntr0lledcha0s/investigating-codebases/SKILL.md"
+ },
+ {
+  "canonical_id": "de8016dfe4f4efb96e2e7ee85cfcbc3c90846db1da342a744b5e978f2f2d5f90",
+  "name": "codebase-onboarding",
+  "summary": "Offers a language-agnostic onboarding process for unfamiliar codebases: orient, map structure, find entry points, trace one flow, identify seams, and confirm understanding by building and testing.",
+  "url": "https://github.com/gurinderu/craft/blob/HEAD/skills/codebase-onboarding/SKILL.md"
+ },
+ {
+  "canonical_id": "4cdea97125adec3e2b0d46825e6646edd17a7b9e571f6b1706b2e1424a083919",
+  "name": "codebase-exploration",
+  "summary": "Provides a systematic workflow for exploring unfamiliar codebases using layered searches, structural analysis, dependency tracing, architectural mapping, and configurable thoroughness levels.",
+  "url": "https://github.com/KonghaYao/zen-code/blob/HEAD/.claude/skills/codebase-exploration/SKILL.md"
+ },
+ {
+  "canonical_id": "fac0d6a3310efba3ffd9840bcda121a39a2103ff94ea4da9404a3b9a055bdd48",
+  "name": "explore-codebase",
+  "summary": "Provides a concise workflow for orienting in an unfamiliar codebase by identifying the stack, entry points, architecture, data flow, authentication, tests, and deployment target.",
+  "url": "https://github.com/nejcm/agents/blob/HEAD/skills/explore-codebase/SKILL.md"
+ },
+ {
+  "canonical_id": "bc3b8233cfa1be876507d8d4ef10a91b0f58164aa34b31ff018f34083c8fe9a1",
+  "name": "analyzing-unknown-codebases",
+  "summary": "Systematically analyze unfamiliar codebases to identify subsystems, components, and architectural patterns; produce catalog entries following strict output contracts with explicit confidence marking.",
+  "url": "https://github.com/tachyon-beep/hamlet/blob/f0a9ae8ab6512e99c9ebf0a52db83af4f85473fd/.claude/skills/axiom-system-archaeologist/skills/analyzing-unknown-codebases/SKILL.md"
+ },
+ {
+  "canonical_id": "349c8c451f5c6081da79c8296d024ccac010b63c63817d4ea626e152468fc2a6",
+  "name": "large-codebase-analysis",
+  "summary": "Provides a concise workflow for analyzing large codebases, tracing request flow, identifying boundaries, limiting edit scope, and recording risks before changes.",
+  "url": "https://github.com/chethanp11/kms/blob/88323178c9f80ea5fe5ea3dbdcc4e08e0c2f3828/.codex/skills/large-codebase-analysis/SKILL.md"
+ },
+ {
+  "canonical_id": "295aab491b431b6c7584cedf6402120d2dbcd89434c932650a493ac31d67e191",
+  "name": "coding-guidelines",
+  "summary": "Provides actionable coding guidance focused on explicit assumptions, simplicity, surgical edits, and verifiable success criteria.",
+  "url": "https://github.com/BILASHDAS6695/SmartHandoff/blob/HEAD/.github/skills/coding-guidelines/SKILL.md"
+ },
+ {
+  "canonical_id": "9c976c5cd0db30406d7e138014c4ef18aeca12238183c866cf9d6137980a98cc",
+  "name": "coding-guidelines",
+  "summary": "Offers cautious coding practices emphasizing explicit assumptions, simplicity, surgical edits, goal-driven execution, testing, and verification.",
+  "url": "https://github.com/barateza/mcp-plesk-dev-docs/blob/HEAD/.github/skills/coding-guidelines/SKILL.md"
+ },
+ {
+  "canonical_id": "42c12f2a6e770e51e6853e06d5d00e21539127fb1e2e211f59e18d46802228e4",
+  "name": "coding-guidelines",
+  "summary": "Broad coding guidelines emphasizing explicit assumptions, simplicity, surgical edits, goal-driven execution, and verification for implementation and code review tasks.",
+  "url": "https://github.com/onfire7777/universal-ai-skills-library/blob/HEAD/skills/coding-guidelines/SKILL.md"
+ },
+ {
+  "canonical_id": "0bae82980c862181fcac7af3ceaba7878128ad57e18a6637d977c57f24270d31",
+  "name": "minimal-coding",
+  "summary": "Reusable minimal-coding methodology that prioritizes deletion, standard-library and native solutions, minimal diffs, security essentials, and a small verification check for nontrivial logic.",
+  "url": "https://github.com/Dynokostya/just-works/blob/HEAD/.claude/skills/minimal-coding/SKILL.md"
+ },
+ {
+  "canonical_id": "536eb35760be2063b1490539ccf6d331266731d32035aefccfd8a5d376ce727d",
+  "name": "engineering",
+  "summary": "Provides broad engineering behavior guidelines emphasizing explicit assumptions, simplicity, surgical edits, goal-driven execution, and verification.",
+  "url": "https://github.com/chinayin/gox-claude-plugins/tree/HEAD/plugins/gox-code-rules/skills/engineering"
+ },
+ {
+  "canonical_id": "04ef9e0aa7c41151a79d969b83d369e489ff2ce54051fec48dd55da95ade6233",
+  "name": "coding-guidelines",
+  "summary": "Provides cautious coding guidance focused on explicit assumptions, simplicity, surgical edits, goal-driven execution, and verification through tests or other success criteria.",
+  "url": "https://github.com/DevOficinaBrasil/backend-promotor/blob/c842273c5f8e7d5cb0c13ef4ad7efaaa0a4de004/.claude/skills/coding-guidelines/SKILL.md"
+ },
+ {
+  "canonical_id": "a688cc740d93cc7a6df29fbc2d8efe1d10f8612fb0924c14728fc62f880e23ff",
+  "name": "bayesian-reasoning",
+  "summary": "Provides a detailed Bayesian reasoning workflow for defining hypotheses, establishing priors, comparing likelihoods, updating confidence, avoiding correlated evidence errors, using natural frequencies, and reporting residual uncertainty.",
+  "url": "https://github.com/jacob-balslev/skills/blob/HEAD/skills/reasoning-strategy/bayesian-reasoning/SKILL.md"
+ },
+ {
+  "canonical_id": "6db83a44e668e51f02a6836778bcd173a8da0de51783c7c0a7cc2ca57217b8d9",
+  "name": "ifss",
+  "summary": "Provides a structured workflow for generating, validating, assessing, and ranking deductive, inductive, abductive, and analogical inferences.",
+  "url": "https://github.com/benjam3n/reasoningtool/blob/HEAD/claude-code-plugin/skills/ifss/SKILL.md"
+ },
+ {
+  "canonical_id": "6ffa084d663eb04e8470348dc9a843f17e1153a3dc7a1a8126e478a134f032b7",
+  "name": "acceptance-governance",
+  "summary": "Standardizes cross-discipline acceptance reviews through checklist application, severity-tagged findings, evidence summaries, explicit dispositions, and follow-up ownership.",
+  "url": "https://github.com/sextondjc/agentic/blob/HEAD/.github/skills/acceptance-governance/SKILL.md"
+ },
+ {
+  "canonical_id": "23325f5748bc35cb1faac01f95762cf55e4a986514edf56a56a61d3d150f2b74",
+  "name": "review",
+  "summary": "Defines disciplined code-review practices: read intent first, review top-down by risk, label findings, seek omissions, inspect tests, and self-review before submission.",
+  "url": "https://github.com/angad-kandhari/deliberate/tree/HEAD/skills/review"
+ },
+ {
+  "canonical_id": "f0ff2576aa7e77516ad62a827d0cfebbcb84e9824ee524725fdbd55ba740e5bb",
+  "name": "code-review-discipline",
+  "summary": "Establishes a disciplined code-review workflow for requesting reviews, evaluating feedback, verifying claims, making accept/reject/defer decisions, and reporting findings with evidence and fresh verification.",
+  "url": "https://github.com/fabiocantone/codersteroids/blob/HEAD/skills/code-review-discipline/SKILL.md"
+ },
+ {
+  "canonical_id": "6e89fbec1c114ce697641ec4b3c30b381a3fc6ba08249acdaa9e3e0e741ecdb9",
+  "name": "receiving-review",
+  "summary": "Defines a disciplined process for receiving code-review feedback: understand it, verify claims against the codebase, assess local fit, respond technically, and implement selectively.",
+  "url": "https://github.com/Canhada-Labs/ceo-orchestration/blob/HEAD/.claude/skills/core/receiving-review/SKILL.md"
+ },
+ {
+  "canonical_id": "5f7ca7ed01b19c1b393fd28a43ce0a470f0403c2da777515d63fca544b372bf2",
+  "name": "acceptance-governance",
+  "summary": "Standardizes acceptance reviews by applying discipline checklists, severity-tagged findings, evidence summaries, explicit approval dispositions, follow-up ownership, and sign-off guardrails.",
+  "url": "https://github.com/sextondjc/agentic/blob/HEAD/.artifacts/agent-plugins/governance-review-audit/skills/acceptance-governance/SKILL.md"
+ },
+ {
+  "canonical_id": "03231c95f4c3a83417f3d20714d7709b69d8ed72c4122fd404791b9eccedd8d9",
+  "name": "academic-reviewer",
+  "summary": "Defines a structured expert review process for academic manuscripts, covering contributions, technical soundness, experiments, reproducibility, writing, limitations, detailed comments, questions, and recommendation.",
+  "url": "https://github.com/chaurasiavikash/academic-writing/blob/413f7ee089643d61774849f79ec32ca3c389f3e5/.github/skills/academic-reviewer/SKILL.md"
+ }
+]

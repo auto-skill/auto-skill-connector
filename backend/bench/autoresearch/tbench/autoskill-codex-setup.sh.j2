@@ -1,18 +1,20 @@
 #!/bin/bash
-# Install codex in the task container and authenticate with the ChatGPT tokens
-# shipped via CODEX_AUTH_B64 (never written to a logged command). ca-certificates
-# is required or the TLS handshake to chatgpt.com fails with UnknownIssuer.
+# Fast agent install: fetch codex's static musl binary from the host bridge
+# (seconds) instead of apt+nvm+node+npm (minutes per trial). ChatGPT tokens
+# arrive via CODEX_AUTH_B64 so they never appear in a logged command.
+# ca-certificates only installs when missing -- without it the TLS handshake
+# to chatgpt.com fails with UnknownIssuer.
 set -e
 
-apt-get update -qq
-apt-get install -y -qq ca-certificates curl >/dev/null
+if [ ! -e /etc/ssl/certs/ca-certificates.crt ]; then
+  apt-get update -qq >/dev/null 2>&1 || true
+  apt-get install -y -qq ca-certificates curl >/dev/null 2>&1 || \
+    (apk add --no-cache ca-certificates curl >/dev/null 2>&1 || true)
+fi
 
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.2/install.sh | bash
-source "$HOME/.nvm/nvm.sh"
-nvm install 22 >/dev/null 2>&1
-
-npm install -g @openai/codex@latest >/dev/null 2>&1
+curl -fsS -o /usr/local/bin/codex http://172.17.0.1:8777/codex
+chmod +x /usr/local/bin/codex
 
 mkdir -p "$HOME/.codex"
 echo "$CODEX_AUTH_B64" | base64 -d > "$HOME/.codex/auth.json"
-echo "autoskill-codex ready: $(codex --version 2>/dev/null || echo codex-installed)"
+echo "autoskill-codex ready: $(codex --version 2>/dev/null || echo binary-installed)"

@@ -1,0 +1,86 @@
+{
+ "identify and fix the vulnerability": [
+  {
+   "canonical_id": "74b48f48d576a126a431ea0e2995b7abecfb5de964983d91d06e36196dc69e81",
+   "name": "sp-debugging"
+  },
+  {
+   "canonical_id": "761135ec4eb1fae71532050f2abe30afd94dec5f3d0b12719228d8c1768fef06",
+   "name": "investigating-codebases"
+  },
+  {
+   "canonical_id": "46c764796c9aa811fa52a3105e34dc4361cb4af9dc4bcb0840a45f25c02c9d12",
+   "name": "target-review"
+  }
+ ],
+ "COBOL program located": [
+  {
+   "canonical_id": "6c13467d2ba57be8526e397813b830feeba1739809ea5f043543f8de781173c9",
+   "name": "exploration-phase"
+  },
+  {
+   "canonical_id": "eb6fa844a63b1d6ac57362edf8271492bf447189c27667d67f2bfe68c0a298d6",
+   "name": "investigate-and-plan"
+  },
+  {
+   "canonical_id": "872414b34164567427e0037f373d478da332efb8a76c4dc0a822c7b32fc8f023",
+   "name": "completion-checklist"
+  }
+ ],
+ "aggregate the data from all these": [
+  {
+   "canonical_id": "4d8f5ba14f65514ab9816bc9205ef9d02154970d02d6fc76d5a2faeabe272691",
+   "name": "clarify-first"
+  },
+  {
+   "canonical_id": "0bae82980c862181fcac7af3ceaba7878128ad57e18a6637d977c57f24270d31",
+   "name": "minimal-coding"
+  },
+  {
+   "canonical_id": "872414b34164567427e0037f373d478da332efb8a76c4dc0a822c7b32fc8f023",
+   "name": "completion-checklist"
+  }
+ ],
+ "Set up a Git server that hosts": [
+  {
+   "canonical_id": "7f2c1b053769c814b980363a477f68c7e5d060a2c45c9a231ed10ef43d305f41",
+   "name": "task-decomposition"
+  },
+  {
+   "canonical_id": "386fbb165176a649dbfc365e54593ea52c4a5aa9df0a1838ad2d861b1b3c7eb4",
+   "name": "execution-loop"
+  },
+  {
+   "canonical_id": "872414b34164567427e0037f373d478da332efb8a76c4dc0a822c7b32fc8f023",
+   "name": "completion-checklist"
+  }
+ ],
+ "update a Fortran project's build": [
+  {
+   "canonical_id": "0bae82980c862181fcac7af3ceaba7878128ad57e18a6637d977c57f24270d31",
+   "name": "minimal-coding"
+  },
+  {
+   "canonical_id": "74b48f48d576a126a431ea0e2995b7abecfb5de964983d91d06e36196dc69e81",
+   "name": "sp-debugging"
+  },
+  {
+   "canonical_id": "6c13467d2ba57be8526e397813b830feeba1739809ea5f043543f8de781173c9",
+   "name": "exploration-phase"
+  }
+ ],
+ "Build simple theorem prover": [
+  {
+   "canonical_id": "74b48f48d576a126a431ea0e2995b7abecfb5de964983d91d06e36196dc69e81",
+   "name": "sp-debugging"
+  },
+  {
+   "canonical_id": "386fbb165176a649dbfc365e54593ea52c4a5aa9df0a1838ad2d861b1b3c7eb4",
+   "name": "execution-loop"
+  },
+  {
+   "canonical_id": "872414b34164567427e0037f373d478da332efb8a76c4dc0a822c7b32fc8f023",
+   "name": "completion-checklist"
+  }
+ ]
+}
