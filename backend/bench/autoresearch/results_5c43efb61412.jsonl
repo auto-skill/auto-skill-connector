@@ -1,0 +1,51 @@
+{"task_id": "27d961f1", "split": "holdout", "pass": true, "answer": "android:exported=\"true\"", "hits": [], "ts": "2026-08-22T23:07:07Z"}
+{"task_id": "268204a1", "split": "holdout", "pass": true, "answer": "tools/list", "hits": [], "ts": "2026-08-22T23:07:22Z"}
+{"task_id": "1099f480", "split": "dev", "pass": true, "answer": "needs", "hits": [], "ts": "2026-08-22T23:07:33Z"}
+{"task_id": "bea707ea", "split": "dev", "pass": true, "answer": "Orient", "hits": [], "ts": "2026-08-22T23:07:48Z"}
+{"task_id": "6ed04e12", "split": "holdout", "pass": true, "answer": "<!DOCTYPE html>", "hits": [], "ts": "2026-08-22T23:07:58Z"}
+{"task_id": "b96f4d51", "split": "dev", "pass": true, "answer": "com.google.ar.core.min_apk_version", "hits": [], "ts": "2026-08-22T23:08:16Z"}
+{"task_id": "4a8d9f0a", "split": "holdout", "pass": false, "answer": "page.extract_tables()", "hits": [], "ts": "2026-08-22T23:08:29Z"}
+{"task_id": "798e8480", "split": "dev", "pass": false, "answer": "server/api/", "hits": [], "ts": "2026-08-22T23:08:41Z"}
+{"task_id": "bd7a5272", "split": "holdout", "pass": true, "answer": "is:unread newer_than:1h", "hits": [], "ts": "2026-08-22T23:08:56Z"}
+{"task_id": "5e8d7ec4", "split": "dev", "pass": true, "answer": "{campaignid}", "hits": [], "ts": "2026-08-22T23:09:10Z"}
+{"task_id": "71a0eb60", "split": "dev", "pass": false, "answer": "git diff --name-only \"$(git merge-base HEAD main)\" HEAD", "hits": [], "ts": "2026-08-22T23:09:29Z"}
+{"task_id": "d351647c", "split": "holdout", "pass": true, "answer": "GPTBot", "hits": [], "ts": "2026-08-22T23:09:42Z"}
+{"task_id": "41f48329", "split": "dev", "pass": true, "answer": "->", "hits": [], "ts": "2026-08-22T23:09:52Z"}
+{"task_id": "bd65b50b", "split": "dev", "pass": true, "answer": "(?P<user>...)", "hits": [], "ts": "2026-08-22T23:10:13Z"}
+{"task_id": "2d6d2e18", "split": "dev", "pass": false, "answer": "\"type\": \"ephemeral\"", "hits": [], "ts": "2026-08-22T23:10:23Z"}
+{"task_id": "ccef5857", "split": "holdout", "pass": true, "answer": "flowchart TD", "hits": [], "ts": "2026-08-22T23:10:35Z"}
+{"task_id": "0471b299", "split": "dev", "pass": true, "answer": "og:description", "hits": [], "ts": "2026-08-22T23:10:49Z"}
+{"task_id": "7ac78169", "split": "holdout", "pass": true, "answer": "https://rest.kegg.jp/get/hsa:7157", "hits": [], "ts": "2026-08-22T23:11:02Z"}
+{"task_id": "d8bc6b52", "split": "dev", "pass": true, "answer": "MAJOR", "hits": [], "ts": "2026-08-22T23:11:16Z"}
+{"task_id": "0405d12a", "split": "dev", "pass": true, "answer": "CLAUDE.md", "hits": [], "ts": "2026-08-22T23:11:31Z"}
+{"task_id": "56ac0e7b", "split": "dev", "pass": true, "answer": "--milestone", "hits": [], "ts": "2026-08-22T23:11:42Z"}
+{"task_id": "73febcd6", "split": "holdout", "pass": true, "answer": "$status", "hits": [], "ts": "2026-08-22T23:12:02Z"}
+{"task_id": "18e2097f", "split": "dev", "pass": true, "answer": "has:attachment", "hits": [], "ts": "2026-08-22T23:12:14Z"}
+{"task_id": "8e4f3fd9", "split": "holdout", "pass": false, "answer": "1.5–1.9×", "hits": [], "ts": "2026-08-22T23:12:34Z"}
+{"task_id": "15ddbc01", "split": "dev", "pass": true, "answer": "\\usepackage[backend=biber]{biblatex}", "hits": [], "ts": "2026-08-22T23:12:45Z"}
+{"task_id": "d046b7c9", "split": "dev", "pass": false, "answer": "buyerPartyReference", "hits": [], "ts": "2026-08-22T23:12:56Z"}
+{"task_id": "bb77499b", "split": "holdout", "pass": true, "answer": "approval_policy", "hits": [], "ts": "2026-08-22T23:13:15Z"}
+{"task_id": "27011c5d", "split": "dev", "pass": true, "answer": "-p", "hits": [], "ts": "2026-08-22T23:13:26Z"}
+{"task_id": "9bc8b42b", "split": "dev", "pass": true, "answer": "com.azure:azure-ai-anomalydetector", "hits": [], "ts": "2026-08-22T23:13:53Z"}
+{"task_id": "bbc69906", "split": "dev", "pass": true, "answer": "initialize", "hits": [], "ts": "2026-08-22T23:14:06Z"}
+{"task_id": "06c79734", "split": "holdout", "pass": true, "answer": "--track-changes=accept", "hits": [], "ts": "2026-08-22T23:14:17Z"}
+{"task_id": "df40c395", "split": "dev", "pass": true, "answer": "fullPage", "hits": [], "ts": "2026-08-22T23:14:34Z"}
+{"task_id": "68e7fb08", "split": "holdout", "pass": true, "answer": "notation: \"compact\"", "hits": [], "ts": "2026-08-22T23:14:47Z"}
+{"task_id": "a0a7d283", "split": "dev", "pass": true, "answer": "animator.SetTrigger(\"Jump\");", "hits": [], "ts": "2026-08-22T23:15:01Z"}
+{"task_id": "5abcd7f2", "split": "holdout", "pass": true, "answer": "validateSearch", "hits": [], "ts": "2026-08-22T23:15:19Z"}
+{"task_id": "24bddcbb", "split": "dev", "pass": true, "answer": "statement_timeout", "hits": [], "ts": "2026-08-22T23:15:31Z"}
+{"task_id": "0d49448f", "split": "holdout", "pass": true, "answer": "*", "hits": [], "ts": "2026-08-22T23:15:44Z"}
+{"task_id": "314584b8", "split": "dev", "pass": true, "answer": "git diff --stat", "hits": [], "ts": "2026-08-22T23:16:00Z"}
+{"task_id": "ece2cd04", "split": "dev", "pass": true, "answer": "if", "hits": [], "ts": "2026-08-22T23:16:11Z"}
+{"task_id": "e263364d", "split": "holdout", "pass": true, "answer": "-x", "hits": [], "ts": "2026-08-22T23:16:21Z"}
+{"task_id": "40e66ed2", "split": "dev", "pass": true, "answer": "--hidden", "hits": [], "ts": "2026-08-22T23:16:33Z"}
+{"task_id": "d903be4e", "split": "dev", "pass": true, "answer": "buildCommand", "hits": [], "ts": "2026-08-22T23:16:46Z"}
+{"task_id": "ea160982", "split": "dev", "pass": true, "answer": "Approval(address,address,uint256)", "hits": [], "ts": "2026-08-22T23:17:02Z"}
+{"task_id": "fc8179b8", "split": "dev", "pass": true, "answer": "<renderingStyle>", "hits": [], "ts": "2026-08-22T23:17:13Z"}
+{"task_id": "c3b4434b", "split": "dev", "pass": true, "answer": "@ParameterizedTest", "hits": [], "ts": "2026-08-22T23:17:27Z"}
+{"task_id": "6613059c", "split": "holdout", "pass": true, "answer": "detail", "hits": [], "ts": "2026-08-22T23:17:46Z"}
+{"task_id": "ebe2f98c", "split": "dev", "pass": true, "answer": "BM25", "hits": [], "ts": "2026-08-22T23:17:57Z"}
+{"task_id": "020372cd", "split": "holdout", "pass": true, "answer": "git tag -a v1.2.3 -m \"Release v1.2.3\"", "hits": [], "ts": "2026-08-22T23:18:16Z"}
+{"task_id": "55cea271", "split": "dev", "pass": true, "answer": "- [ ]", "hits": [], "ts": "2026-08-22T23:18:30Z"}
+{"task_id": "c3075aad", "split": "holdout", "pass": true, "answer": "git worktree add -b agent-1 ../agent-1 HEAD", "hits": [], "ts": "2026-08-22T23:18:44Z"}
+{"task_id": "d62306c3", "split": "holdout", "pass": false, "answer": "Approve", "hits": [], "ts": "2026-08-22T23:19:00Z"}

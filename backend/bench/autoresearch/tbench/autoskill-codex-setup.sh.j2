@@ -14,7 +14,13 @@ if [ ! -e /etc/ssl/certs/ca-certificates.crt ]; then
     apk add --no-cache ca-certificates curl >/dev/null 2>&1
 fi
 
-GW=$(awk '$2 == "00000000" {print strtonum("0x" substr($3,7,2)) "." strtonum("0x" substr($3,5,2)) "." strtonum("0x" substr($3,3,2)) "." strtonum("0x" substr($3,1,2)); exit}' /proc/net/route 2>/dev/null)
+# pure bash hex->dec: task images ship MAWK (no strtonum) and often no `ip`;
+# the gawk version silently produced gw="" in real debian task containers
+GWHEX=$(awk '$2 == "00000000" {print $3; exit}' /proc/net/route 2>/dev/null)
+GW=""
+if [ -n "$GWHEX" ] && [ ${#GWHEX} -eq 8 ]; then
+  GW=$((16#${GWHEX:6:2})).$((16#${GWHEX:4:2})).$((16#${GWHEX:2:2})).$((16#${GWHEX:0:2}))
+fi
 [ -z "$GW" ] && GW=$(ip route 2>/dev/null | awk '/default/ {print $3; exit}')
 
 CODEX_OK=""
@@ -26,10 +32,15 @@ fi
 if [ -z "$CODEX_OK" ]; then
   echo "fast fetch failed (gw=$GW); falling back to npm install"
   curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.2/install.sh 2>/dev/null | bash >/dev/null 2>&1
-  source "$HOME/.nvm/nvm.sh" >/dev/null 2>&1
+  export NVM_DIR="$HOME/.nvm"
+  source "$NVM_DIR/nvm.sh" >/dev/null 2>&1
   nvm install 22 >/dev/null 2>&1
   npm install -g @openai/codex@latest >/dev/null 2>&1
-  command -v codex >/dev/null 2>&1 && CODEX_OK=1
+  # re-source so the freshly installed global bin is on PATH before checking
+  source "$NVM_DIR/nvm.sh" >/dev/null 2>&1
+  if command -v codex >/dev/null 2>&1 || ls "$NVM_DIR"/versions/node/*/bin/codex >/dev/null 2>&1; then
+    CODEX_OK=1
+  fi
 fi
 
 mkdir -p "$HOME/.codex"

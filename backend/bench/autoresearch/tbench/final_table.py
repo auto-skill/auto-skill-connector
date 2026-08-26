@@ -5,7 +5,7 @@ import glob
 import json
 import sys
 
-CUTOFF = "2026-08-25__15"  # first fixed-installer run id prefix floor
+CUTOFF = "2026-08-25__20"  # first fixed-installer run id prefix floor
 
 
 def arm(root):
@@ -24,9 +24,9 @@ def arm(root):
 
 
 R = "/srv/mobile-codex/sessions/autoskill_7e0dd3fa/tb-runs"
-ra = arm(R + "/r4-baseline")
-rb = arm(R + "/r4-autoskill")
-rp = arm(R + "/r4-principles")
+ra = arm(R + "/r5-baseline")
+rb = arm(R + "/r5-autoskill")
+rp = arm(R + "/r5-principles")
 common = sorted(set(ra) & set(rb))
 aw = sum(ra[t] for t in common)
 bw = sum(rb[t] for t in common)

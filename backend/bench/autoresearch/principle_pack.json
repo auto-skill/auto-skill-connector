@@ -1,0 +1,20 @@
+{
+ "__ALL__": [
+  {
+   "canonical_id": "04706447f6f94b9ef8523686999d0546f60a05cf29fa8e9ca7e9459abd6ea104",
+   "name": "systematic-debugging"
+  },
+  {
+   "canonical_id": "f4f023892f95a7c6547bfd77057db1a33c70bf1a5bc5fc0296e213ab76415858",
+   "name": "complex-task-breakdown"
+  },
+  {
+   "canonical_id": "872414b34164567427e0037f373d478da332efb8a76c4dc0a822c7b32fc8f023",
+   "name": "completion-checklist"
+  },
+  {
+   "canonical_id": "5d891fef72dbaa4e6fc61422be9c180ef777c9c4c4d515109efe21625c154369",
+   "name": "simplicity-first-minimum-viable-code"
+  }
+ ]
+}

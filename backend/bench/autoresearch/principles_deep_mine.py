@@ -27,7 +27,7 @@ sys.path.insert(0, str(HERE))
 from retrieve import Retriever  # noqa: E402
 from principles_discover import looks_principled  # noqa: E402
 
-GRAPH = HERE / "graph" / "snapshots" / "LATEST" / "graph.sqlite"
+GRAPH = Path("/srv/mobile-codex/sessions/autoskill_7e0dd3fa/graph_work.sqlite")
 OUT = HERE / "principle_candidates_deep.json"
 
 PROBES = [

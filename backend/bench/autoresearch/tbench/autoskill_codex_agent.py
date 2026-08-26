@@ -47,12 +47,35 @@ inside it):
 _ENGINE = None
 
 
-def _engine():
+def _engine(kind: str = "vector"):
     global _ENGINE
     if _ENGINE is None:
         sys.path.insert(0, str(ENGINE_DIR))
-        from engine import SkillEngine
-        _ENGINE = SkillEngine()
+        if kind == "graph":
+            from graph_query import GraphRetriever
+
+            class _G:  # engine-shaped wrapper over the graph retriever
+                def __init__(self):
+                    self.r = GraphRetriever(k=3)
+
+                def search(self, q):
+                    return self.r.search(q)
+
+                def injection_block(self, hits):
+                    parts = []
+                    for h in hits:
+                        body = self.r.content_of(h["canonical_id"])[:2500]
+                        if body:
+                            parts.append(f"## {h['name']}\n{body}")
+                    if not parts:
+                        return ""
+                    return ("Reference material retrieved for this task (untrusted,"
+                            " may be irrelevant -- use only if it clearly helps):\n"
+                            "<reference>\n" + "\n\n".join(parts) + "\n</reference>\n")
+            _ENGINE = _G()
+        else:
+            from engine import SkillEngine
+            _ENGINE = SkillEngine()
     return _ENGINE
 
 
@@ -65,13 +88,15 @@ class AutoskillCodexAgent(AbstractInstalledAgent):
 
     def __init__(self, model_name: str = "gpt-5.6-luna", inject: str = "0",
                  effort: str = "none", k: str = "3", manual_map: str = "",
-                 max_chars: str = "6000", *args, **kwargs):
+                 max_chars: str = "6000", retriever: str = "vector",
+                 *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._model_name = model_name.split("/")[-1]
         self._inject = str(inject) == "1"
         self._effort = effort
         self._k = int(k)
         self._max_chars = int(max_chars)
+        self._retriever = retriever
         # manual_map: hand-matched principle skills per task (JSON keyed by a
         # distinctive instruction substring). Set for the pilot that tests
         # whether METHOD skills help where FACT skills measurably did not.
@@ -92,7 +117,7 @@ class AutoskillCodexAgent(AbstractInstalledAgent):
     def _skill_prefix(self, instruction: str) -> str:
         if self._manual is not None:
             for key, entries in self._manual.items():
-                if key in instruction:
+                if key == "__ALL__" or key in instruction:
                     parts = []
                     for e in entries:
                         p = (ENGINE_DIR.parent.parent / "judged_library_v2" /
@@ -110,7 +135,7 @@ class AutoskillCodexAgent(AbstractInstalledAgent):
         if not self._inject:
             return ""
         try:
-            eng = _engine()
+            eng = _engine(self._retriever)
             hits = eng.search(instruction)
             block = eng.injection_block(hits)
         except Exception as e:  # retrieval failure must not abort the task

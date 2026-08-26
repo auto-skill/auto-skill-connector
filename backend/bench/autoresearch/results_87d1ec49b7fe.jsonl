@@ -1,0 +1,92 @@
+{"task_id": "1f98a363", "split": "dev", "pass": false, "answer": "Star>_ AWS::ConfigService_20160926.SelectResourceConfig", "hits": [{"id": "761b0c2726a0", "cos": 0.8816}], "ts": "2026-08-26T03:17:05Z"}
+{"task_id": "4c82d383", "split": "dev", "pass": true, "answer": "rg --pcre2 -l '[\\p{Hiragana}\\p{Katakana}\\p{Han}]' . --glob '!node_modules/**' --glob '!.git/**' --glob '!vendor/**'", "hits": [{"id": "08af83ad4e4b", "cos": 0.9115}], "ts": "2026-08-26T03:17:16Z"}
+{"task_id": "ef076b9c", "split": "dev", "pass": false, "answer": "maven.test.skip=true", "hits": [{"id": "efe1e1609794", "cos": 0.8929}], "ts": "2026-08-26T03:17:26Z"}
+{"task_id": "bd92d2e6", "split": "dev", "pass": false, "answer": "curl -X POST https://www.zohoapis.com/crm/v8/coql -H \"Authorization: Zoho-oauthtoken YOUR_ACCESS_TOKEN\" -H \"Content-Type: application/json\" -d '{\"select_query\":\"select Last_Name,Email from Contacts limit 200\"}'", "hits": [{"id": "7566be013b5e", "cos": 0.8765}], "ts": "2026-08-26T03:17:37Z"}
+{"task_id": "c451e6dc", "split": "dev", "pass": false, "answer": "python .claude/skills/adr/scripts/adr.py accept 0001 --date \"$(date +%F)\"", "hits": [{"id": "10935b365675", "cos": 0.8965}], "ts": "2026-08-26T03:17:47Z"}
+{"task_id": "31f73594", "split": "dev", "pass": true, "answer": "POST /calendar/v3/freeBusy", "hits": [{"id": "67c74c6aa064", "cos": 0.9047}], "ts": "2026-08-26T03:17:58Z"}
+{"task_id": "3b166cfa", "split": "dev", "pass": false, "answer": "\\(x \\le Uy\\)", "hits": [{"id": "1cd60dc248dc", "cos": 0.8445}], "ts": "2026-08-26T03:18:07Z"}
+{"task_id": "27c6c0cd", "split": "dev", "pass": true, "answer": "git diff --name-only --diff-filter=ACMR HEAD^ HEAD -- '*.md' '*.html'", "hits": [{"id": "771300d82e46", "cos": 0.8906}], "ts": "2026-08-26T03:18:18Z"}
+{"task_id": "13eb52a9", "split": "dev", "pass": false, "answer": "/api/v1/App/user.grantedUpsellFunnels", "hits": [{"id": "4dae125cc22c", "cos": 0.8819}], "ts": "2026-08-26T03:18:29Z"}
+{"task_id": "00f66898", "split": "dev", "pass": false, "answer": "--halt now,fail=1", "hits": [{"id": "8501a56aa25a", "cos": 0.8857}], "ts": "2026-08-26T03:18:40Z"}
+{"task_id": "2496a6e1", "split": "dev", "pass": true, "answer": "/v2/check", "hits": [{"id": "0b104ab23546", "cos": 0.8928}], "ts": "2026-08-26T03:19:01Z"}
+{"task_id": "3932ed60", "split": "dev", "pass": true, "answer": "2 U.S.C. § 191", "hits": [{"id": "ff0c97b0f7da", "cos": 0.8597}], "ts": "2026-08-26T03:19:13Z"}
+{"task_id": "eab7febc", "split": "dev", "pass": false, "answer": "/todo", "hits": [{"id": "e39eeaeb4c84", "cos": 0.906}], "ts": "2026-08-26T03:19:25Z"}
+{"task_id": "44d48f59", "split": "dev", "pass": false, "answer": "/docs", "hits": [{"id": "e588efc1169e", "cos": 0.895}], "ts": "2026-08-26T03:19:36Z"}
+{"task_id": "1467ce8c", "split": "dev", "pass": false, "answer": "/services/data/vXX.0/query/", "hits": [{"id": "3318d5db79ae", "cos": 0.8984}], "ts": "2026-08-26T03:19:47Z"}
+{"task_id": "64869430", "split": "dev", "pass": false, "answer": "/authors/{author_id}/works.json", "hits": [{"id": "4c5d465ef854", "cos": 0.8885}], "ts": "2026-08-26T03:20:01Z"}
+{"task_id": "79248b89", "split": "dev", "pass": false, "answer": "`POST /open-apis/im/v1/messages?receive_id_type=open_id`", "hits": [{"id": "2f9925577388", "cos": 0.9114}], "ts": "2026-08-26T03:20:12Z"}
+{"task_id": "addd00ca", "split": "dev", "pass": false, "answer": "MISE_TELEMETRY=0 mise exec -- pnpm dlx skills add vercel-labs/agent-skills --agent claude-code --yes", "hits": [{"id": "8b46547fa270", "cos": 0.8904}], "ts": "2026-08-26T03:20:22Z"}
+{"task_id": "6308a78d", "split": "dev", "pass": false, "answer": "https://osmand.net/map#zoom={zoom}&lat={latitude}&lon={longitude}", "hits": [{"id": "43b3903bd5b0", "cos": 0.8888}], "ts": "2026-08-26T03:20:35Z"}
+{"task_id": "9595f5b0", "split": "dev", "pass": false, "answer": "https://constructionandengineering.oraclecloud.com/auth/token", "hits": [{"id": "3da94eab1c7f", "cos": 0.8861}], "ts": "2026-08-26T03:20:49Z"}
+{"task_id": "1edd7446", "split": "dev", "pass": false, "answer": "`windows.vadyarascan.VadYaraScan --yara-rules`", "hits": [{"id": "ff8e82843123", "cos": 0.8808}], "ts": "2026-08-26T03:20:58Z"}
+{"task_id": "37818e1a", "split": "dev", "pass": false, "answer": "jscodeshift src/ --dry --parser=babel-ts", "hits": [{"id": "8e78cfd4abf2", "cos": 0.8835}], "ts": "2026-08-26T03:21:07Z"}
+{"task_id": "0c1e5dee", "split": "dev", "pass": true, "answer": "https://openpyxl.readthedocs.io/en/stable/api/openpyxl.workbook.properties.html", "hits": [{"id": "9d1cfdd3d81a", "cos": 0.8922}], "ts": "2026-08-26T03:21:17Z"}
+{"task_id": "c338240b", "split": "dev", "pass": false, "answer": "EndAConnection``", "hits": [{"id": "613ed268d555", "cos": 0.8519}], "ts": "2026-08-26T03:22:23Z"}
+{"task_id": "c5410ae3", "split": "dev", "pass": false, "answer": "windows.vadyarascan", "hits": [{"id": "ff8e82843123", "cos": 0.8759}], "ts": "2026-08-26T03:22:39Z"}
+{"task_id": "5b7c4fc1", "split": "dev", "pass": false, "answer": "claude mcp add --transport http grafbase https://mcp.grafbase.com/mcp", "hits": [{"id": "bd39a019c256", "cos": 0.9025}], "ts": "2026-08-26T03:22:51Z"}
+{"task_id": "fc983092", "split": "dev", "pass": false, "answer": "/repos/{owner}/{repo}/compare/{basehead}", "hits": [{"id": "2eadbae40e49", "cos": 0.9034}], "ts": "2026-08-26T03:23:00Z"}
+{"task_id": "731371f9", "split": "dev", "pass": true, "answer": "/docs/app/api-reference/config/next-config-js/typedRoutes", "hits": [{"id": "f9779ea263d8", "cos": 0.9125}], "ts": "2026-08-26T03:23:10Z"}
+{"task_id": "b0ecb2cb", "split": "dev", "pass": false, "answer": "#^block-id", "hits": [{"id": "0b39a838080f", "cos": 0.9048}], "ts": "2026-08-26T03:23:23Z"}
+{"task_id": "0391d40e", "split": "dev", "pass": false, "answer": "/maps/api/jsrel=weekly", "hits": [{"id": "b6ff89356904", "cos": 0.9294}], "ts": "2026-08-26T03:23:42Z"}
+{"task_id": "e589deaf", "split": "dev", "pass": false, "answer": "mcp dev server_file.py", "hits": [{"id": "3d24d9c88605", "cos": 0.8914}], "ts": "2026-08-26T03:23:51Z"}
+{"task_id": "f1dbae54", "split": "dev", "pass": false, "answer": "https://docs.daft.ai/en/stable/api/config/", "hits": [{"id": "84ec41e8822d", "cos": 0.8973}], "ts": "2026-08-26T03:24:03Z"}
+{"task_id": "cf87ebb2", "split": "dev", "pass": false, "answer": "/apis/image.toolkit.fluxcd.io/{version}/namespaces/{namespace}/imageupdateautomations/{name}", "hits": [{"id": "e79e1f44d062", "cos": 0.9054}], "ts": "2026-08-26T03:24:13Z"}
+{"task_id": "270bd7f0", "split": "dev", "pass": false, "answer": "/user_guide/file_based_rules/", "hits": [{"id": "7a86a5c01da6", "cos": 0.8681}], "ts": "2026-08-26T03:24:29Z"}
+{"task_id": "b7af0873", "split": "dev", "pass": false, "answer": "fabric profile use production", "hits": [{"id": "14f1d66b6e6c", "cos": 0.8875}], "ts": "2026-08-26T03:24:40Z"}
+{"task_id": "7518970f", "split": "dev", "pass": false, "answer": "/apis/hostedcontrolplane.openshift.io/v1beta1/namespaces/<namespace>/hostedclusters/<name>", "hits": [{"id": "e7d2d90662ca", "cos": 0.8928}], "ts": "2026-08-26T03:24:51Z"}
+{"task_id": "60bb61e4", "split": "dev", "pass": false, "answer": "tail -n +2 <file>", "hits": [{"id": "479b6a6157d6", "cos": 0.8635}], "ts": "2026-08-26T03:25:00Z"}
+{"task_id": "05de4a78", "split": "dev", "pass": true, "answer": "gsap.context(callback, scope)", "hits": [{"id": "dba097db76d0", "cos": 0.9384}], "ts": "2026-08-26T03:25:11Z"}
+{"task_id": "8ef94cf8", "split": "dev", "pass": false, "answer": "neptune", "hits": [{"id": "b2e533d67255", "cos": 0.9044}], "ts": "2026-08-26T03:25:22Z"}
+{"task_id": "8bd06501", "split": "dev", "pass": false, "answer": "--no-zk-keygen", "hits": [{"id": "83f896971e26", "cos": 0.8762}], "ts": "2026-08-26T03:25:32Z"}
+{"task_id": "bc75dbda", "split": "dev", "pass": true, "answer": "-osrt", "hits": [{"id": "b049b2a7c396", "cos": 0.9151}], "ts": "2026-08-26T03:25:42Z"}
+{"task_id": "3bf2cf72", "split": "dev", "pass": true, "answer": "mayOnlyBeAccessedByLayers", "hits": [{"id": "4cad8825b6cb", "cos": 0.8798}], "ts": "2026-08-26T03:25:52Z"}
+{"task_id": "174bc3bd", "split": "dev", "pass": true, "answer": "-Xn", "hits": [{"id": "8b1d0ee7eeaa", "cos": 0.8782}], "ts": "2026-08-26T03:26:04Z"}
+{"task_id": "3c482db5", "split": "dev", "pass": false, "answer": "preload(\"/fonts/PretendardJPSubset-600.woff2\", { as: \"font\", type: \"font/woff2\", crossOrigin: \"anonymous\" });", "hits": [{"id": "bab8f5c6db9a", "cos": 0.9101}], "ts": "2026-08-26T03:26:13Z"}
+{"task_id": "c8e254e6", "split": "dev", "pass": true, "answer": "/v1/messages", "hits": [{"id": "631917f6eddf", "cos": 0.8939}], "ts": "2026-08-26T03:26:21Z"}
+{"task_id": "32dbadf1", "split": "dev", "pass": false, "answer": "curl -L \\\n  -H \"Accept: application/vnd.github+json\" \\\n  https://api.github.com/repos/OWNER/REPO/secret-scanning/alerts", "hits": [{"id": "ddf9560868ac", "cos": 0.9153}], "ts": "2026-08-26T03:26:31Z"}
+{"task_id": "299dff37", "split": "dev", "pass": true, "answer": "curl -X POST \"https://production.wompi.co/v1/payment_sources\"", "hits": [{"id": "1b7777ca2b45", "cos": 0.8894}], "ts": "2026-08-26T03:26:39Z"}
+{"task_id": "a8d22794", "split": "dev", "pass": false, "answer": "/molecule.json", "hits": [{"id": "c2e4a433b4e9", "cos": 0.8757}], "ts": "2026-08-26T03:26:49Z"}
+{"task_id": "3dffe781", "split": "dev", "pass": true, "answer": "/v2/checkoutSessions", "hits": [{"id": "008ba0ac278b", "cos": 0.8846}], "ts": "2026-08-26T03:26:59Z"}
+{"task_id": "ec37eb3f", "split": "dev", "pass": false, "answer": "https://pypi.org/pypi/<project_name>/json[?version=<version>]", "hits": [{"id": "14b5b2b16dad", "cos": 0.885}], "ts": "2026-08-26T03:27:16Z"}
+{"task_id": "fb42cdaa", "split": "dev", "pass": false, "answer": "/apis/{apiVersion}/namespaces/{namespace}/httproutes/{name}", "hits": [{"id": "4bb400dbd4d7", "cos": 0.8871}], "ts": "2026-08-26T03:27:57Z"}
+{"task_id": "86e8719f", "split": "dev", "pass": true, "answer": "rg --files --hidden --glob '!.git/**' --glob 'SKILL.md'", "hits": [{"id": "79770f8f669c", "cos": 0.8947}], "ts": "2026-08-26T03:28:10Z"}
+{"task_id": "5a0e8bbf", "split": "dev", "pass": false, "answer": "/scim/v2/companies/ velibaba", "hits": [{"id": "6725d83ba4f0", "cos": 0.8634}], "ts": "2026-08-26T03:28:22Z"}
+{"task_id": "625f66a8", "split": "dev", "pass": true, "answer": "self.animator_handle_event(cx, event);", "hits": [{"id": "687357cc2821", "cos": 0.9147}], "ts": "2026-08-26T03:28:31Z"}
+{"task_id": "d806c5c8", "split": "dev", "pass": false, "answer": "make -p -n", "hits": [{"id": "e96f6ff78050", "cos": 0.8939}], "ts": "2026-08-26T03:28:42Z"}
+{"task_id": "74e34b4c", "split": "dev", "pass": false, "answer": "adr new -s \"Use PostgreSQL\" \"Use PostgreSQL\" && adr link 0003 superseded", "hits": [{"id": "d66eb9bb47e0", "cos": 0.8899}], "ts": "2026-08-26T03:28:55Z"}
+{"task_id": "ab432bb4", "split": "dev", "pass": false, "answer": "`--export-area-page`", "hits": [{"id": "966dcb167b4a", "cos": 0.8908}], "ts": "2026-08-26T03:29:05Z"}
+{"task_id": "9cb3a572", "split": "dev", "pass": false, "answer": "--rerun-each】【。", "hits": [{"id": "798363725a63", "cos": 0.8998}], "ts": "2026-08-26T03:29:16Z"}
+{"task_id": "b2132e91", "split": "dev", "pass": true, "answer": "experiments: { typedRoutes: true }", "hits": [{"id": "0509e7580cd9", "cos": 0.9143}], "ts": "2026-08-26T03:29:26Z"}
+{"task_id": "56e4a383", "split": "dev", "pass": true, "answer": "chromium.connectOverCDP('http://localhost:9222')", "hits": [{"id": "0184f0394b8e", "cos": 0.9416}], "ts": "2026-08-26T03:29:37Z"}
+{"task_id": "91b8da34", "split": "dev", "pass": false, "answer": "react-dom/hooks", "hits": [{"id": "21eb68dd0c3d", "cos": 0.8804}], "ts": "2026-08-26T03:29:55Z"}
+{"task_id": "f4b864eb", "split": "dev", "pass": false, "answer": "50T chainring / 15T cog", "hits": [{"id": "59bb9911b028", "cos": 0.8803}], "ts": "2026-08-26T03:30:03Z"}
+{"task_id": "652adfd3", "split": "dev", "pass": false, "answer": "resources/read — uri", "hits": [{"id": "1bee12011b40", "cos": 0.8681}], "ts": "2026-08-26T03:30:12Z"}
+{"task_id": "47a93dab", "split": "dev", "pass": false, "answer": "-", "hits": [{"id": "e20eb06afdf1", "cos": 0.9071}], "ts": "2026-08-26T03:30:27Z"}
+{"task_id": "e7bf70df", "split": "dev", "pass": true, "answer": "lsof -nP -iTCP -sTCP:LISTEN", "hits": [{"id": "a7b1a05e5b67", "cos": 0.8956}], "ts": "2026-08-26T03:30:39Z"}
+{"task_id": "c6657f73", "split": "dev", "pass": true, "answer": "GET /2/users/me", "hits": [{"id": "2bd6f8dcf895", "cos": 0.8783}], "ts": "2026-08-26T03:30:50Z"}
+{"task_id": "044ce739", "split": "dev", "pass": true, "answer": "SubagentStop", "hits": [{"id": "b8ac5911592a", "cos": 0.9095}], "ts": "2026-08-26T03:31:00Z"}
+{"task_id": "136ed8f5", "split": "dev", "pass": false, "answer": "@custom-variant aqua (&:where([data-theme=\"aqua\"] *));", "hits": [{"id": "fe5201f32443", "cos": 0.9178}], "ts": "2026-08-26T03:31:13Z"}
+{"task_id": "244fad88", "split": "dev", "pass": true, "answer": "@anthropic-ai/claude-code", "hits": [{"id": "936b03e425ba", "cos": 0.9091}], "ts": "2026-08-26T03:31:26Z"}
+{"task_id": "306f47e1", "split": "dev", "pass": true, "answer": "cargo clippy --all-targets --all-features -- -D warnings", "hits": [{"id": "c40e4773d9aa", "cos": 0.9146}], "ts": "2026-08-26T03:31:37Z"}
+{"task_id": "4bc10ca0", "split": "dev", "pass": true, "answer": "https://api.semanticscholar.org/graph/v1/paper/search", "hits": [{"id": "16c8616affb0", "cos": 0.9151}], "ts": "2026-08-26T03:31:49Z"}
+{"task_id": "c48e15c5", "split": "dev", "pass": true, "answer": "-bbox-layout", "hits": [{"id": "dd1397d9d836", "cos": 0.8805}], "ts": "2026-08-26T03:32:00Z"}
+{"task_id": "a388945c", "split": "dev", "pass": false, "answer": "disable-model-invocation: true", "hits": [{"id": "c7c95b5cb5ae", "cos": 0.9164}], "ts": "2026-08-26T03:32:11Z"}
+{"task_id": "c47a9a13", "split": "dev", "pass": true, "answer": "curl -s \"https://export.arxiv.org/api/query?id_list=1706.03762\"", "hits": [{"id": "fdeddb7a220a", "cos": 0.9385}], "ts": "2026-08-26T03:32:23Z"}
+{"task_id": "da55c81d", "split": "dev", "pass": true, "answer": "POST /v1/data_sources/{data_source_id}/query", "hits": [{"id": "d5cedf80165c", "cos": 0.8864}], "ts": "2026-08-26T03:32:36Z"}
+{"task_id": "4c961b09", "split": "dev", "pass": true, "answer": "POST /v1/messages", "hits": [{"id": "b5a8a2da8760", "cos": 0.9119}], "ts": "2026-08-26T03:32:52Z"}
+{"task_id": "8eaf81a2", "split": "dev", "pass": true, "answer": "useUnknownInCatchVariables", "hits": [{"id": "0cde34530e10", "cos": 0.9086}], "ts": "2026-08-26T03:33:06Z"}
+{"task_id": "885524b1", "split": "dev", "pass": true, "answer": "var(--vscode-editor-background)", "hits": [{"id": "bfa2d74bd6b1", "cos": 0.8935}], "ts": "2026-08-26T03:33:35Z"}
+{"task_id": "ec01860e", "split": "dev", "pass": true, "answer": "java -Ddoi=3 -jar acts_cmd.jar cmd model.txt out.txt", "hits": [{"id": "98702917af8c", "cos": 0.8729}], "ts": "2026-08-26T03:33:48Z"}
+{"task_id": "32b76cd5", "split": "dev", "pass": true, "answer": "kornia.feature.LoFTR", "hits": [{"id": "2e27b226c732", "cos": 0.8783}], "ts": "2026-08-26T03:33:56Z"}
+{"task_id": "3c23bc21", "split": "dev", "pass": false, "answer": "/docs/Linking", "hits": [{"id": "96f4732f26c8", "cos": 0.904}], "ts": "2026-08-26T03:34:09Z"}
+{"task_id": "043bb4d9", "split": "dev", "pass": true, "answer": "Task<AuthorizationPolicy?> GetPolicyAsync(string policyName);", "hits": [{"id": "6f2e7761e1f1", "cos": 0.887}], "ts": "2026-08-26T03:34:18Z"}
+{"task_id": "dfdd281b", "split": "dev", "pass": true, "answer": "uv run --with anthropic summarize.py", "hits": [{"id": "e27f40b0d63e", "cos": 0.9082}], "ts": "2026-08-26T03:34:26Z"}
+{"task_id": "4dfda15f", "split": "dev", "pass": true, "answer": "tail -n +1 FILE", "hits": [{"id": "0515948d8c42", "cos": 0.8664}], "ts": "2026-08-26T03:34:35Z"}
+{"task_id": "aeb331e0", "split": "dev", "pass": true, "answer": "/repos/{owner}/{repo}/pulls/{pull_number}/reviews", "hits": [{"id": "6a9f1c734ce8", "cos": 0.9013}], "ts": "2026-08-26T03:34:43Z"}
+{"task_id": "79ac4a78", "split": "dev", "pass": true, "answer": "POST /v1/messages", "hits": [{"id": "631917f6eddf", "cos": 0.9043}], "ts": "2026-08-26T03:34:51Z"}
+{"task_id": "527cd0bb", "split": "dev", "pass": true, "answer": "GET /services/data/vXX.X/query/?q={SOQL}", "hits": [{"id": "3318d5db79ae", "cos": 0.8914}], "ts": "2026-08-26T03:35:00Z"}
+{"task_id": "f5358fd7", "split": "dev", "pass": true, "answer": "POST /v1/messages", "hits": [{"id": "00412536aece", "cos": 0.8996}], "ts": "2026-08-26T03:35:09Z"}
+{"task_id": "77258c12", "split": "dev", "pass": true, "answer": "/repos/{owner}/{repo}/pulls/{pull_number}/comments", "hits": [{"id": "2e2b87f8b7ce", "cos": 0.9146}], "ts": "2026-08-26T03:35:22Z"}
+{"task_id": "682533ec", "split": "dev", "pass": false, "answer": "tail -n +2", "hits": [{"id": "48f5791a4a87", "cos": 0.8668}], "ts": "2026-08-26T03:35:32Z"}
+{"task_id": "e9701b6d", "split": "dev", "pass": true, "answer": "cq.exporters.export(obj, \"output.step\")", "hits": [{"id": "0976b73ddfe5", "cos": 0.888}], "ts": "2026-08-26T03:35:45Z"}
+{"task_id": "554539c9", "split": "dev", "pass": true, "answer": "--dangerously-skip-permissions", "hits": [{"id": "f2f60515e1d6", "cos": 0.9125}], "ts": "2026-08-26T03:36:00Z"}
