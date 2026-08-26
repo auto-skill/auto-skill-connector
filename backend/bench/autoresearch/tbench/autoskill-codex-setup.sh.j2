@@ -1,20 +1,43 @@
 #!/bin/bash
-# Fast agent install: fetch codex's static musl binary from the host bridge
-# (seconds) instead of apt+nvm+node+npm (minutes per trial). ChatGPT tokens
-# arrive via CODEX_AUTH_B64 so they never appear in a logged command.
-# ca-certificates only installs when missing -- without it the TLS handshake
-# to chatgpt.com fails with UnknownIssuer.
-set -e
+# Agent install. NO `set -e`: this script is SOURCED into the task shell, so
+# an unguarded failure kills the whole tmux session and every subsequent
+# command times out silently (that exact bug voided two days of runs).
+#
+# Fast path: fetch the static musl codex binary from the HOST via this task
+# network's default gateway (tasks run on per-task compose bridges, so the
+# host is NOT 172.17.0.1 -- deriving the gateway works on any bridge).
+# Fallback: npm install, the slow-but-proven path.
 
 if [ ! -e /etc/ssl/certs/ca-certificates.crt ]; then
-  apt-get update -qq >/dev/null 2>&1 || true
+  apt-get update -qq >/dev/null 2>&1
   apt-get install -y -qq ca-certificates curl >/dev/null 2>&1 || \
-    (apk add --no-cache ca-certificates curl >/dev/null 2>&1 || true)
+    apk add --no-cache ca-certificates curl >/dev/null 2>&1
 fi
 
-curl -fsS -o /usr/local/bin/codex http://172.17.0.1:8777/codex
-chmod +x /usr/local/bin/codex
+GW=$(awk '$2 == "00000000" {print strtonum("0x" substr($3,7,2)) "." strtonum("0x" substr($3,5,2)) "." strtonum("0x" substr($3,3,2)) "." strtonum("0x" substr($3,1,2)); exit}' /proc/net/route 2>/dev/null)
+[ -z "$GW" ] && GW=$(ip route 2>/dev/null | awk '/default/ {print $3; exit}')
+
+CODEX_OK=""
+if [ -n "$GW" ] && curl -fsS --connect-timeout 10 -o /usr/local/bin/codex "http://$GW:8777/codex" 2>/dev/null; then
+  chmod +x /usr/local/bin/codex
+  if /usr/local/bin/codex --version >/dev/null 2>&1; then CODEX_OK=1; fi
+fi
+
+if [ -z "$CODEX_OK" ]; then
+  echo "fast fetch failed (gw=$GW); falling back to npm install"
+  curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.2/install.sh 2>/dev/null | bash >/dev/null 2>&1
+  source "$HOME/.nvm/nvm.sh" >/dev/null 2>&1
+  nvm install 22 >/dev/null 2>&1
+  npm install -g @openai/codex@latest >/dev/null 2>&1
+  command -v codex >/dev/null 2>&1 && CODEX_OK=1
+fi
 
 mkdir -p "$HOME/.codex"
 echo "$CODEX_AUTH_B64" | base64 -d > "$HOME/.codex/auth.json"
-echo "autoskill-codex ready: $(codex --version 2>/dev/null || echo binary-installed)"
+
+if [ -n "$CODEX_OK" ]; then
+  echo "autoskill-codex ready: $(codex --version 2>/dev/null || echo installed)"
+else
+  echo "codex install FAILED entirely"
+  false  # surfaces INSTALL_FAIL_STATUS to the harness instead of a silent timeout
+fi
