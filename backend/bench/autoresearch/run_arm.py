@@ -81,7 +81,10 @@ def main() -> int:
         tasks = [t for t in tasks if t["split"] == a.split]
 
     retriever = None
-    if policy.get("arm") != "baseline":
+    if policy.get("arm") == "graph":
+        from graph_query import GraphRetriever
+        retriever = GraphRetriever(k=policy.get("k", 3))
+    elif policy.get("arm") != "baseline":
         from retrieve import Retriever
         retriever = Retriever(
             k=policy.get("k", 3), floor=policy.get("floor", 0.0),
